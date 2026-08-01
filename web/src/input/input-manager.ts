@@ -1,4 +1,10 @@
 import type { Action, Binding } from './actions'
+import {
+  isGamepadApiAvailable,
+  readStandardGamepad,
+  STANDARD_GAMEPAD_ACTIONS,
+  installGamepadListeners,
+} from './gamepad'
 
 const AXIS_DEADZONE = 0.35
 const STICK_AXIS = { x: 0, y: 1 }
@@ -16,6 +22,13 @@ export interface InputSnapshot {
   downPressed: boolean
 }
 
+export interface GamepadStatus {
+  apiAvailable: boolean
+  connected: boolean
+  activated: boolean
+  id: string
+}
+
 export class InputManager {
   private bindings: Record<Action, Binding>
   private keysDown = new Set<string>()
@@ -26,6 +39,10 @@ export class InputManager {
   private prevAxisState = new Map<string, boolean>()
   private stickX = 0
   private stickY = 0
+  private prevStickY = 0
+  private standardHeld = new Set<string>()
+  private standardFrame = readStandardGamepad(this.standardHeld)
+  private statusListeners = new Set<(status: GamepadStatus) => void>()
 
   constructor(bindings: Record<Action, Binding>) {
     this.bindings = bindings
@@ -41,6 +58,7 @@ export class InputManager {
       this.buttonsDown.clear()
       this.axisState.clear()
     })
+    installGamepadListeners(() => this.notifyStatus())
   }
 
   setBindings(bindings: Record<Action, Binding>): void {
@@ -49,6 +67,21 @@ export class InputManager {
 
   getBindings(): Record<Action, Binding> {
     return this.bindings
+  }
+
+  onStatusChange(listener: (status: GamepadStatus) => void): () => void {
+    this.statusListeners.add(listener)
+    listener(this.getGamepadStatus())
+    return () => this.statusListeners.delete(listener)
+  }
+
+  getGamepadStatus(): GamepadStatus {
+    return {
+      apiAvailable: isGamepadApiAvailable(),
+      connected: this.standardFrame.connected,
+      activated: this.standardFrame.activated,
+      id: this.standardFrame.id,
+    }
   }
 
   beginFrame(): void {
@@ -64,7 +97,7 @@ export class InputManager {
     for (const pad of pads) {
       if (!pad) continue
       pad.buttons.forEach((btn, i) => {
-        if (btn.pressed) this.buttonsDown.add(String(i))
+        if (btn.pressed || btn.value > 0.5) this.buttonsDown.add(String(i))
       })
       const lx = applyDeadzone(pad.axes[STICK_AXIS.x] ?? 0)
       const ly = applyDeadzone(pad.axes[STICK_AXIS.y] ?? 0)
@@ -77,15 +110,30 @@ export class InputManager {
         }
       })
     }
+
+    this.standardFrame = readStandardGamepad(this.standardHeld)
+    this.standardHeld = new Set(this.standardFrame.buttonsHeld)
+
+    if (Math.abs(this.standardFrame.moveX) > 0) this.stickX = this.standardFrame.moveX
+    if (Math.abs(this.standardFrame.moveY) > 0) this.stickY = this.standardFrame.moveY
+
+    this.notifyStatus()
   }
 
   snapshot(): InputSnapshot {
     const moveX =
       this.stickX ||
-      (this.isActionHeld('MOVE_RIGHT') ? 1 : 0) - (this.isActionHeld('MOVE_LEFT') ? 1 : 0)
+      actionAxis(this, 'MOVE_RIGHT', 'MOVE_LEFT')
     const moveY =
       this.stickY ||
-      (this.isActionHeld('MOVE_DOWN') ? 1 : 0) - (this.isActionHeld('MOVE_UP') ? 1 : 0)
+      actionAxis(this, 'MOVE_DOWN', 'MOVE_UP')
+
+    const upPressed =
+      this.wasActionPressed('MOVE_UP') || stickEdge(this.prevStickY, this.stickY, -1)
+    const downPressed =
+      this.wasActionPressed('MOVE_DOWN') || stickEdge(this.prevStickY, this.stickY, 1)
+
+    this.prevStickY = this.stickY
 
     return {
       moveX,
@@ -96,35 +144,29 @@ export class InputManager {
       confirmPressed: this.wasActionPressed('CONFIRM'),
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
-      upPressed: this.wasActionPressed('MOVE_UP'),
-      downPressed: this.wasActionPressed('MOVE_DOWN'),
+      upPressed,
+      downPressed,
     }
   }
 
   isActionHeld(action: Action): boolean {
-    const binding = this.bindings[action]
-    if (!binding) return false
-    return this.isBindingHeld(binding)
+    return this.isBindingHeld(this.bindings[action]) || this.isStandardHeld(action)
   }
 
   wasActionPressed(action: Action): boolean {
-    const binding = this.bindings[action]
-    if (!binding) return false
-    return this.isBindingPressed(binding)
+    return this.isBindingPressed(this.bindings[action]) || this.isStandardPressed(action)
   }
 
   private isBindingHeld(binding: Binding): boolean {
-    if (binding.source === 'keyboard') {
-      return this.keysDown.has(binding.code)
-    }
-    if (binding.source === 'gamepad-button') {
-      return this.buttonsDown.has(binding.code)
-    }
+    if (!binding) return false
+    if (binding.source === 'keyboard') return this.keysDown.has(binding.code)
+    if (binding.source === 'gamepad-button') return this.buttonsDown.has(binding.code)
     const key = `${binding.code}:${binding.axisSign ?? 1}`
     return this.axisState.get(key) ?? false
   }
 
   private isBindingPressed(binding: Binding): boolean {
+    if (!binding) return false
     if (binding.source === 'keyboard') {
       return this.keysDown.has(binding.code) && !this.prevKeysDown.has(binding.code)
     }
@@ -135,30 +177,47 @@ export class InputManager {
     return (this.axisState.get(key) ?? false) && !(this.prevAxisState.get(key) ?? false)
   }
 
-  /** 按键绑定页：捕获下一个输入 */
+  private isStandardHeld(action: Action): boolean {
+    if (!this.standardFrame.connected) return false
+    return STANDARD_GAMEPAD_ACTIONS[action].some((code) => this.standardFrame.buttonsHeld.has(code))
+  }
+
+  private isStandardPressed(action: Action): boolean {
+    if (!this.standardFrame.connected) return false
+    return STANDARD_GAMEPAD_ACTIONS[action].some((code) => this.standardFrame.buttonsPressed.has(code))
+  }
+
   captureNextBinding(): Binding | null {
     for (const code of this.keysDown) {
-      if (!this.prevKeysDown.has(code)) {
-        return { source: 'keyboard', code }
-      }
+      if (!this.prevKeysDown.has(code)) return { source: 'keyboard', code }
     }
     for (const code of this.buttonsDown) {
-      if (!this.prevButtonsDown.has(code)) {
-        return { source: 'gamepad-button', code }
-      }
+      if (!this.prevButtonsDown.has(code)) return { source: 'gamepad-button', code }
+    }
+    for (const code of this.standardFrame.buttonsPressed) {
+      return { source: 'gamepad-button', code }
     }
     for (const [key] of this.axisState) {
       if (!this.prevAxisState.get(key)) {
         const [axis, sign] = key.split(':')
-        return {
-          source: 'gamepad-axis',
-          code: axis,
-          axisSign: Number(sign) as 1 | -1,
-        }
+        return { source: 'gamepad-axis', code: axis, axisSign: Number(sign) as 1 | -1 }
       }
     }
+    const lx = this.standardFrame.moveX
+    const ly = this.standardFrame.moveY
+    if (Math.abs(lx) > 0.5) return { source: 'gamepad-axis', code: '0', axisSign: lx > 0 ? 1 : -1 }
+    if (Math.abs(ly) > 0.5) return { source: 'gamepad-axis', code: '1', axisSign: ly > 0 ? 1 : -1 }
     return null
   }
+
+  private notifyStatus(): void {
+    const status = this.getGamepadStatus()
+    for (const listener of this.statusListeners) listener(status)
+  }
+}
+
+function actionAxis(self: InputManager, positive: Action, negative: Action): number {
+  return (self.isActionHeld(positive) ? 1 : 0) - (self.isActionHeld(negative) ? 1 : 0)
 }
 
 function applyDeadzone(value: number): number {
@@ -166,4 +225,10 @@ function applyDeadzone(value: number): number {
   const sign = Math.sign(value)
   const scaled = (Math.abs(value) - AXIS_DEADZONE) / (1 - AXIS_DEADZONE)
   return sign * scaled
+}
+
+function stickEdge(prev: number, current: number, direction: 1 | -1): boolean {
+  const threshold = 0.6
+  if (direction < 0) return prev > -threshold && current <= -threshold
+  return prev < threshold && current >= threshold
 }

@@ -19,6 +19,26 @@ export class App {
     this.ctx = ctx
     this.resize()
     window.addEventListener('resize', () => this.resize())
+    this.bindTouch()
+  }
+
+  private bindTouch(): void {
+    const handle = (clientX: number, clientY: number) => {
+      const rect = this.canvas.getBoundingClientRect()
+      const x = clientX - rect.left
+      const y = clientY - rect.top
+      const scene = this.scenes.currentScene()
+      scene?.onTap?.(x, y, this.canvas.clientWidth, this.canvas.clientHeight)
+    }
+    this.canvas.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+          handle(e.clientX, e.clientY)
+        }
+      },
+      { passive: true },
+    )
   }
 
   start(initialScene: string): void {

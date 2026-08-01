@@ -115,6 +115,42 @@ export function drawHudMass(
   ctx.fillText(text, width - 24, 40)
 }
 
+export function drawGamepadBanner(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  status: { apiAvailable: boolean; connected: boolean; activated: boolean; id: string },
+): void {
+  let text: string
+  let color: string
+
+  if (!status.apiAvailable) {
+    text = '当前浏览器不支持 Gamepad API，请使用 Chrome 或安装 APK'
+    color = '#ff8f8f'
+  } else if (!status.connected) {
+    text = '未检测到手柄：请先在系统蓝牙中配对，然后按手柄任意键'
+    color = '#ffc44d'
+  } else if (!status.activated) {
+    text = '已连接手柄，请按任意键激活（Android Chrome 安全要求）'
+    color = '#ffc44d'
+  } else {
+    text = `手柄已就绪：${status.id || '已连接'}`
+    color = '#7ddea8'
+  }
+
+  ctx.textAlign = 'center'
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+  const padding = 12
+  ctx.font = '14px system-ui, sans-serif'
+  const textWidth = Math.min(ctx.measureText(text).width, width - 48)
+  const boxW = textWidth + padding * 2
+  const x = (width - boxW) / 2
+  const y = 148
+  roundRect(ctx, x, y, boxW, 32, 8)
+  ctx.fill()
+  ctx.fillStyle = color
+  ctx.fillText(text, width / 2, y + 21)
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,

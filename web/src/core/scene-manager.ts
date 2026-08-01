@@ -3,6 +3,7 @@ export interface Scene {
   exit(): void
   update(dt: number): void
   render(ctx: CanvasRenderingContext2D, width: number, height: number): void
+  onTap?(x: number, y: number, width: number, height: number): void
 }
 
 export type SceneFactory = () => Scene
@@ -11,6 +12,10 @@ export class SceneManager {
   private current: Scene | null = null
 
   constructor(private readonly factories: Record<string, SceneFactory>) {}
+
+  currentScene(): Scene | null {
+    return this.current
+  }
 
   switchTo(name: string): void {
     this.current?.exit()

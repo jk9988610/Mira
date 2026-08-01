@@ -47,7 +47,9 @@ function main() {
   })
 
   app.scenes = scenes
-  saveBindings(bindings)
+  if (!localStorage.getItem('mira_bindings_v2')) {
+    saveBindings(bindings)
+  }
   app.start('menu')
 
   const originalUpdate = scenes.update.bind(scenes)

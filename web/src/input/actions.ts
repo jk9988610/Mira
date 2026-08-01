@@ -1,3 +1,5 @@
+import { isTouchDevice } from './gamepad'
+
 export type Action =
   | 'MOVE_UP'
   | 'MOVE_DOWN'
@@ -58,16 +60,23 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   PAUSE: { source: 'gamepad-button', code: '9' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v1'
+const STORAGE_KEY = 'mira_bindings_v2'
+
+function defaultBindingsForDevice(): BindingMap {
+  if (isTouchDevice()) {
+    return { ...DEFAULT_BINDINGS, ...GAMEPAD_DEFAULT_BINDINGS }
+  }
+  return { ...DEFAULT_BINDINGS }
+}
 
 export function loadBindings(): BindingMap {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_BINDINGS }
+    if (!raw) return defaultBindingsForDevice()
     const parsed = JSON.parse(raw) as Partial<BindingMap>
-    return { ...DEFAULT_BINDINGS, ...parsed }
+    return { ...defaultBindingsForDevice(), ...parsed }
   } catch {
-    return { ...DEFAULT_BINDINGS }
+    return defaultBindingsForDevice()
   }
 }
 
