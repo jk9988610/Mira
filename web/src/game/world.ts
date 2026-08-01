@@ -1,3 +1,4 @@
+import { PLAYER_START_RADIUS } from './physics'
 import { createPellet, type Pellet, spawnPellets } from './pellet'
 
 export const WORLD_WIDTH = 2400
@@ -5,14 +6,14 @@ export const WORLD_HEIGHT = 1600
 
 const TARGET_PELLET_COUNT = 100
 const SPAWN_MARGIN = 28
-const MIN_SPAWN_DIST = 80
+const MIN_SPAWN_DIST = PLAYER_START_RADIUS + 48
 
 export class GameWorld {
   pellets: Pellet[] = []
 
   reset(playerX: number, playerY: number): void {
     this.pellets = spawnPellets(TARGET_PELLET_COUNT, WORLD_WIDTH, WORLD_HEIGHT, SPAWN_MARGIN)
-    this.ensureSpacing(playerX, playerY, 120)
+    this.ensureSpacing(playerX, playerY, PLAYER_START_RADIUS + 32)
   }
 
   maintainPopulation(playerX: number, playerY: number): void {
