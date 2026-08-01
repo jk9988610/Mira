@@ -1,4 +1,5 @@
 import { App } from './core/app'
+import { requestAppFullscreen } from './core/fullscreen'
 import { SceneManager } from './core/scene-manager'
 import { loadBindings, saveBindings } from './input/actions'
 import { InputManager } from './input/input-manager'
@@ -51,6 +52,7 @@ function main() {
   if (!localStorage.getItem('mira_bindings_v2')) {
     saveBindings(bindings)
   }
+  requestAppFullscreen()
   app.start('menu')
 
   const originalUpdate = scenes.update.bind(scenes)

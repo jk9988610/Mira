@@ -1,5 +1,6 @@
 import type { App } from '../core/app'
 import type { GamepadStatus } from '../input/input-manager'
+import { requestAppFullscreen } from '../core/fullscreen'
 import { FocusList } from '../input/focus-list'
 import {
   clearScreen,
@@ -28,6 +29,7 @@ export function createMenuScene(app: App, go: (scene: string) => void) {
       unsubscribe = app.input.onStatusChange((status) => {
         gamepadStatus = status
       })
+      requestAppFullscreen()
     },
     exit() {
       unsubscribe()

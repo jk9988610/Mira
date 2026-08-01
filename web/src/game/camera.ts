@@ -1,57 +1,49 @@
-import {
-  massToRadius,
-  PLAYER_START_MASS,
-  PLAYER_START_RADIUS,
-  radiusToMass,
-} from './physics'
+import { massToRadius, PLAYER_START_MASS } from './physics'
+import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-const VIEW_BETA = 0.45
-const VIEW_BASE_HALF = PLAYER_START_RADIUS * 4
-const RADIUS_THRESHOLD = PLAYER_START_RADIUS * 2
+const VIEW_BETA = 0.42
+const BASE_VIEW_RADIUS = massToRadius(PLAYER_START_MASS) * 3.2
 
 export interface CameraState {
-  viewHalf: number
-  zoom: number
+  camX: number
+  camY: number
   renderScale: number
+  zoom: number
 }
 
 export function computeCamera(
+  playerX: number,
+  playerY: number,
   playerMass: number,
   screenWidth: number,
   screenHeight: number,
 ): CameraState {
-  const r = massToRadius(playerMass)
   const massRatio = playerMass / PLAYER_START_MASS
-  const thresholdMass = radiusToMass(RADIUS_THRESHOLD)
+  const zoom = massRatio ** VIEW_BETA
+  const viewRadius = BASE_VIEW_RADIUS * zoom
+  const renderScale = (Math.min(screenWidth, screenHeight) * 0.48) / viewRadius
 
-  let viewHalf: number
-  let zoom: number
+  const halfW = screenWidth / renderScale / 2
+  const halfH = screenHeight / renderScale / 2
 
-  if (r <= RADIUS_THRESHOLD) {
-    zoom = 1
-    viewHalf = VIEW_BASE_HALF * massRatio ** VIEW_BETA
+  let camX = playerX
+  let camY = playerY
+
+  if (halfW * 2 < WORLD_WIDTH) {
+    camX = clamp(playerX, halfW, WORLD_WIDTH - halfW)
   } else {
-    zoom = r / RADIUS_THRESHOLD
-    viewHalf = VIEW_BASE_HALF * (thresholdMass / PLAYER_START_MASS) ** VIEW_BETA
+    camX = WORLD_WIDTH / 2
   }
 
-  const screenFit = Math.min(screenWidth, screenHeight) * 0.46
-  const renderScale = screenFit / viewHalf / zoom
+  if (halfH * 2 < WORLD_HEIGHT) {
+    camY = clamp(playerY, halfH, WORLD_HEIGHT - halfH)
+  } else {
+    camY = WORLD_HEIGHT / 2
+  }
 
-  return { viewHalf, zoom, renderScale }
+  return { camX, camY, renderScale, zoom }
 }
 
-export function isInView(
-  x: number,
-  y: number,
-  radius: number,
-  cameraX: number,
-  cameraY: number,
-  viewHalf: number,
-  aspect: number,
-): boolean {
-  const dx = Math.abs(x - cameraX)
-  const dy = Math.abs(y - cameraY)
-  const margin = radius + 24
-  return dx < viewHalf * aspect + margin && dy < viewHalf + margin
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
 }
