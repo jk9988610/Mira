@@ -4,7 +4,7 @@ import { createPellet, type Pellet, spawnPellets } from './pellet'
 export const WORLD_WIDTH = 5600
 export const WORLD_HEIGHT = 3800
 
-const TARGET_PELLET_COUNT = 280
+const TARGET_PELLET_COUNT = 480
 const SPAWN_MARGIN = 40
 const MIN_SPAWN_DIST = PLAYER_START_RADIUS + 64
 

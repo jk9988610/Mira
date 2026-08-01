@@ -1,4 +1,5 @@
 import { App } from './core/app'
+import { sfx } from './audio/synth'
 import { requestAppFullscreen } from './core/fullscreen'
 import { SceneManager } from './core/scene-manager'
 import { loadBindings, saveBindings } from './input/actions'
@@ -53,6 +54,9 @@ function main() {
     saveBindings(bindings)
   }
   requestAppFullscreen()
+  const unlockAudio = () => sfx.unlock()
+  window.addEventListener('pointerdown', unlockAudio, { once: true })
+  window.addEventListener('keydown', unlockAudio, { once: true })
   app.start('menu')
 
   const originalUpdate = scenes.update.bind(scenes)

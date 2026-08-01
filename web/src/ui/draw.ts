@@ -124,13 +124,20 @@ export interface HudData {
   leaderboard: Array<{ rank: number; name: string; mass: number; isPlayer: boolean; respawning: boolean }>
 }
 
+export function formatMatchTime(seconds: number): string {
+  const total = Math.max(0, Math.ceil(seconds))
+  const mins = Math.floor(total / 60)
+  const secs = total % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
 export function drawGameHud(
   ctx: CanvasRenderingContext2D,
   width: number,
   _height: number,
   data: HudData,
 ): void {
-  const timerText = `剩余 ${Math.ceil(data.timeRemaining)}s`
+  const timerText = `剩余 ${formatMatchTime(data.timeRemaining)}`
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
   ctx.font = '600 20px system-ui, sans-serif'
@@ -166,6 +173,27 @@ export function drawGameHud(
     ctx.fillText(row.mass.toFixed(0), px + panelW - 12, y)
     ctx.textAlign = 'left'
   })
+}
+
+export function drawStartCountdown(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  secondsLeft: number,
+): void {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
+  ctx.fillRect(0, 0, width, height)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#e8f0ff'
+  ctx.font = 'bold 28px system-ui, sans-serif'
+  ctx.fillText('准备', width / 2, height * 0.38)
+  ctx.fillStyle = '#ffc44d'
+  ctx.font = 'bold 72px system-ui, sans-serif'
+  const label = secondsLeft > 0 ? String(Math.ceil(secondsLeft)) : '开始!'
+  ctx.fillText(label, width / 2, height * 0.5)
+  ctx.fillStyle = '#8aa0c8'
+  ctx.font = '16px system-ui, sans-serif'
+  ctx.fillText('对局即将开始', width / 2, height * 0.58)
 }
 
 export function drawRespawnOverlay(

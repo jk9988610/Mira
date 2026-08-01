@@ -1,4 +1,6 @@
 import type { App } from '../core/app'
+import { sfx } from '../audio/synth'
+import { requestAppFullscreen } from '../core/fullscreen'
 import { randomSpawnPosition, spawnAiEntities, updateAi } from '../game/ai'
 import { computeCamera } from '../game/camera'
 import { absorbPelletsForEntity, resolveCircleCollisions } from '../game/collision'
@@ -13,18 +15,19 @@ import { buildLeaderboard } from '../game/leaderboard'
 import {
   GAME_DURATION_SEC,
   INVINCIBLE_SEC,
+  MATCH_START_COUNTDOWN_SEC,
   RESPAWN_DELAY_SEC,
 } from '../game/match-config'
 import { PLAYER_START_MASS } from '../game/physics'
 import { drawPellet } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
 import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { requestAppFullscreen } from '../core/fullscreen'
 import {
   clearScreen,
   drawGameHud,
   drawLeaderboardModal,
   drawRespawnOverlay,
+  drawStartCountdown,
 } from '../ui/draw'
 
 const PLAYER_SPEED = 280
@@ -39,9 +42,12 @@ export function createGameScene(
   let players: CircleEntity[] = []
   let absorbFlash = 0
   let timeRemaining = GAME_DURATION_SEC
+  let startCountdown = MATCH_START_COUNTDOWN_SEC
+  let matchStarted = false
   let matchEnded = false
   let showResults = false
   let elapsed = 0
+  let lastCountdownSecond = -1
 
   const reset = () => {
     const spawn = randomSpawnPosition([]) ?? { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 }
@@ -49,9 +55,12 @@ export function createGameScene(
     players = [player, ...spawnAiEntities([player])]
     absorbFlash = 0
     timeRemaining = GAME_DURATION_SEC
+    startCountdown = MATCH_START_COUNTDOWN_SEC
+    matchStarted = false
     matchEnded = false
     showResults = false
     elapsed = 0
+    lastCountdownSecond = -1
     world.reset(player.x, player.y)
   }
 
@@ -69,7 +78,25 @@ export function createGameScene(
       entity.mass = PLAYER_START_MASS
       entity.invincibleTimer = INVINCIBLE_SEC
       entity.respawnTimer = 0
+      if (entity.isPlayer) sfx.respawn()
     }
+  }
+
+  const updateStartCountdown = (dt: number): boolean => {
+    if (matchStarted) return true
+
+    startCountdown -= dt
+    const sec = Math.ceil(Math.max(0, startCountdown))
+    if (sec !== lastCountdownSecond) {
+      if (sec > 0) sfx.countdownTick(sec)
+      lastCountdownSecond = sec
+    }
+
+    if (startCountdown <= 0) {
+      matchStarted = true
+      sfx.matchStart()
+    }
+    return false
   }
 
   return {
@@ -77,6 +104,7 @@ export function createGameScene(
       reset()
       showPause(false)
       requestAppFullscreen()
+      sfx.unlock()
     },
     exit() {
       showPause(false)
@@ -91,6 +119,8 @@ export function createGameScene(
 
       if (isPaused()) return
 
+      if (!updateStartCountdown(dt)) return
+
       const input = app.input.snapshot()
       if (input.pausePressed && !matchEnded) {
         showPause(true)
@@ -104,6 +134,7 @@ export function createGameScene(
         timeRemaining = 0
         matchEnded = true
         showResults = true
+        sfx.matchEnd()
         return
       }
 
@@ -122,7 +153,10 @@ export function createGameScene(
       for (const entity of players) {
         if (!isActive(entity)) continue
         const absorbed = absorbPelletsForEntity(entity, world.pellets)
-        if (entity.isPlayer && absorbed.length > 0) absorbFlash = 0.18
+        if (entity.isPlayer && absorbed.length > 0) {
+          absorbFlash = 0.18
+          sfx.absorbPellet()
+        }
         for (const pellet of absorbed) removedPelletIds.add(pellet.id)
       }
 
@@ -133,8 +167,10 @@ export function createGameScene(
       for (const id of removedPelletIds) world.removePellet(id)
 
       const eatEvents = resolveCircleCollisions(players)
-      for (const { loser } of eatEvents) {
+      for (const { winner, loser } of eatEvents) {
         loser.respawnTimer = RESPAWN_DELAY_SEC
+        if (loser.isPlayer) sfx.eaten()
+        else if (winner.isPlayer) sfx.eatCircle()
       }
 
       updateRespawns(dt)
@@ -171,14 +207,18 @@ export function createGameScene(
       ctx.restore()
       ctx.restore()
 
-      drawGameHud(ctx, width, height, {
-        timeRemaining,
-        playerMass: p.mass,
-        zoom: cam.zoom,
-        leaderboard: board,
-      })
+      if (matchStarted) {
+        drawGameHud(ctx, width, height, {
+          timeRemaining,
+          playerMass: p.mass,
+          zoom: cam.zoom,
+          leaderboard: board,
+        })
+      }
 
-      if (!isActive(p)) {
+      if (!matchStarted) {
+        drawStartCountdown(ctx, width, height, startCountdown)
+      } else if (!isActive(p)) {
         drawRespawnOverlay(ctx, width, height, p.respawnTimer)
       }
     },
