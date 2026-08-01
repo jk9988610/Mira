@@ -1,11 +1,10 @@
 import type { App } from '../core/app'
 import { absorbPellets } from '../game/collision'
-import { massToRadius } from '../game/physics'
+import { massToRadius, PLAYER_START_MASS } from '../game/physics'
 import { drawPellet } from '../game/pellet'
 import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawHudMass } from '../ui/draw'
 
-const PLAYER_START_MASS = 12
 const PLAYER_SPEED = 280
 
 export function createGameScene(
@@ -91,7 +90,6 @@ export function createGameScene(
       ctx.restore()
 
       drawHudMass(ctx, width, playerMass)
-      drawCrosshair(ctx, width, height)
     },
   }
 }
@@ -143,17 +141,6 @@ function drawPlayer(
   ctx.fill()
   ctx.strokeStyle = '#d8f1ff'
   ctx.lineWidth = 2
-  ctx.stroke()
-}
-
-function drawCrosshair(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.strokeStyle = 'rgba(127, 140, 163, 0.35)'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(width / 2 - 12, height / 2)
-  ctx.lineTo(width / 2 + 12, height / 2)
-  ctx.moveTo(width / 2, height / 2 - 12)
-  ctx.lineTo(width / 2, height / 2 + 12)
   ctx.stroke()
 }
 

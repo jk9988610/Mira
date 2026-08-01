@@ -18,8 +18,8 @@ const MASS_MULTIPLIERS: Record<number, number> = {
 }
 
 const SIDE_OPTIONS = [3, 4, 5, 6] as const
-const MIN_RADIUS = 6
-const MAX_RADIUS = 14
+export const PELLET_MIN_RADIUS = 6
+export const PELLET_MAX_RADIUS = 14
 
 let nextId = 1
 
@@ -34,7 +34,7 @@ export function pelletMass(sides: number, radius: number): number {
 
 export function createPellet(x: number, y: number, sides?: number, radius?: number): Pellet {
   const s = sides ?? SIDE_OPTIONS[Math.floor(Math.random() * SIDE_OPTIONS.length)]
-  const r = radius ?? MIN_RADIUS + Math.random() * (MAX_RADIUS - MIN_RADIUS)
+  const r = radius ?? PELLET_MIN_RADIUS + Math.random() * (PELLET_MAX_RADIUS - PELLET_MIN_RADIUS)
   return {
     id: nextId++,
     x,
