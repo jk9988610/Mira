@@ -7,4 +7,5 @@ export const AI_COUNT = TOTAL_PLAYERS - 1
 export const MAX_HUMAN_CLONES = 16
 export const MIN_SPLIT_MASS_RATIO = 1.8
 export const LEADERBOARD_TOP_N = 10
-export const SWALLOW_INSIDE_RATIO = 0.75
+export const SWALLOW_INSIDE_RATIO = 2 / 3
+export const MERGE_INSIDE_RATIO = 2 / 3

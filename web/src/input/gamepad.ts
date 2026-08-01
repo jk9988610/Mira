@@ -96,7 +96,6 @@ export const STANDARD_GAMEPAD_ACTIONS = {
   BACK: ['1'],
   PAUSE: ['9'],
   SPLIT: ['2'],
-  MERGE: ['3'],
 } as const
 
 export function isTouchDevice(): boolean {

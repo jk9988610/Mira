@@ -1,7 +1,8 @@
 import type { CircleEntity } from './entity'
-import { entityRadius, isActive } from './entity'
+import { isActive } from './entity'
 import {
   MAX_HUMAN_CLONES,
+  MERGE_INSIDE_RATIO,
   MIN_SPLIT_MASS_RATIO,
   RESPAWN_DELAY_SEC,
   SWALLOW_INSIDE_RATIO,
@@ -13,7 +14,10 @@ import { clampEntityToWorld } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 import { speedForMass } from './movement'
 
-const MERGE_SPEED = 360
+const CENTER_PULL_SPEED = 280
+const SPLIT_LAUNCH_SPEED = 520
+const SPLIT_RECOIL = 0.38
+const IMPULSE_DECAY = 4.8
 const MIN_SPLIT_MASS = PLAYER_START_MASS * MIN_SPLIT_MASS_RATIO
 
 export function getHumanEntities(entities: CircleEntity[]): CircleEntity[] {
@@ -34,15 +38,58 @@ export function getHumanTotalMass(entities: CircleEntity[]): number {
   return getHumanEntities(entities).reduce((sum, e) => sum + (isActive(e) ? e.mass : 0), 0)
 }
 
+/** 多分身时的质量中心：Σ(mᵢ·pᵢ) / Σmᵢ，用于相机与聚拢目标 */
+export function getHumanCenterOfMass(
+  entities: CircleEntity[],
+): { x: number; y: number; totalMass: number } | null {
+  const humans = getActiveHumans(entities)
+  if (humans.length === 0) return null
+
+  let totalMass = 0
+  let x = 0
+  let y = 0
+  for (const h of humans) {
+    totalMass += h.mass
+    x += h.mass * h.x
+    y += h.mass * h.y
+  }
+  return { x: x / totalMass, y: y / totalMass, totalMass }
+}
+
+export function getHumanCameraFocus(
+  entities: CircleEntity[],
+): { x: number; y: number; mass: number } {
+  const center = getHumanCenterOfMass(entities)
+  if (center) return { x: center.x, y: center.y, mass: center.totalMass }
+  return { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2, mass: PLAYER_START_MASS }
+}
+
+function insideOverlap(
+  largerMass: number,
+  smallerMass: number,
+  dist: number,
+  insideRatio: number,
+): boolean {
+  if (largerMass <= smallerMass) return false
+  const rLarge = massToRadius(largerMass)
+  const rSmall = massToRadius(smallerMass)
+  return dist < rLarge - rSmall * (1 - insideRatio)
+}
+
 export function canSwallowCircle(
   largerMass: number,
   smallerMass: number,
   dist: number,
 ): boolean {
-  if (largerMass <= smallerMass) return false
-  const rLarge = massToRadius(largerMass)
-  const rSmall = massToRadius(smallerMass)
-  return dist < rLarge - rSmall * (1 - SWALLOW_INSIDE_RATIO)
+  return insideOverlap(largerMass, smallerMass, dist, SWALLOW_INSIDE_RATIO)
+}
+
+export function canMergeCircles(
+  largerMass: number,
+  smallerMass: number,
+  dist: number,
+): boolean {
+  return insideOverlap(largerMass, smallerMass, dist, MERGE_INSIDE_RATIO)
 }
 
 export function applyMovement(
@@ -56,6 +103,20 @@ export function applyMovement(
   const speed = speedForMass(entity.mass)
   entity.x += (moveX / len) * speed * dt
   entity.y += (moveY / len) * speed * dt
+  clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+}
+
+export function applyEntityImpulse(entity: CircleEntity, dt: number): void {
+  if (Math.abs(entity.impulseX) < 0.5 && Math.abs(entity.impulseY) < 0.5) {
+    entity.impulseX = 0
+    entity.impulseY = 0
+    return
+  }
+  entity.x += entity.impulseX * dt
+  entity.y += entity.impulseY * dt
+  const decay = Math.exp(-IMPULSE_DECAY * dt)
+  entity.impulseX *= decay
+  entity.impulseY *= decay
   clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
 }
 
@@ -76,43 +137,58 @@ export function trySplitHuman(
   const dirLen = Math.hypot(moveX, moveY)
   const dx = dirLen > 0.1 ? moveX / dirLen : 1
   const dy = dirLen > 0.1 ? moveY / dirLen : 0
-  const offset = entityRadius(target) * 0.85
 
-  const clone = createCircle(
-    target.x + dx * offset,
-    target.y + dy * offset,
-    half,
-    true,
-    PLAYER_ROSTER,
-  )
+  const clone = createCircle(target.x, target.y, half, true, PLAYER_ROSTER)
+  clone.impulseX = dx * SPLIT_LAUNCH_SPEED
+  clone.impulseY = dy * SPLIT_LAUNCH_SPEED
+  target.impulseX = -dx * SPLIT_LAUNCH_SPEED * SPLIT_RECOIL
+  target.impulseY = -dy * SPLIT_LAUNCH_SPEED * SPLIT_RECOIL
+
   clampEntityToWorld(clone, WORLD_WIDTH, WORLD_HEIGHT)
+  clampEntityToWorld(target, WORLD_WIDTH, WORLD_HEIGHT)
   return clone
 }
 
-export function updateHumanMerge(
-  entities: CircleEntity[],
-  dt: number,
-): CircleEntity[] {
-  const primary = getLargestHuman(entities)
-  if (!primary) return entities
+/** 多分身时朝质量中心聚拢（非按键触发） */
+export function updateHumanCenterPull(entities: CircleEntity[], dt: number): void {
+  const humans = getActiveHumans(entities)
+  if (humans.length < 2) return
+
+  const center = getHumanCenterOfMass(entities)
+  if (!center) return
+
+  for (const human of humans) {
+    const dx = center.x - human.x
+    const dy = center.y - human.y
+    const dist = Math.hypot(dx, dy)
+    if (dist < 1) continue
+    human.x += (dx / dist) * CENTER_PULL_SPEED * dt
+    human.y += (dy / dist) * CENTER_PULL_SPEED * dt
+    clampEntityToWorld(human, WORLD_WIDTH, WORLD_HEIGHT)
+  }
+}
+
+/** 重叠达 2/3 时合体，保留较大分身 */
+export function resolveHumanMerges(entities: CircleEntity[]): CircleEntity[] {
+  const humans = getActiveHumans(entities)
+  if (humans.length < 2) return entities
 
   const toRemove = new Set<number>()
 
-  for (const clone of getActiveHumans(entities)) {
-    if (clone.id === primary.id) continue
+  for (let i = 0; i < humans.length; i++) {
+    for (let j = i + 1; j < humans.length; j++) {
+      const a = humans[i]
+      const b = humans[j]
+      if (toRemove.has(a.id) || toRemove.has(b.id)) continue
 
-    const dx = primary.x - clone.x
-    const dy = primary.y - clone.y
-    const dist = Math.hypot(dx, dy)
-    const touchDist = entityRadius(primary) + entityRadius(clone) * 0.55
+      const larger = a.mass >= b.mass ? a : b
+      const smaller = a.mass >= b.mass ? b : a
+      const dist = Math.hypot(larger.x - smaller.x, larger.y - smaller.y)
 
-    if (dist < touchDist) {
-      primary.mass += clone.mass
-      toRemove.add(clone.id)
-    } else if (dist > 0.01) {
-      clone.x += (dx / dist) * MERGE_SPEED * dt
-      clone.y += (dy / dist) * MERGE_SPEED * dt
-      clampEntityToWorld(clone, WORLD_WIDTH, WORLD_HEIGHT)
+      if (canMergeCircles(larger.mass, smaller.mass, dist)) {
+        larger.mass += smaller.mass
+        toRemove.add(smaller.id)
+      }
     }
   }
 

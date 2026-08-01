@@ -19,7 +19,6 @@ export interface InputSnapshot {
   backPressed: boolean
   pausePressed: boolean
   splitPressed: boolean
-  mergePressed: boolean
   upPressed: boolean
   downPressed: boolean
 }
@@ -147,7 +146,6 @@ export class InputManager {
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
       splitPressed: this.wasActionPressed('SPLIT'),
-      mergePressed: this.wasActionPressed('MERGE'),
       upPressed,
       downPressed,
     }
