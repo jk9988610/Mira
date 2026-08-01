@@ -98,6 +98,17 @@ export function drawBindingRow(
   ctx.fillText(listening ? '请按键…' : value, x + rowWidth - 16, y + 30)
 }
 
+import type { LeaderboardView } from '../game/leaderboard'
+
+export interface HudData {
+  timeRemaining: number
+  playerMass: number
+  zoom: number
+  cloneCount: number
+  merging: boolean
+  board: LeaderboardView
+}
+
 export function drawHudMass(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -115,13 +126,6 @@ export function drawHudMass(
   ctx.fill()
   ctx.fillStyle = '#e8f0ff'
   ctx.fillText(text, width - 24, 40)
-}
-
-export interface HudData {
-  timeRemaining: number
-  playerMass: number
-  zoom: number
-  leaderboard: Array<{ rank: number; name: string; mass: number; isPlayer: boolean; respawning: boolean }>
 }
 
 export function formatMatchTime(seconds: number): string {
@@ -149,9 +153,19 @@ export function drawGameHud(
 
   drawHudMass(ctx, width, data.playerMass, data.zoom)
 
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
+  ctx.font = '13px system-ui, sans-serif'
+  const hint = `分身 ${data.cloneCount}/16 · Q分裂 E合体${data.merging ? ' · 合体中' : ''}`
+  roundRect(ctx, 16, 58, ctx.measureText(hint).width + 20, 28, 8)
+  ctx.fill()
+  ctx.fillStyle = data.merging ? '#ffc44d' : '#8aa0c8'
+  ctx.fillText(hint, 26, 77)
+
   const panelW = 168
   const rowH = 22
-  const panelH = 20 + data.leaderboard.length * rowH
+  const extraRow = data.board.playerInTop ? 0 : 1
+  const panelH = 20 + data.board.top.length * rowH + extraRow * (rowH + 6)
   const px = width - panelW - 16
   const py = 60
 
@@ -161,9 +175,9 @@ export function drawGameHud(
   ctx.fillStyle = '#8aa0c8'
   ctx.font = '600 13px system-ui, sans-serif'
   ctx.textAlign = 'left'
-  ctx.fillText('质量排名', px + 12, py + 18)
+  ctx.fillText('质量排名 TOP10', px + 12, py + 18)
 
-  data.leaderboard.forEach((row, i) => {
+  data.board.top.forEach((row, i) => {
     const y = py + 34 + i * rowH
     ctx.fillStyle = row.isPlayer ? '#8fd3ff' : row.respawning ? '#6a7588' : '#d7e0f2'
     ctx.font = row.isPlayer ? '600 13px system-ui, sans-serif' : '13px system-ui, sans-serif'
@@ -173,6 +187,21 @@ export function drawGameHud(
     ctx.fillText(row.mass.toFixed(0), px + panelW - 12, y)
     ctx.textAlign = 'left'
   })
+
+  if (!data.board.playerInTop && data.board.playerRank) {
+    const y = py + 34 + data.board.top.length * rowH + 14
+    ctx.strokeStyle = 'rgba(88, 166, 255, 0.35)'
+    ctx.beginPath()
+    ctx.moveTo(px + 10, y - 10)
+    ctx.lineTo(px + panelW - 10, y - 10)
+    ctx.stroke()
+    ctx.fillStyle = '#8fd3ff'
+    ctx.font = '600 13px system-ui, sans-serif'
+    ctx.fillText(`你 · 第 ${data.board.playerRank} 名`, px + 12, y + 6)
+    ctx.textAlign = 'right'
+    ctx.fillText(data.board.playerMass.toFixed(0), px + panelW - 12, y + 6)
+    ctx.textAlign = 'left'
+  }
 }
 
 export function drawStartCountdown(
@@ -217,18 +246,19 @@ export function drawLeaderboardModal(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  rows: HudData['leaderboard'],
+  board: LeaderboardView,
 ): void {
   ctx.fillStyle = 'rgba(0, 0, 0, 0.78)'
   ctx.fillRect(0, 0, width, height)
 
-  drawTitle(ctx, width, '对局结束', '最终排行榜')
+  drawTitle(ctx, width, '对局结束', '最终排行榜 TOP10')
 
   const panelW = Math.min(420, width - 48)
   const rowH = 36
-  const panelH = 48 + rows.length * rowH
+  const extra = board.playerInTop ? 0 : 1
+  const panelH = 48 + board.top.length * rowH + extra * rowH
   const px = (width - panelW) / 2
-  const py = height * 0.28
+  const py = height * 0.26
 
   ctx.fillStyle = 'rgba(14, 20, 32, 0.95)'
   roundRect(ctx, px, py, panelW, panelH, 14)
@@ -237,7 +267,7 @@ export function drawLeaderboardModal(
   ctx.lineWidth = 2
   ctx.stroke()
 
-  rows.forEach((row, i) => {
+  board.top.forEach((row, i) => {
     const y = py + 40 + i * rowH
     if (row.isPlayer) {
       ctx.fillStyle = 'rgba(88, 166, 255, 0.12)'
@@ -252,6 +282,19 @@ export function drawLeaderboardModal(
     ctx.textAlign = 'right'
     ctx.fillText(`质量 ${row.mass.toFixed(1)}`, px + panelW - 20, y)
   })
+
+  if (!board.playerInTop && board.playerRank) {
+    const y = py + 40 + board.top.length * rowH
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.12)'
+    roundRect(ctx, px + 8, y - 22, panelW - 16, rowH - 4, 8)
+    ctx.fill()
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#8fd3ff'
+    ctx.font = '600 18px system-ui, sans-serif'
+    ctx.fillText(`你 · 第 ${board.playerRank} 名`, px + 20, y)
+    ctx.textAlign = 'right'
+    ctx.fillText(`质量 ${board.playerMass.toFixed(1)}`, px + panelW - 20, y)
+  }
 
   ctx.textAlign = 'center'
   ctx.fillStyle = '#b8c2d6'
