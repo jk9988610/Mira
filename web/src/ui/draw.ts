@@ -104,7 +104,7 @@ export function drawHudMass(
   mass: number,
   zoom = 1,
 ): void {
-  const zoomText = zoom > 1.01 ? ` · 缩放 ×${zoom.toFixed(1)}` : ''
+  const zoomText = zoom > 1.01 ? ` · ×${zoom.toFixed(1)}` : ''
   const text = `质量 ${mass.toFixed(1)}${zoomText}`
   ctx.textAlign = 'right'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
@@ -117,18 +117,118 @@ export function drawHudMass(
   ctx.fillText(text, width - 24, 40)
 }
 
-export function drawGameOver(
+export interface HudData {
+  timeRemaining: number
+  playerMass: number
+  zoom: number
+  leaderboard: Array<{ rank: number; name: string; mass: number; isPlayer: boolean; respawning: boolean }>
+}
+
+export function drawGameHud(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  _height: number,
+  data: HudData,
+): void {
+  const timerText = `剩余 ${Math.ceil(data.timeRemaining)}s`
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+  ctx.font = '600 20px system-ui, sans-serif'
+  const tw = ctx.measureText(timerText).width
+  roundRect(ctx, 16, 16, tw + 24, 36, 8)
+  ctx.fill()
+  ctx.fillStyle = data.timeRemaining <= 10 ? '#ff9f8a' : '#e8f0ff'
+  ctx.fillText(timerText, 28, 40)
+
+  drawHudMass(ctx, width, data.playerMass, data.zoom)
+
+  const panelW = 168
+  const rowH = 22
+  const panelH = 20 + data.leaderboard.length * rowH
+  const px = width - panelW - 16
+  const py = 60
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.82)'
+  roundRect(ctx, px, py, panelW, panelH, 10)
+  ctx.fill()
+  ctx.fillStyle = '#8aa0c8'
+  ctx.font = '600 13px system-ui, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillText('质量排名', px + 12, py + 18)
+
+  data.leaderboard.forEach((row, i) => {
+    const y = py + 34 + i * rowH
+    ctx.fillStyle = row.isPlayer ? '#8fd3ff' : row.respawning ? '#6a7588' : '#d7e0f2'
+    ctx.font = row.isPlayer ? '600 13px system-ui, sans-serif' : '13px system-ui, sans-serif'
+    const suffix = row.respawning ? ' (复活)' : ''
+    ctx.fillText(`${row.rank}. ${row.name}${suffix}`, px + 12, y)
+    ctx.textAlign = 'right'
+    ctx.fillText(row.mass.toFixed(0), px + panelW - 12, y)
+    ctx.textAlign = 'left'
+  })
+}
+
+export function drawRespawnOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  finalMass: number,
+  respawnTimer: number,
 ): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
   ctx.fillRect(0, 0, width, height)
-  drawTitle(ctx, width, '被吞噬了', `最终质量 ${finalMass.toFixed(1)}`)
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#e8f0ff'
+  ctx.font = 'bold 36px system-ui, sans-serif'
+  ctx.fillText('被吞噬', width / 2, height * 0.44)
+  ctx.fillStyle = '#ffc44d'
+  ctx.font = '24px system-ui, sans-serif'
+  ctx.fillText(`${Math.ceil(respawnTimer)} 秒后复活`, width / 2, height * 0.52)
+}
+
+export function drawLeaderboardModal(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  rows: HudData['leaderboard'],
+): void {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.78)'
+  ctx.fillRect(0, 0, width, height)
+
+  drawTitle(ctx, width, '对局结束', '最终排行榜')
+
+  const panelW = Math.min(420, width - 48)
+  const rowH = 36
+  const panelH = 48 + rows.length * rowH
+  const px = (width - panelW) / 2
+  const py = height * 0.28
+
+  ctx.fillStyle = 'rgba(14, 20, 32, 0.95)'
+  roundRect(ctx, px, py, panelW, panelH, 14)
+  ctx.fill()
+  ctx.strokeStyle = '#3d5578'
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  rows.forEach((row, i) => {
+    const y = py + 40 + i * rowH
+    if (row.isPlayer) {
+      ctx.fillStyle = 'rgba(88, 166, 255, 0.12)'
+      roundRect(ctx, px + 8, y - 22, panelW - 16, rowH - 4, 8)
+      ctx.fill()
+    }
+    ctx.textAlign = 'left'
+    ctx.fillStyle = row.isPlayer ? '#8fd3ff' : '#d7e0f2'
+    ctx.font = row.isPlayer ? '600 18px system-ui, sans-serif' : '18px system-ui, sans-serif'
+    const medal = row.rank === 1 ? '🥇 ' : row.rank === 2 ? '🥈 ' : row.rank === 3 ? '🥉 ' : `${row.rank}. `
+    ctx.fillText(`${medal}${row.name}`, px + 20, y)
+    ctx.textAlign = 'right'
+    ctx.fillText(`质量 ${row.mass.toFixed(1)}`, px + panelW - 20, y)
+  })
+
+  ctx.textAlign = 'center'
   ctx.fillStyle = '#b8c2d6'
-  ctx.font = '20px system-ui, sans-serif'
-  ctx.fillText('按 A / Enter 返回主菜单', width / 2, height * 0.55)
+  ctx.font = '18px system-ui, sans-serif'
+  ctx.fillText('按 A / Enter 确认', width / 2, py + panelH + 48)
 }
 
 export function drawGamepadBanner(

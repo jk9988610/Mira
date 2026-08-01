@@ -1,15 +1,22 @@
 import type { CircleEntity } from './entity'
-import { entityRadius } from './entity'
+import { entityRadius, isActive, isInvincible } from './entity'
 import { addMass } from './physics'
 import type { Pellet } from './pellet'
 import { canAbsorbPellet } from './pellet'
 
 const SWALLOW_ALPHA = 0.6
 
+export interface EatEvent {
+  winner: CircleEntity
+  loser: CircleEntity
+}
+
 export function absorbPelletsForEntity(
   entity: CircleEntity,
   pellets: Pellet[],
 ): Pellet[] {
+  if (!isActive(entity)) return []
+
   const radius = entityRadius(entity)
   const absorbed: Pellet[] = []
 
@@ -22,17 +29,18 @@ export function absorbPelletsForEntity(
   return absorbed
 }
 
-export function resolveCircleCollisions(entities: CircleEntity[]): CircleEntity[] {
-  const removed = new Set<number>()
+export function resolveCircleCollisions(entities: CircleEntity[]): EatEvent[] {
+  const events: EatEvent[] = []
+  const eaten = new Set<number>()
 
   for (let i = 0; i < entities.length; i++) {
     const a = entities[i]
-    if (removed.has(a.id)) continue
+    if (!isActive(a) || isInvincible(a) || eaten.has(a.id)) continue
     const ra = entityRadius(a)
 
     for (let j = i + 1; j < entities.length; j++) {
       const b = entities[j]
-      if (removed.has(b.id)) continue
+      if (!isActive(b) || isInvincible(b) || eaten.has(b.id)) continue
       const rb = entityRadius(b)
       const dx = b.x - a.x
       const dy = b.y - a.y
@@ -40,14 +48,16 @@ export function resolveCircleCollisions(entities: CircleEntity[]): CircleEntity[
 
       if (a.mass > b.mass && dist < ra - SWALLOW_ALPHA * rb) {
         a.mass = addMass(a.mass, b.mass)
-        removed.add(b.id)
+        eaten.add(b.id)
+        events.push({ winner: a, loser: b })
       } else if (b.mass > a.mass && dist < rb - SWALLOW_ALPHA * ra) {
         b.mass = addMass(b.mass, a.mass)
-        removed.add(a.id)
+        eaten.add(a.id)
+        events.push({ winner: b, loser: a })
         break
       }
     }
   }
 
-  return entities.filter((e) => !removed.has(e.id))
+  return events
 }
