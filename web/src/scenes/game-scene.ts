@@ -19,6 +19,7 @@ import {
 } from '../game/match-config'
 import {
   allHumansDead,
+  applyHumanDeaths,
   applyMovement,
   getActiveHumans,
   getHumanTotalMass,
@@ -191,10 +192,18 @@ export function createGameScene(
       for (const id of removedPelletIds) world.removePellet(id)
 
       const eatEvents = resolveCircleCollisions(players)
+      const eatenPlayerIds: number[] = []
       for (const { winner, loser } of eatEvents) {
-        loser.respawnTimer = RESPAWN_DELAY_SEC
-        if (loser.isPlayer) sfx.eaten()
-        else if (winner.isPlayer) sfx.eatCircle()
+        if (loser.isPlayer) {
+          eatenPlayerIds.push(loser.id)
+          sfx.eaten()
+        } else {
+          loser.respawnTimer = RESPAWN_DELAY_SEC
+          if (winner.isPlayer) sfx.eatCircle()
+        }
+      }
+      if (eatenPlayerIds.length > 0) {
+        players = applyHumanDeaths(players, eatenPlayerIds)
       }
 
       updateRespawns(dt)

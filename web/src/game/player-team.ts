@@ -3,6 +3,7 @@ import { entityRadius, isActive } from './entity'
 import {
   MAX_HUMAN_CLONES,
   MIN_SPLIT_MASS_RATIO,
+  RESPAWN_DELAY_SEC,
   SWALLOW_INSIDE_RATIO,
 } from './match-config'
 import { massToRadius, PLAYER_START_MASS } from './physics'
@@ -129,4 +130,26 @@ export function soonestHumanRespawn(entities: CircleEntity[]): number {
     .filter((e) => !isActive(e))
     .map((e) => e.respawnTimer)
   return timers.length > 0 ? Math.min(...timers) : 0
+}
+
+/** 被摄取的分身永久消失；仅当所有分身都死亡时才整体复活 */
+export function applyHumanDeaths(
+  entities: CircleEntity[],
+  eatenIds: Iterable<number>,
+): CircleEntity[] {
+  const eaten = new Set(eatenIds)
+  if (eaten.size === 0) return entities
+
+  const surviving = getActiveHumans(entities).filter((h) => !eaten.has(h.id))
+  if (surviving.length > 0) {
+    return entities.filter((e) => !eaten.has(e.id))
+  }
+
+  const eatenHumans = getHumanEntities(entities).filter((h) => eaten.has(h.id))
+  if (eatenHumans.length === 0) return entities
+
+  const respawnTarget = eatenHumans.reduce((best, e) => (e.mass > best.mass ? e : best))
+  respawnTarget.respawnTimer = RESPAWN_DELAY_SEC
+
+  return entities.filter((e) => !e.isPlayer || e.id === respawnTarget.id)
 }
