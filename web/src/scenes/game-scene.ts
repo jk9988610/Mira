@@ -19,14 +19,16 @@ import {
 } from '../game/match-config'
 import {
   allHumansDead,
+  applyEntityImpulse,
   applyHumanDeaths,
   applyMovement,
   getActiveHumans,
+  getHumanCameraFocus,
   getHumanTotalMass,
-  getLargestHuman,
+  resolveHumanMerges,
   soonestHumanRespawn,
   trySplitHuman,
-  updateHumanMerge,
+  updateHumanCenterPull,
 } from '../game/player-team'
 import { PLAYER_START_MASS } from '../game/physics'
 import { drawPellet } from '../game/pellet'
@@ -56,7 +58,6 @@ export function createGameScene(
   let showResults = false
   let elapsed = 0
   let lastCountdownSecond = -1
-  let merging = false
   let splitCooldown = 0
 
   const reset = () => {
@@ -71,7 +72,6 @@ export function createGameScene(
     showResults = false
     elapsed = 0
     lastCountdownSecond = -1
-    merging = false
     splitCooldown = 0
     world.reset(player.x, player.y)
   }
@@ -145,16 +145,8 @@ export function createGameScene(
         timeRemaining = 0
         matchEnded = true
         showResults = true
-        merging = false
         sfx.matchEnd()
         return
-      }
-
-      const moveLen = Math.hypot(input.moveX, input.moveY)
-      if (merging && moveLen > 0.15) merging = false
-
-      if (input.mergePressed && getActiveHumans(players).length > 1) {
-        merging = true
       }
 
       if (input.splitPressed && splitCooldown <= 0) {
@@ -166,13 +158,12 @@ export function createGameScene(
         }
       }
 
-      if (merging) {
-        players = updateHumanMerge(players, dt)
-      } else {
-        for (const human of getActiveHumans(players)) {
-          applyMovement(human, input.moveX, input.moveY, dt)
-        }
+      for (const human of getActiveHumans(players)) {
+        applyMovement(human, input.moveX, input.moveY, dt)
+        applyEntityImpulse(human, dt)
       }
+
+      updateHumanCenterPull(players, dt)
 
       const removedPelletIds = new Set<number>()
       for (const entity of players) {
@@ -206,11 +197,13 @@ export function createGameScene(
         players = applyHumanDeaths(players, eatenPlayerIds)
       }
 
+      players = resolveHumanMerges(players)
+
       updateRespawns(dt)
       absorbFlash = Math.max(0, absorbFlash - dt)
 
-      const focus = getLargestHuman(players)
-      if (focus) world.maintainPopulation(focus.x, focus.y)
+      const focus = getHumanCameraFocus(players)
+      world.maintainPopulation(focus.x, focus.y)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
@@ -222,7 +215,7 @@ export function createGameScene(
         return
       }
 
-      const focus = getLargestHuman(players) ?? players.find((p) => p.isPlayer)!
+      const focus = getHumanCameraFocus(players)
       const cam = computeCamera(focus.x, focus.y, focus.mass, width, height)
 
       const sorted = [...players].sort((a, b) => b.mass - a.mass)
@@ -251,7 +244,6 @@ export function createGameScene(
           playerMass: getHumanTotalMass(players),
           zoom: cam.zoom,
           cloneCount: getActiveHumans(players).length,
-          merging,
           board: boardView,
         })
       }

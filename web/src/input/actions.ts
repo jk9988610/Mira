@@ -9,7 +9,6 @@ export type Action =
   | 'BACK'
   | 'PAUSE'
   | 'SPLIT'
-  | 'MERGE'
 
 export const ALL_ACTIONS: Action[] = [
   'MOVE_UP',
@@ -20,7 +19,6 @@ export const ALL_ACTIONS: Action[] = [
   'BACK',
   'PAUSE',
   'SPLIT',
-  'MERGE',
 ]
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -32,7 +30,6 @@ export const ACTION_LABELS: Record<Action, string> = {
   BACK: '返回',
   PAUSE: '暂停',
   SPLIT: '分身',
-  MERGE: '合体',
 }
 
 export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
@@ -55,7 +52,6 @@ export const DEFAULT_BINDINGS: BindingMap = {
   BACK: { source: 'keyboard', code: 'Escape' },
   PAUSE: { source: 'keyboard', code: 'KeyP' },
   SPLIT: { source: 'keyboard', code: 'KeyQ' },
-  MERGE: { source: 'keyboard', code: 'KeyE' },
 }
 
 export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
@@ -67,10 +63,9 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   BACK: { source: 'gamepad-button', code: '1' },
   PAUSE: { source: 'gamepad-button', code: '9' },
   SPLIT: { source: 'gamepad-button', code: '2' },
-  MERGE: { source: 'gamepad-button', code: '3' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v3'
+const STORAGE_KEY = 'mira_bindings_v4'
 
 function defaultBindingsForDevice(): BindingMap {
   if (isTouchDevice()) {
@@ -119,7 +114,6 @@ const KEYBOARD_LABELS: Record<string, string> = {
   KeyD: 'D',
   KeyP: 'P',
   KeyQ: 'Q',
-  KeyE: 'E',
 }
 
 const GAMEPAD_BUTTON_LABELS: Record<string, string> = {

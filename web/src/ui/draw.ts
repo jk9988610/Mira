@@ -105,7 +105,6 @@ export interface HudData {
   playerMass: number
   zoom: number
   cloneCount: number
-  merging: boolean
   board: LeaderboardView
 }
 
@@ -156,10 +155,13 @@ export function drawGameHud(
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
   ctx.font = '13px system-ui, sans-serif'
-  const hint = `分身 ${data.cloneCount}/16 · Q分裂 E合体${data.merging ? ' · 合体中' : ''}`
+  const hint =
+    data.cloneCount > 1
+      ? `分身 ${data.cloneCount}/16 · Q发射分裂 · 朝质量中心聚拢`
+      : `分身 ${data.cloneCount}/16 · Q发射分裂`
   roundRect(ctx, 16, 58, ctx.measureText(hint).width + 20, 28, 8)
   ctx.fill()
-  ctx.fillStyle = data.merging ? '#ffc44d' : '#8aa0c8'
+  ctx.fillStyle = '#8aa0c8'
   ctx.fillText(hint, 26, 77)
 
   const panelW = 168

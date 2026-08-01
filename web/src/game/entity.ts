@@ -14,6 +14,8 @@ export interface CircleEntity {
   wanderTimer: number
   respawnTimer: number
   invincibleTimer: number
+  impulseX: number
+  impulseY: number
 }
 
 let nextId = 1
@@ -39,6 +41,8 @@ export function createCircle(
     wanderTimer: 1 + Math.random() * 2,
     respawnTimer: 0,
     invincibleTimer: 0,
+    impulseX: 0,
+    impulseY: 0,
   }
 }
 
