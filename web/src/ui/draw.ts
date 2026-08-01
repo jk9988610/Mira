@@ -102,8 +102,10 @@ export function drawHudMass(
   ctx: CanvasRenderingContext2D,
   width: number,
   mass: number,
+  zoom = 1,
 ): void {
-  const text = `质量 ${mass.toFixed(1)}`
+  const zoomText = zoom > 1.01 ? ` · 缩放 ×${zoom.toFixed(1)}` : ''
+  const text = `质量 ${mass.toFixed(1)}${zoomText}`
   ctx.textAlign = 'right'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
   const padding = 12
@@ -113,6 +115,20 @@ export function drawHudMass(
   ctx.fill()
   ctx.fillStyle = '#e8f0ff'
   ctx.fillText(text, width - 24, 40)
+}
+
+export function drawGameOver(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  finalMass: number,
+): void {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)'
+  ctx.fillRect(0, 0, width, height)
+  drawTitle(ctx, width, '被吞噬了', `最终质量 ${finalMass.toFixed(1)}`)
+  ctx.fillStyle = '#b8c2d6'
+  ctx.font = '20px system-ui, sans-serif'
+  ctx.fillText('按 A / Enter 返回主菜单', width / 2, height * 0.55)
 }
 
 export function drawGamepadBanner(
