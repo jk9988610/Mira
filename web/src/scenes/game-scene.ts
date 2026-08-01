@@ -1,34 +1,44 @@
 import type { App } from '../core/app'
-import { absorbPellets } from '../game/collision'
-import { massToRadius, PLAYER_START_MASS } from '../game/physics'
+import { spawnAiEntities, updateAi } from '../game/ai'
+import { computeCamera, isInView } from '../game/camera'
+import { absorbPelletsForEntity, resolveCircleCollisions } from '../game/collision'
+import {
+  clampEntityToWorld,
+  createCircle,
+  drawCircleEntity,
+  entityRadius,
+  type CircleEntity,
+} from '../game/entity'
+import { PLAYER_START_MASS } from '../game/physics'
 import { drawPellet } from '../game/pellet'
 import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { clearScreen, drawHudMass } from '../ui/draw'
+import { clearScreen, drawGameOver, drawHudMass } from '../ui/draw'
 
 const PLAYER_SPEED = 280
 
 export function createGameScene(
   app: App,
+  go: (scene: string) => void,
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
 ) {
   const world = new GameWorld()
-  let playerX = WORLD_WIDTH / 2
-  let playerY = WORLD_HEIGHT / 2
-  let playerMass = PLAYER_START_MASS
-  let cameraX = playerX
-  let cameraY = playerY
+  let player: CircleEntity = createCircle(0, 0, PLAYER_START_MASS, true, 210)
+  let ais: CircleEntity[] = []
   let absorbFlash = 0
+  let gameOver = false
+
+  const reset = () => {
+    player = createCircle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, PLAYER_START_MASS, true, 210)
+    ais = spawnAiEntities(player.x, player.y, 220)
+    absorbFlash = 0
+    gameOver = false
+    world.reset(player.x, player.y)
+  }
 
   return {
     enter() {
-      playerX = WORLD_WIDTH / 2
-      playerY = WORLD_HEIGHT / 2
-      playerMass = PLAYER_START_MASS
-      cameraX = playerX
-      cameraY = playerY
-      absorbFlash = 0
-      world.reset(playerX, playerY)
+      reset()
       showPause(false)
     },
     exit() {
@@ -36,7 +46,14 @@ export function createGameScene(
     },
     update(dt: number) {
       if (isPaused()) return
+
       const input = app.input.snapshot()
+
+      if (gameOver) {
+        if (input.confirmPressed) go('menu')
+        return
+      }
+
       if (input.pausePressed) {
         showPause(true)
         return
@@ -44,52 +61,72 @@ export function createGameScene(
 
       const len = Math.hypot(input.moveX, input.moveY)
       if (len > 0.1) {
-        const speed = PLAYER_SPEED * (PLAYER_START_MASS / playerMass) ** 0.1
-        playerX += (input.moveX / len) * speed * dt
-        playerY += (input.moveY / len) * speed * dt
+        const speed = PLAYER_SPEED * (PLAYER_START_MASS / player.mass) ** 0.1
+        player.x += (input.moveX / len) * speed * dt
+        player.y += (input.moveY / len) * speed * dt
       }
+      clampEntityToWorld(player, WORLD_WIDTH, WORLD_HEIGHT)
 
-      const radius = massToRadius(playerMass)
-      playerX = clamp(playerX, radius, WORLD_WIDTH - radius)
-      playerY = clamp(playerY, radius, WORLD_HEIGHT - radius)
-
-      const result = absorbPellets(playerX, playerY, playerMass, world.pellets)
-      if (result.absorbed.length > 0) {
-        playerMass = result.mass
-        for (const pellet of result.absorbed) {
-          world.removePellet(pellet.id)
-        }
+      const removedPelletIds = new Set<number>()
+      const playerAbsorbed = absorbPelletsForEntity(player, world.pellets)
+      if (playerAbsorbed.length > 0) {
         absorbFlash = 0.18
+        for (const p of playerAbsorbed) removedPelletIds.add(p.id)
       }
+
+      for (const ai of ais) {
+        const absorbed = updateAi(ai, player, ais, world.pellets, dt)
+        for (const p of absorbed) removedPelletIds.add(p.id)
+      }
+      for (const id of removedPelletIds) world.removePellet(id)
+
+      const entities = resolveCircleCollisions([player, ...ais])
+      const nextPlayer = entities.find((e) => e.isPlayer)
+      if (!nextPlayer) {
+        gameOver = true
+        return
+      }
+      player = nextPlayer
+      ais = entities.filter((e) => !e.isPlayer)
+
       absorbFlash = Math.max(0, absorbFlash - dt)
-
-      world.maintainPopulation(playerX, playerY)
-
-      cameraX += (playerX - cameraX) * Math.min(1, dt * 6)
-      cameraY += (playerY - cameraY) * Math.min(1, dt * 6)
+      world.maintainPopulation(player.x, player.y)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
 
-      const viewW = width
-      const viewH = height
-      const scale = Math.min(viewW / WORLD_WIDTH, viewH / WORLD_HEIGHT) * 0.92
-      const offsetX = (viewW - WORLD_WIDTH * scale) / 2
-      const offsetY = (viewH - WORLD_HEIGHT * scale) / 2
+      if (gameOver) {
+        drawGameOver(ctx, width, height, player.mass)
+        return
+      }
+
+      const cam = computeCamera(player.mass, width, height)
+      const aspect = width / height
 
       ctx.save()
-      ctx.translate(offsetX, offsetY)
-      ctx.scale(scale, scale)
-      ctx.translate(-cameraX + WORLD_WIDTH / 2, -cameraY + WORLD_HEIGHT / 2)
+      ctx.translate(width / 2, height / 2)
+      ctx.scale(cam.renderScale, cam.renderScale)
+      ctx.translate(-player.x, -player.y)
 
       drawWorld(ctx)
+
       for (const pellet of world.pellets) {
+        if (!isInView(pellet.x, pellet.y, pellet.radius, player.x, player.y, cam.viewHalf, aspect)) {
+          continue
+        }
         drawPellet(ctx, pellet)
       }
-      drawPlayer(ctx, playerX, playerY, playerMass, absorbFlash)
+
+      for (const ai of ais) {
+        const r = entityRadius(ai)
+        if (!isInView(ai.x, ai.y, r, player.x, player.y, cam.viewHalf, aspect)) continue
+        drawCircleEntity(ctx, ai)
+      }
+
+      drawCircleEntity(ctx, player, absorbFlash)
       ctx.restore()
 
-      drawHudMass(ctx, width, playerMass)
+      drawHudMass(ctx, width, player.mass, cam.zoom)
     },
   }
 }
@@ -116,34 +153,4 @@ function drawWorld(ctx: CanvasRenderingContext2D) {
     ctx.lineTo(WORLD_WIDTH, y)
     ctx.stroke()
   }
-}
-
-function drawPlayer(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  mass: number,
-  flash: number,
-) {
-  const r = massToRadius(mass)
-  if (flash > 0) {
-    ctx.beginPath()
-    ctx.arc(x, y, r + 8 * flash, 0, Math.PI * 2)
-    ctx.fillStyle = `rgba(143, 211, 255, ${0.35 * flash / 0.18})`
-    ctx.fill()
-  }
-  const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
-  gradient.addColorStop(0, '#8fd3ff')
-  gradient.addColorStop(1, '#2f7fd3')
-  ctx.fillStyle = gradient
-  ctx.beginPath()
-  ctx.arc(x, y, r, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.strokeStyle = '#d8f1ff'
-  ctx.lineWidth = 2
-  ctx.stroke()
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
 }

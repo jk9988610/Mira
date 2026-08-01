@@ -29,6 +29,7 @@ function main() {
     game: () =>
       createGameScene(
         app,
+        (name) => scenes.switchTo(name),
         (visible) => {
           paused = visible
           if (visible) {
