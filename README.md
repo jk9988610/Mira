@@ -2,7 +2,7 @@
 
 2D 圆形吞噬游戏 — 支持手柄全程操控，面向安卓平板横屏。
 
-> **当前阶段：M1 核心对局** — 详见 [docs/OUTLINE.md](docs/OUTLINE.md) · [在线预览](https://jk9988610.github.io/Mira/)
+> **当前阶段：M2 AI 与吞噬** — 详见 [docs/OUTLINE.md](docs/OUTLINE.md) · [在线预览](https://jk9988610.github.io/Mira/)
 
 ## 项目愿景
 
@@ -41,10 +41,16 @@
 
 ### 阶段 M2 — AI 与吞噬
 
-- [ ] AI 控制的圆形同样摄取颗粒
-- [ ] 大圆覆盖小圆时吞噬小圆，质量合并给大圆
-- [ ] 玩家质量增长 → 视野半径扩大
-- [ ] 质量超过阈值 → 缩放环境与其他实体（相机缩放）
+- [x] AI 控制的圆形同样摄取颗粒
+- [x] 大圆覆盖小圆时吞噬小圆，质量合并给大圆
+- [x] 玩家质量增长 → 视野半径扩大
+- [x] 质量超过阈值 → 缩放环境与其他实体（相机缩放）
+
+### 阶段 M3 — APK 交付（下一步）
+
+- [ ] Capacitor 封装 WebView
+- [ ] 横屏锁定与全屏
+- [ ] Termux 构建文档与 debug APK
 
 ## 架构方案（推荐）
 
@@ -142,9 +148,21 @@ npm run apk:debug     # Termux / 本机 Android SDK
 | [ElecDog README](https://github.com/jk9988610/elecdog) | App 交付、OTA、Capacitor 工程参考 |
 | [RocketSimulator](https://github.com/jk9988610/RocketSimulator) | Vite + TS + Pages + 平板横屏分工参考 |
 
+## 进度清单
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 立项 | README、设计文档、架构方案 | ✅ |
+| M0 | 菜单、按键绑定、手柄输入、进入游戏 | ✅ |
+| M1 | 颗粒生成与摄取、质量增长 | ✅ |
+| M2 | AI 圆形、大吃小、视野与缩放 | ✅ |
+| M3 | Capacitor APK、横屏、Termux 构建 | 待做 |
+| M4 | Supabase 存档 / 排行榜（可选） | 待做 |
+
 ## 状态
 
 - [x] 立项与 README / 设计文档
 - [x] M0：菜单 + 按键绑定 + 进入游戏
 - [x] M1：玩家移动、颗粒摄取、质量显示
-- [ ] M2：AI 圆形、大吃小、视野与缩放
+- [x] M2：AI 圆形、大吃小、视野与缩放
+- [ ] M3：Capacitor APK 打包
