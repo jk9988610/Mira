@@ -1,9 +1,10 @@
 import type { App } from '../core/app'
+import { absorbPellets } from '../game/collision'
 import { massToRadius } from '../game/physics'
+import { drawPellet } from '../game/pellet'
+import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawHudMass } from '../ui/draw'
 
-const WORLD_WIDTH = 2400
-const WORLD_HEIGHT = 1600
 const PLAYER_START_MASS = 12
 const PLAYER_SPEED = 280
 
@@ -12,11 +13,13 @@ export function createGameScene(
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
 ) {
+  const world = new GameWorld()
   let playerX = WORLD_WIDTH / 2
   let playerY = WORLD_HEIGHT / 2
   let playerMass = PLAYER_START_MASS
   let cameraX = playerX
   let cameraY = playerY
+  let absorbFlash = 0
 
   return {
     enter() {
@@ -25,6 +28,8 @@ export function createGameScene(
       playerMass = PLAYER_START_MASS
       cameraX = playerX
       cameraY = playerY
+      absorbFlash = 0
+      world.reset(playerX, playerY)
       showPause(false)
     },
     exit() {
@@ -49,6 +54,18 @@ export function createGameScene(
       playerX = clamp(playerX, radius, WORLD_WIDTH - radius)
       playerY = clamp(playerY, radius, WORLD_HEIGHT - radius)
 
+      const result = absorbPellets(playerX, playerY, playerMass, world.pellets)
+      if (result.absorbed.length > 0) {
+        playerMass = result.mass
+        for (const pellet of result.absorbed) {
+          world.removePellet(pellet.id)
+        }
+        absorbFlash = 0.18
+      }
+      absorbFlash = Math.max(0, absorbFlash - dt)
+
+      world.maintainPopulation(playerX, playerY)
+
       cameraX += (playerX - cameraX) * Math.min(1, dt * 6)
       cameraY += (playerY - cameraY) * Math.min(1, dt * 6)
     },
@@ -67,7 +84,10 @@ export function createGameScene(
       ctx.translate(-cameraX + WORLD_WIDTH / 2, -cameraY + WORLD_HEIGHT / 2)
 
       drawWorld(ctx)
-      drawPlayer(ctx, playerX, playerY, playerMass)
+      for (const pellet of world.pellets) {
+        drawPellet(ctx, pellet)
+      }
+      drawPlayer(ctx, playerX, playerY, playerMass, absorbFlash)
       ctx.restore()
 
       drawHudMass(ctx, width, playerMass)
@@ -105,8 +125,15 @@ function drawPlayer(
   x: number,
   y: number,
   mass: number,
+  flash: number,
 ) {
   const r = massToRadius(mass)
+  if (flash > 0) {
+    ctx.beginPath()
+    ctx.arc(x, y, r + 8 * flash, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(143, 211, 255, ${0.35 * flash / 0.18})`
+    ctx.fill()
+  }
   const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
   gradient.addColorStop(0, '#8fd3ff')
   gradient.addColorStop(1, '#2f7fd3')
