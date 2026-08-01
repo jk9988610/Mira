@@ -14,7 +14,7 @@ export function spawnAiEntities(existing: CircleEntity[]): CircleEntity[] {
   const ais: CircleEntity[] = []
   let attempts = 0
 
-  while (ais.length < AI_COUNT && attempts < 400) {
+  while (ais.length < AI_COUNT && attempts < 800) {
     attempts++
     const pos = randomSpawnPosition(existing, ais)
     if (!pos) continue
