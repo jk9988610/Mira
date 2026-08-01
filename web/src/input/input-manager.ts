@@ -18,6 +18,8 @@ export interface InputSnapshot {
   confirmPressed: boolean
   backPressed: boolean
   pausePressed: boolean
+  splitPressed: boolean
+  mergePressed: boolean
   upPressed: boolean
   downPressed: boolean
 }
@@ -144,6 +146,8 @@ export class InputManager {
       confirmPressed: this.wasActionPressed('CONFIRM'),
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
+      splitPressed: this.wasActionPressed('SPLIT'),
+      mergePressed: this.wasActionPressed('MERGE'),
       upPressed,
       downPressed,
     }
@@ -179,12 +183,16 @@ export class InputManager {
 
   private isStandardHeld(action: Action): boolean {
     if (!this.standardFrame.connected) return false
-    return STANDARD_GAMEPAD_ACTIONS[action].some((code) => this.standardFrame.buttonsHeld.has(code))
+    const codes = STANDARD_GAMEPAD_ACTIONS[action as keyof typeof STANDARD_GAMEPAD_ACTIONS]
+    if (!codes) return false
+    return codes.some((code) => this.standardFrame.buttonsHeld.has(code))
   }
 
   private isStandardPressed(action: Action): boolean {
     if (!this.standardFrame.connected) return false
-    return STANDARD_GAMEPAD_ACTIONS[action].some((code) => this.standardFrame.buttonsPressed.has(code))
+    const codes = STANDARD_GAMEPAD_ACTIONS[action as keyof typeof STANDARD_GAMEPAD_ACTIONS]
+    if (!codes) return false
+    return codes.some((code) => this.standardFrame.buttonsPressed.has(code))
   }
 
   captureNextBinding(): Binding | null {

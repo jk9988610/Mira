@@ -50,7 +50,7 @@ function main() {
   })
 
   app.scenes = scenes
-  if (!localStorage.getItem('mira_bindings_v2')) {
+  if (!localStorage.getItem('mira_bindings_v3')) {
     saveBindings(bindings)
   }
   requestAppFullscreen()

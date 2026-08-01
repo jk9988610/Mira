@@ -1,6 +1,10 @@
-export const GAME_DURATION_SEC = 180
+export const GAME_DURATION_SEC = 360
 export const MATCH_START_COUNTDOWN_SEC = 3
 export const RESPAWN_DELAY_SEC = 3
 export const INVINCIBLE_SEC = 3
 export const TOTAL_PLAYERS = 20
 export const AI_COUNT = TOTAL_PLAYERS - 1
+export const MAX_HUMAN_CLONES = 16
+export const MIN_SPLIT_MASS_RATIO = 1.8
+export const LEADERBOARD_TOP_N = 10
+export const SWALLOW_INSIDE_RATIO = 0.75

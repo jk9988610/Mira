@@ -5,19 +5,28 @@ import { randomSpawnPosition, spawnAiEntities, updateAi } from '../game/ai'
 import { computeCamera } from '../game/camera'
 import { absorbPelletsForEntity, resolveCircleCollisions } from '../game/collision'
 import {
-  clampEntityToWorld,
   createCircle,
   drawCircleEntity,
   isActive,
   type CircleEntity,
 } from '../game/entity'
-import { buildLeaderboard } from '../game/leaderboard'
+import { buildLeaderboardView } from '../game/leaderboard'
 import {
   GAME_DURATION_SEC,
   INVINCIBLE_SEC,
   MATCH_START_COUNTDOWN_SEC,
   RESPAWN_DELAY_SEC,
 } from '../game/match-config'
+import {
+  allHumansDead,
+  applyMovement,
+  getActiveHumans,
+  getHumanTotalMass,
+  getLargestHuman,
+  soonestHumanRespawn,
+  trySplitHuman,
+  updateHumanMerge,
+} from '../game/player-team'
 import { PLAYER_START_MASS } from '../game/physics'
 import { drawPellet } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
@@ -29,8 +38,6 @@ import {
   drawRespawnOverlay,
   drawStartCountdown,
 } from '../ui/draw'
-
-const PLAYER_SPEED = 280
 
 export function createGameScene(
   app: App,
@@ -48,6 +55,8 @@ export function createGameScene(
   let showResults = false
   let elapsed = 0
   let lastCountdownSecond = -1
+  let merging = false
+  let splitCooldown = 0
 
   const reset = () => {
     const spawn = randomSpawnPosition([]) ?? { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 }
@@ -61,10 +70,10 @@ export function createGameScene(
     showResults = false
     elapsed = 0
     lastCountdownSecond = -1
+    merging = false
+    splitCooldown = 0
     world.reset(player.x, player.y)
   }
-
-  const player = () => players.find((p) => p.isPlayer)!
 
   const updateRespawns = (dt: number) => {
     for (const entity of players) {
@@ -111,6 +120,7 @@ export function createGameScene(
     },
     update(dt: number) {
       elapsed += dt
+      splitCooldown = Math.max(0, splitCooldown - dt)
 
       if (showResults) {
         if (app.input.snapshot().confirmPressed) go('menu')
@@ -134,19 +144,33 @@ export function createGameScene(
         timeRemaining = 0
         matchEnded = true
         showResults = true
+        merging = false
         sfx.matchEnd()
         return
       }
 
-      const p = player()
-      if (isActive(p)) {
-        const len = Math.hypot(input.moveX, input.moveY)
-        if (len > 0.1) {
-          const speed = PLAYER_SPEED * (PLAYER_START_MASS / p.mass) ** 0.1
-          p.x += (input.moveX / len) * speed * dt
-          p.y += (input.moveY / len) * speed * dt
+      const moveLen = Math.hypot(input.moveX, input.moveY)
+      if (merging && moveLen > 0.15) merging = false
+
+      if (input.mergePressed && getActiveHumans(players).length > 1) {
+        merging = true
+      }
+
+      if (input.splitPressed && splitCooldown <= 0) {
+        const clone = trySplitHuman(players, input.moveX, input.moveY)
+        if (clone) {
+          players.push(clone)
+          splitCooldown = 0.35
+          sfx.absorbPellet()
         }
-        clampEntityToWorld(p, WORLD_WIDTH, WORLD_HEIGHT)
+      }
+
+      if (merging) {
+        players = updateHumanMerge(players, dt)
+      } else {
+        for (const human of getActiveHumans(players)) {
+          applyMovement(human, input.moveX, input.moveY, dt)
+        }
       }
 
       const removedPelletIds = new Set<number>()
@@ -175,19 +199,24 @@ export function createGameScene(
 
       updateRespawns(dt)
       absorbFlash = Math.max(0, absorbFlash - dt)
-      world.maintainPopulation(p.x, p.y)
+
+      const focus = getLargestHuman(players)
+      if (focus) world.maintainPopulation(focus.x, focus.y)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
 
+      const boardView = buildLeaderboardView(players)
+
       if (showResults) {
-        drawLeaderboardModal(ctx, width, height, buildLeaderboard(players))
+        drawLeaderboardModal(ctx, width, height, boardView)
         return
       }
 
-      const p = player()
-      const cam = computeCamera(p.x, p.y, p.mass, width, height)
-      const board = buildLeaderboard(players)
+      const focus = getLargestHuman(players) ?? players.find((p) => p.isPlayer)!
+      const cam = computeCamera(focus.x, focus.y, focus.mass, width, height)
+
+      const sorted = [...players].sort((a, b) => b.mass - a.mass)
 
       ctx.save()
       ctx.translate(width / 2, height / 2)
@@ -201,7 +230,7 @@ export function createGameScene(
 
       drawWorld(ctx)
       for (const pellet of world.pellets) drawPellet(ctx, pellet)
-      for (const entity of players) {
+      for (const entity of sorted) {
         drawCircleEntity(ctx, entity, entity.isPlayer ? absorbFlash : 0, elapsed)
       }
       ctx.restore()
@@ -210,16 +239,18 @@ export function createGameScene(
       if (matchStarted) {
         drawGameHud(ctx, width, height, {
           timeRemaining,
-          playerMass: p.mass,
+          playerMass: getHumanTotalMass(players),
           zoom: cam.zoom,
-          leaderboard: board,
+          cloneCount: getActiveHumans(players).length,
+          merging,
+          board: boardView,
         })
       }
 
       if (!matchStarted) {
         drawStartCountdown(ctx, width, height, startCountdown)
-      } else if (!isActive(p)) {
-        drawRespawnOverlay(ctx, width, height, p.respawnTimer)
+      } else if (allHumansDead(players)) {
+        drawRespawnOverlay(ctx, width, height, soonestHumanRespawn(players))
       }
     },
   }
