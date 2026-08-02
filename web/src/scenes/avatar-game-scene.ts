@@ -2,14 +2,17 @@ import type { App } from '../core/app'
 import { sfx } from '../audio/synth'
 import { requestAppFullscreen } from '../core/fullscreen'
 import {
+  absorbPelletsForAvatar,
   applyFrozenMovement,
-  beginAvatarTransform,
+  avatarEntityRadius,
   canBeginAvatarTransform,
+  canBuildMoreFarms,
+  completeAvatarTransform,
   countTribeStructures,
+  createStarterStructure,
   getControlledEntity,
   resetAvatarState,
   updateAlly,
-  updateAvatarIncubation,
   updateFarmStructures,
   updateRanchStructures,
 } from '../game/avatar-system'
@@ -17,15 +20,16 @@ import {
   FARM_BUILD_COST,
   AVATAR_INITIAL_PELLETS,
   RANCH_BUILD_COST,
+  STARTER_FARM_OFFSET,
+  STARTER_RANCH_OFFSET,
 } from '../game/avatar-config'
 import { computeCamera } from '../game/camera'
-import { absorbPelletsForEntity } from '../game/collision'
-import { createCircle, drawCircleEntity, isActive, type CircleEntity } from '../game/entity'
+import { createCircle, isActive, type CircleEntity } from '../game/entity'
 import { PLAYER_START_MASS } from '../game/physics'
 import { drawPellet, spawnPellets, type Pellet } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { clearScreen, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
+import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
 
 export function createAvatarGameScene(
   app: App,
@@ -41,9 +45,23 @@ export function createAvatarGameScene(
 
   const reset = () => {
     resetAvatarState()
-    const player = createCircle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, PLAYER_START_MASS, true, PLAYER_ROSTER)
+    const px = WORLD_WIDTH / 2
+    const py = WORLD_HEIGHT / 2
+    const player = createCircle(px, py, PLAYER_START_MASS, true, PLAYER_ROSTER)
     controlledId = player.id
-    entities = [player]
+    const starterFarm = createStarterStructure(
+      px + STARTER_FARM_OFFSET.x,
+      py + STARTER_FARM_OFFSET.y,
+      'farm',
+      '初始',
+    )
+    const starterRanch = createStarterStructure(
+      px + STARTER_RANCH_OFFSET.x,
+      py + STARTER_RANCH_OFFSET.y,
+      'ranch',
+      '初始',
+    )
+    entities = [player, starterFarm, starterRanch]
     pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 40)
     elapsed = 0
     absorbFlash = 0
@@ -71,46 +89,38 @@ export function createAvatarGameScene(
 
       const player = getControlledEntity(entities, controlledId)
 
-      if (input.splitPressed && canBeginAvatarTransform(player, 'farm')) {
-        beginAvatarTransform(player!, 'farm')
+      if (input.splitPressed && canBeginAvatarTransform(player, 'farm', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'farm', controlledId)
+        entities = result.entities
+        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
-      if (input.gatherPressed && canBeginAvatarTransform(player, 'ranch')) {
-        beginAvatarTransform(player!, 'ranch')
+      if (input.gatherPressed && canBeginAvatarTransform(player, 'ranch', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'ranch', controlledId)
+        entities = result.entities
+        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
-      if (player && !player.isFrozen && player.avatarIncubateTimer <= 0) {
+      if (player && !player.isFrozen) {
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
-      }
-
-      for (const entity of entities) {
-        if (entity.invincibleTimer > 0) {
-          entity.invincibleTimer = Math.max(0, entity.invincibleTimer - dt)
-        }
-      }
-
-      const incubation = updateAvatarIncubation(entities, controlledId, dt)
-      entities = incubation.entities
-      if (incubation.newControlledId !== null) {
-        controlledId = incubation.newControlledId
-        sfx.respawn()
       }
 
       pellets = updateFarmStructures(entities, pellets, dt)
       entities = updateRanchStructures(entities, dt)
 
-      for (const entity of entities) {
+      for (const entity of [...entities]) {
         if (entity.avatarRole !== 'ally' || !isActive(entity)) continue
-        const result = updateAlly(entity, pellets, dt)
+        const result = updateAlly(entity, entities, pellets, dt)
         pellets = result.pellets
+        entities = result.entities
         if (result.absorbed.length > 0) absorbFlash = 0.15
       }
 
       const controlled = getControlledEntity(entities, controlledId)
       if (controlled && isActive(controlled) && !controlled.isFrozen) {
-        const absorbed = absorbPelletsForEntity(controlled, pellets)
+        const absorbed = absorbPelletsForAvatar(controlled, pellets)
         if (absorbed.length > 0) {
           pellets = pellets.filter((p) => !absorbed.some((a) => a.id === p.id))
           absorbFlash = 0.18
@@ -129,7 +139,7 @@ export function createAvatarGameScene(
       const focusY = controlled?.y ?? WORLD_HEIGHT / 2
       const cam = computeCamera(focusX, focusY, focusMass, width, height)
 
-      const sorted = [...entities].sort((a, b) => b.mass - a.mass)
+      const sorted = [...entities].sort((a, b) => avatarEntityRadius(b) - avatarEntityRadius(a))
 
       ctx.save()
       ctx.translate(width / 2, height / 2)
@@ -148,7 +158,7 @@ export function createAvatarGameScene(
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
           const flash = entity.id === controlledId ? absorbFlash : 0
-          drawCircleEntity(ctx, entity, flash, elapsed)
+          drawAvatarCircle(ctx, entity, flash, elapsed)
         }
       }
       ctx.restore()
@@ -158,9 +168,8 @@ export function createAvatarGameScene(
       drawAvatarHud(ctx, width, {
         mass: focusMass,
         zoom: cam.zoom,
-        farmReady: (controlled?.mass ?? 0) >= FARM_BUILD_COST,
+        farmReady: (controlled?.mass ?? 0) >= FARM_BUILD_COST && canBuildMoreFarms(entities),
         ranchReady: (controlled?.mass ?? 0) >= RANCH_BUILD_COST,
-        incubating: (controlled?.avatarIncubateTimer ?? 0) > 0,
         farms: tribe.farms,
         ranches: tribe.ranches,
         allies: tribe.allies,

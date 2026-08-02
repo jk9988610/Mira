@@ -99,7 +99,8 @@ export function drawBindingRow(
 }
 
 import type { LeaderboardView } from '../game/leaderboard'
-import { entityRadius, type CircleEntity } from '../game/entity'
+import type { CircleEntity } from '../game/entity'
+import { avatarEntityRadius } from '../game/avatar-system'
 
 export interface HudData {
   timeRemaining: number
@@ -346,10 +347,49 @@ export interface AvatarHudData {
   zoom: number
   farmReady: boolean
   ranchReady: boolean
-  incubating: boolean
   farms: number
   ranches: number
   allies: number
+}
+
+export function drawAvatarCircle(
+  ctx: CanvasRenderingContext2D,
+  entity: CircleEntity,
+  flash = 0,
+  _time = 0,
+): void {
+  const r = avatarEntityRadius(entity)
+  const { x, y, colorLight, colorDark, strokeColor, name } = entity
+
+  ctx.save()
+
+  if (flash > 0) {
+    ctx.beginPath()
+    ctx.arc(x, y, r + 8 * flash, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(143, 211, 255, ${0.35 * flash / 0.18})`
+    ctx.fill()
+  }
+
+  const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
+  gradient.addColorStop(0, colorLight)
+  gradient.addColorStop(1, colorDark)
+  ctx.fillStyle = gradient
+  ctx.beginPath()
+  ctx.arc(x, y, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = strokeColor
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  if (r > 18) {
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+    ctx.font = `600 ${Math.min(16, r * 0.38)}px system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(name, x, y)
+  }
+
+  ctx.restore()
 }
 
 export function drawAvatarHud(
@@ -359,18 +399,17 @@ export function drawAvatarHud(
 ): void {
   drawHudMass(ctx, width, data.mass, data.zoom)
 
-  const farmHint = data.farmReady ? 'Q 化身农场' : 'Q 农场(质量不足)'
+  const farmHint = data.farmReady ? 'Q 化身农场' : 'Q 农场(未就绪)'
   const ranchHint = data.ranchReady ? 'E 化身牧场' : 'E 牧场(质量不足)'
-  const status = data.incubating ? ' · 化身中…' : ''
   const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 后代 ${data.allies}`
-  const hint = `${farmHint} · ${ranchHint}${status}`
+  const hint = `${farmHint} · ${ranchHint}`
 
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
   ctx.font = '13px system-ui, sans-serif'
   roundRect(ctx, 16, 16, ctx.measureText(hint).width + 20, 28, 8)
   ctx.fill()
-  ctx.fillStyle = data.incubating ? '#ffc44d' : '#8aa0c8'
+  ctx.fillStyle = '#8aa0c8'
   ctx.fillText(hint, 26, 35)
 
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
@@ -386,7 +425,7 @@ export function drawAvatarStructure(
   entity: CircleEntity,
   time = 0,
 ): void {
-  const r = entityRadius(entity)
+  const r = avatarEntityRadius(entity)
   const { x, y, avatarRole, colorLight, colorDark, strokeColor, name } = entity
 
   ctx.save()

@@ -1,23 +1,22 @@
-import { absorbPelletsForEntity } from './collision'
+import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
+import { addMassLogarithmic, massToRadiusLogarithmic, PLAYER_START_MASS } from './physics'
+import type { CircleEntity } from './entity'
+import { clampEntityToWorld, createCircle, entityRadius, isActive } from './entity'
 import {
-  AVATAR_INCUBATE_SEC,
-  AVATAR_SPAWN_INVINCIBLE_SEC,
   AVATAR_SPAWN_OFFSET,
   FARM_BUILD_COST,
   FARM_NEARBY_PELLET_CAP,
   FARM_PELLET_COUNT,
   FARM_PELLET_INTERVAL_SEC,
   FARM_PELLET_RING_RADIUS,
+  FARM_PELLET_SENSE_RADIUS,
   FARM_STRUCTURE_MASS,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
-  RANCH_SPAWN_RING_RADIUS,
   RANCH_STRUCTURE_MASS,
+  SPAWN_CLEARANCE,
 } from './avatar-config'
-import { clampEntityToWorld, createCircle, isActive, type CircleEntity } from './entity'
 import { speedForMass } from './movement'
-import { createPellet, type Pellet } from './pellet'
-import { PLAYER_START_MASS } from './physics'
 import { AI_ROSTER, PLAYER_ROSTER } from './roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
@@ -25,6 +24,12 @@ let allyNameIndex = 0
 
 export function resetAvatarState(): void {
   allyNameIndex = 0
+}
+
+export function avatarEntityRadius(entity: CircleEntity): number {
+  if (entity.avatarRole === 'farm') return entityRadius({ ...entity, mass: FARM_STRUCTURE_MASS })
+  if (entity.avatarRole === 'ranch') return entityRadius({ ...entity, mass: RANCH_STRUCTURE_MASS })
+  return massToRadiusLogarithmic(entity.mass)
 }
 
 export function getControlledEntity(
@@ -46,33 +51,67 @@ function structureLabel(kind: 'farm' | 'ranch', builderName: string): string {
   return kind === 'farm' ? `${builderName}的农场` : `${builderName}的牧场`
 }
 
+export function countFarms(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'farm').length
+}
+
+export function countRanches(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'ranch').length
+}
+
+/** 牧场×10 < 农场数 → 停建农场（AI 与玩家共用） */
+export function canBuildMoreFarms(entities: CircleEntity[]): boolean {
+  return countRanches(entities) * 10 >= countFarms(entities)
+}
+
+/** 牧场×10 < 世界圆总数 → 牧场停止生成后代 */
+export function canRanchSpawnAlly(entities: CircleEntity[]): boolean {
+  return countRanches(entities) * 10 >= entities.length
+}
+
 export function canBeginAvatarTransform(
   entity: CircleEntity | null,
   kind: 'farm' | 'ranch',
+  entities: CircleEntity[],
 ): boolean {
   if (!entity || !isActive(entity)) return false
-  if (entity.isFrozen || entity.avatarIncubateTimer > 0) return false
+  if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
-  if (entity.isPlayer === false && entity.avatarRole !== 'ally') return false
-  return entity.mass >= buildCost(kind)
+  if (!entity.isPlayer && entity.avatarRole !== 'ally') return false
+  if (entity.mass < buildCost(kind)) return false
+  if (kind === 'farm' && !canBuildMoreFarms(entities)) return false
+  return true
 }
 
-export function beginAvatarTransform(entity: CircleEntity, kind: 'farm' | 'ranch'): void {
-  const cost = buildCost(kind)
-  entity.builderName = entity.name.replace(/·后$/, '')
-  entity.mass -= cost
-  entity.isFrozen = true
-  entity.impulseX = 0
-  entity.impulseY = 0
-  entity.avatarIncubateTimer = AVATAR_INCUBATE_SEC
-  entity.invincibleTimer = AVATAR_INCUBATE_SEC
-  entity.pendingAvatarKind = kind
+function overlapsOthers(x: number, y: number, radius: number, entities: CircleEntity[], ignoreId: number): boolean {
+  for (const other of entities) {
+    if (other.id === ignoreId) continue
+    const r = avatarEntityRadius(other)
+    const dist = Math.hypot(other.x - x, other.y - y)
+    if (dist < r + radius + SPAWN_CLEARANCE) return true
+  }
+  return false
 }
 
-function spawnOffset(kind: 'farm' | 'ranch'): { x: number; y: number } {
-  const angle = Math.random() * Math.PI * 2
-  const dist = AVATAR_SPAWN_OFFSET + (kind === 'ranch' ? 20 : 0)
-  return { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist }
+export function findClearSpawnPosition(
+  originX: number,
+  originY: number,
+  radius: number,
+  entities: CircleEntity[],
+  ignoreId: number,
+): { x: number; y: number } {
+  for (let ring = 0; ring < 4; ring++) {
+    const dist = AVATAR_SPAWN_OFFSET + ring * 55
+    for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16 + ring * 0.4
+      const x = originX + Math.cos(angle) * dist
+      const y = originY + Math.sin(angle) * dist
+      if (!overlapsOthers(x, y, radius, entities, ignoreId)) {
+        return { x, y }
+      }
+    }
+  }
+  return { x: originX + AVATAR_SPAWN_OFFSET, y: originY }
 }
 
 function rosterFromEntity(entity: CircleEntity) {
@@ -84,86 +123,95 @@ function rosterFromEntity(entity: CircleEntity) {
   }
 }
 
-export interface IncubationResult {
+export interface TransformResult {
   entities: CircleEntity[]
   newControlledId: number | null
 }
 
-export function updateAvatarIncubation(
+export function completeAvatarTransform(
   entities: CircleEntity[],
+  entity: CircleEntity,
+  kind: 'farm' | 'ranch',
   controlledId: number,
-  dt: number,
-): IncubationResult {
-  let newControlledId: number | null = null
-  const next = [...entities]
+): TransformResult {
+  const cost = buildCost(kind)
+  entity.builderName = entity.name.replace(/·后$/, '').replace(/的(农场|牧场)$/, '')
+  entity.mass -= cost
 
-  for (const entity of next) {
-    if (entity.avatarIncubateTimer <= 0) continue
-    entity.avatarIncubateTimer = Math.max(0, entity.avatarIncubateTimer - dt)
-    if (entity.avatarIncubateTimer > 0) continue
+  const leftover = Math.max(PLAYER_START_MASS, entity.mass)
+  const wasPlayer = entity.isPlayer && entity.id === controlledId
+  const childRadius = massToRadiusLogarithmic(leftover)
+  const spawn = findClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
 
-    const kind = entity.pendingAvatarKind
-    if (kind === 'none') continue
-
-    const leftover = Math.max(PLAYER_START_MASS, entity.mass)
-    const offset = spawnOffset(kind)
-    const wasPlayer = entity.isPlayer && entity.id === controlledId
-
-    const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
-    const child = createCircle(
-      entity.x + offset.x,
-      entity.y + offset.y,
-      leftover,
-      wasPlayer,
-      roster,
-    )
-    child.invincibleTimer = AVATAR_SPAWN_INVINCIBLE_SEC
-    if (!wasPlayer) {
-      child.avatarRole = 'ally'
-      child.name = entity.builderName
-      child.builderName = entity.builderName
-    }
-    clampEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
-    next.push(child)
-
-    entity.isPlayer = false
-    entity.avatarRole = kind
-    entity.isFrozen = true
-    entity.mass = structureMass(kind)
-    entity.name = structureLabel(kind, entity.builderName)
-    entity.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
-    entity.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC : 0
-
-    if (wasPlayer) {
-      newControlledId = child.id
-    }
-
-    entity.pendingAvatarKind = 'none'
-    entity.isFrozen = true
+  const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
+  const child = createCircle(spawn.x, spawn.y, leftover, wasPlayer, roster)
+  if (!wasPlayer) {
+    child.avatarRole = 'ally'
+    child.name = entity.builderName
+    child.builderName = entity.builderName
   }
+  clampEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
 
-  return { entities: next, newControlledId }
+  entity.isPlayer = false
+  entity.avatarRole = kind
+  entity.isFrozen = true
+  entity.mass = structureMass(kind)
+  entity.name = structureLabel(kind, entity.builderName)
+  entity.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
+  entity.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC : 0
+  entity.pendingAvatarKind = 'none'
+  entity.avatarIncubateTimer = 0
+  entity.invincibleTimer = 0
+
+  return {
+    entities: [...entities, child],
+    newControlledId: wasPlayer ? child.id : null,
+  }
+}
+
+export function createStarterStructure(
+  x: number,
+  y: number,
+  kind: 'farm' | 'ranch',
+  builderName: string,
+): CircleEntity {
+  const structure = createCircle(x, y, structureMass(kind), false, PLAYER_ROSTER)
+  structure.avatarRole = kind
+  structure.isFrozen = true
+  structure.mass = structureMass(kind)
+  structure.builderName = builderName
+  structure.name = structureLabel(kind, builderName)
+  structure.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
+  structure.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC * 0.5 : 0
+  return structure
+}
+
+export function absorbPelletsForAvatar(entity: CircleEntity, pellets: Pellet[]): Pellet[] {
+  if (!isActive(entity) || entity.isFrozen) return []
+  const radius = avatarEntityRadius(entity)
+  const absorbed: Pellet[] = []
+  for (const pellet of pellets) {
+    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) continue
+    entity.mass = addMassLogarithmic(entity.mass, pellet.mass)
+    absorbed.push(pellet)
+  }
+  return absorbed
 }
 
 export function countPelletsNearFarm(farm: CircleEntity, pellets: Pellet[]): number {
-  const radius = FARM_PELLET_RING_RADIUS + 90
   let count = 0
   for (const pellet of pellets) {
-    if (Math.hypot(pellet.x - farm.x, pellet.y - farm.y) <= radius) count++
+    if (Math.hypot(pellet.x - farm.x, pellet.y - farm.y) <= FARM_PELLET_SENSE_RADIUS) count++
   }
   return count
 }
 
-export function spawnPelletsAroundFarm(
-  farm: CircleEntity,
-  pellets: Pellet[],
-): Pellet[] {
+export function spawnPelletsAroundFarm(farm: CircleEntity, pellets: Pellet[]): Pellet[] {
   const spawned: Pellet[] = []
   for (let i = 0; i < FARM_PELLET_COUNT; i++) {
     const angle = (Math.PI * 2 * i) / FARM_PELLET_COUNT + Math.random() * 0.25
     const r = FARM_PELLET_RING_RADIUS + Math.random() * 35
-    const pellet = createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r)
-    spawned.push(pellet)
+    spawned.push(createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r))
   }
   return [...pellets, ...spawned]
 }
@@ -178,33 +226,19 @@ export function updateFarmStructures(
     if (entity.avatarRole !== 'farm' || !entity.isFrozen) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
-    if (countPelletsNearFarm(entity, nextPellets) >= FARM_NEARBY_PELLET_CAP) {
-      entity.pelletSpawnTimer = FARM_PELLET_INTERVAL_SEC
-      continue
-    }
     entity.pelletSpawnTimer = FARM_PELLET_INTERVAL_SEC
+    if (countPelletsNearFarm(entity, nextPellets) >= FARM_NEARBY_PELLET_CAP) continue
     nextPellets = spawnPelletsAroundFarm(entity, nextPellets)
   }
   return nextPellets
 }
 
-export function countWorldCircles(entities: CircleEntity[]): number {
-  return entities.length
-}
-
-export function canRanchSpawnAlly(entities: CircleEntity[]): boolean {
-  const ranchCount = entities.filter((e) => e.avatarRole === 'ranch').length
-  const circleCount = countWorldCircles(entities)
-  return ranchCount * 10 >= circleCount
-}
-
 export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): CircleEntity[] {
-  const angle = Math.random() * Math.PI * 2
-  const x = ranch.x + Math.cos(angle) * RANCH_SPAWN_RING_RADIUS
-  const y = ranch.y + Math.sin(angle) * RANCH_SPAWN_RING_RADIUS
+  const childRadius = massToRadiusLogarithmic(PLAYER_START_MASS)
+  const spawn = findClearSpawnPosition(ranch.x, ranch.y, childRadius, entities, ranch.id)
   const roster = AI_ROSTER[allyNameIndex % AI_ROSTER.length]
   allyNameIndex++
-  const ally = createCircle(x, y, PLAYER_START_MASS, false, roster)
+  const ally = createCircle(spawn.x, spawn.y, PLAYER_START_MASS, false, roster)
   ally.avatarRole = 'ally'
   ally.name = roster.name
   ally.builderName = roster.name
@@ -212,10 +246,7 @@ export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): C
   return [...entities, ally]
 }
 
-export function updateRanchStructures(
-  entities: CircleEntity[],
-  dt: number,
-): CircleEntity[] {
+export function updateRanchStructures(entities: CircleEntity[], dt: number): CircleEntity[] {
   let next = entities
   for (const entity of entities) {
     if (entity.avatarRole !== 'ranch' || !entity.isFrozen) continue
@@ -230,11 +261,12 @@ export function updateRanchStructures(
 
 export function updateAlly(
   ally: CircleEntity,
+  entities: CircleEntity[],
   pellets: Pellet[],
   dt: number,
-): { pellets: Pellet[]; absorbed: Pellet[] } {
-  if (!isActive(ally) || ally.isFrozen || ally.avatarIncubateTimer > 0) {
-    return { pellets, absorbed: [] }
+): { pellets: Pellet[]; absorbed: Pellet[]; entities: CircleEntity[] } {
+  if (!isActive(ally) || ally.isFrozen) {
+    return { pellets, absorbed: [], entities }
   }
 
   let nearest: Pellet | null = null
@@ -259,29 +291,25 @@ export function updateAlly(
     }
   }
 
-  const absorbed = absorbPelletsForEntity(ally, pellets)
+  const absorbed = absorbPelletsForAvatar(ally, pellets)
   const absorbedIds = new Set(absorbed.map((p) => p.id))
-  const nextPellets = pellets.filter((p) => !absorbedIds.has(p.id))
+  let nextPellets = pellets.filter((p) => !absorbedIds.has(p.id))
+  let nextEntities = entities
 
-  const farmReady = ally.mass >= FARM_BUILD_COST
-  const ranchReady = ally.mass >= RANCH_BUILD_COST
-  if ((farmReady || ranchReady) && ally.avatarIncubateTimer <= 0 && !ally.isFrozen) {
-    const kind: 'farm' | 'ranch' =
-      farmReady && ranchReady
-        ? Math.random() < 0.5
-          ? 'farm'
-          : 'ranch'
-        : ranchReady
-          ? 'ranch'
-          : 'farm'
-    if (ally.mass >= buildCost(kind)) beginAvatarTransform(ally, kind)
+  if (
+    ally.mass >= FARM_BUILD_COST &&
+    canBuildMoreFarms(entities) &&
+    canBeginAvatarTransform(ally, 'farm', entities)
+  ) {
+    const result = completeAvatarTransform(nextEntities, ally, 'farm', -1)
+    nextEntities = result.entities
   }
 
-  return { pellets: nextPellets, absorbed }
+  return { pellets: nextPellets, absorbed, entities: nextEntities }
 }
 
 export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: number, dt: number): void {
-  if (entity.isFrozen || entity.avatarIncubateTimer > 0) return
+  if (entity.isFrozen) return
   const len = Math.hypot(moveX, moveY)
   if (len < 0.1) return
   const speed = speedForMass(entity.mass)
