@@ -172,6 +172,80 @@ export function findClearSpawnPosition(
   return null
 }
 
+export function findNearestAvatarTransformSpot(
+  entity: CircleEntity,
+  kind: 'farm' | 'ranch',
+  entities: CircleEntity[],
+): { x: number; y: number } | null {
+  const structureR = structureRadius(kind)
+  const leftover = Math.max(PLAYER_START_MASS, entity.mass - buildCost(kind))
+  const childRadius = avatarChildRadius(leftover)
+
+  const isValidSpot = (x: number, y: number): boolean => {
+    if (x < structureR || y < structureR || x > WORLD_WIDTH - structureR || y > WORLD_HEIGHT - structureR) {
+      return false
+    }
+    if (wouldOverlapStructures(x, y, structureR, entities, entity.id)) return false
+    return hasClearSpawnPosition(x, y, childRadius, entities, entity.id)
+  }
+
+  if (isValidSpot(entity.x, entity.y)) {
+    return { x: entity.x, y: entity.y }
+  }
+
+  const step = 60
+  const maxRings = 30
+  for (let ring = 1; ring <= maxRings; ring++) {
+    const dist = ring * step
+    const samples = Math.max(16, ring * 4)
+    let best: { x: number; y: number; d: number } | null = null
+    for (let i = 0; i < samples; i++) {
+      const angle = (Math.PI * 2 * i) / samples
+      const x = entity.x + Math.cos(angle) * dist
+      const y = entity.y + Math.sin(angle) * dist
+      if (!isValidSpot(x, y)) continue
+      const d = Math.hypot(x - entity.x, y - entity.y)
+      if (!best || d < best.d) best = { x, y, d }
+    }
+    if (best) return { x: best.x, y: best.y }
+  }
+  return null
+}
+
+function moveEntityToward(entity: CircleEntity, targetX: number, targetY: number, dt: number): void {
+  const dx = targetX - entity.x
+  const dy = targetY - entity.y
+  const dist = Math.hypot(dx, dy)
+  if (dist <= 1) return
+  const speed = speedForMass(entity.mass)
+  entity.x += (dx / dist) * speed * dt
+  entity.y += (dy / dist) * speed * dt
+  clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+}
+
+function tryAllyFarmTransform(
+  ally: CircleEntity,
+  entities: CircleEntity[],
+  pellets: Pellet[],
+): { entities: CircleEntity[]; pellets: Pellet[]; absorbed: Pellet[] } {
+  if (!canBeginAvatarTransform(ally, 'farm', entities)) {
+    return { entities, pellets, absorbed: [] }
+  }
+  const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
+  const nextEntities = completeAvatarTransform(entities, ally, 'farm', -1).entities
+  return { entities: nextEntities, pellets: nextPellets, absorbed }
+}
+
+function absorbAndFilterPellets(
+  entity: CircleEntity,
+  pellets: Pellet[],
+): { pellets: Pellet[]; absorbed: Pellet[] } {
+  const absorbed = absorbPelletsForAvatar(entity, pellets)
+  if (absorbed.length === 0) return { pellets, absorbed }
+  const absorbedIds = new Set(absorbed.map((p) => p.id))
+  return { pellets: pellets.filter((p) => !absorbedIds.has(p.id)), absorbed }
+}
+
 function rosterFromEntity(entity: CircleEntity) {
   return {
     name: entity.builderName || entity.name,
@@ -333,6 +407,28 @@ export function updateAlly(
     return { pellets, absorbed: [], entities }
   }
 
+  const prioritizeFarmTransform =
+    ally.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
+
+  if (prioritizeFarmTransform) {
+    const immediate = tryAllyFarmTransform(ally, entities, pellets)
+    if (immediate.entities !== entities) {
+      return { pellets: immediate.pellets, absorbed: immediate.absorbed, entities: immediate.entities }
+    }
+
+    const spot = findNearestAvatarTransformSpot(ally, 'farm', entities)
+    if (spot) {
+      moveEntityToward(ally, spot.x, spot.y, dt)
+      const { pellets: movedPellets, absorbed: movedAbsorbed } = absorbAndFilterPellets(ally, pellets)
+      const afterMove = tryAllyFarmTransform(ally, entities, movedPellets)
+      return {
+        pellets: afterMove.pellets,
+        absorbed: [...movedAbsorbed, ...afterMove.absorbed],
+        entities: afterMove.entities,
+      }
+    }
+  }
+
   let nearest: Pellet | null = null
   let nearestDist = Infinity
   for (const pellet of pellets) {
@@ -344,32 +440,16 @@ export function updateAlly(
   }
 
   if (nearest) {
-    const dx = nearest.x - ally.x
-    const dy = nearest.y - ally.y
-    const dist = Math.hypot(dx, dy)
-    if (dist > 1) {
-      const speed = speedForMass(ally.mass)
-      ally.x += (dx / dist) * speed * dt
-      ally.y += (dy / dist) * speed * dt
-      clampEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
-    }
+    moveEntityToward(ally, nearest.x, nearest.y, dt)
   }
 
-  const absorbed = absorbPelletsForAvatar(ally, pellets)
-  const absorbedIds = new Set(absorbed.map((p) => p.id))
-  let nextPellets = pellets.filter((p) => !absorbedIds.has(p.id))
-  let nextEntities = entities
-
-  if (
-    ally.mass >= FARM_BUILD_COST &&
-    canBuildMoreFarms(entities) &&
-    canBeginAvatarTransform(ally, 'farm', entities)
-  ) {
-    const result = completeAvatarTransform(nextEntities, ally, 'farm', -1)
-    nextEntities = result.entities
+  const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
+  if (prioritizeFarmTransform) {
+    const afterEat = tryAllyFarmTransform(ally, entities, nextPellets)
+    return { pellets: afterEat.pellets, absorbed: [...absorbed, ...afterEat.absorbed], entities: afterEat.entities }
   }
 
-  return { pellets: nextPellets, absorbed, entities: nextEntities }
+  return { pellets: nextPellets, absorbed, entities }
 }
 
 export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: number, dt: number): void {
