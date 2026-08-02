@@ -349,7 +349,7 @@ export interface AvatarHudData {
   ranchHint: string
   farms: number
   ranches: number
-  allies: number
+  circles: number
 }
 
 export function drawAvatarCircle(
@@ -399,7 +399,7 @@ export function drawAvatarHud(
 ): void {
   drawHudMass(ctx, width, data.mass, data.zoom)
 
-  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 后代 ${data.allies}`
+  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 圆 ${data.circles}`
   const hint = `${data.farmHint} · ${data.ranchHint}`
 
   ctx.textAlign = 'left'

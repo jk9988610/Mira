@@ -4,7 +4,11 @@ import { addMassLogarithmic, massToRadius, PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
 import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
+  ALLIES_PER_RANCH,
+  AVATAR_SEEK_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
+  AVATAR_TRANSFORM_COOLDOWN_SEC,
+  AVATAR_MAX_PELLETS,
   FARM_BUILD_COST,
   FARM_NEARBY_PELLET_CAP,
   FARM_PELLET_COUNT,
@@ -12,19 +16,23 @@ import {
   FARM_PELLET_RING_RADIUS,
   FARM_PELLET_SENSE_RADIUS,
   FARM_STRUCTURE_MASS,
+  FARMS_PER_RANCH,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
   RANCH_STRUCTURE_MASS,
   SPAWN_CLEARANCE,
 } from './avatar-config'
 import { speedForMass } from './movement'
+import type { PelletGrid } from './pellet-grid'
 import { AI_ROSTER, PLAYER_ROSTER } from './roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 let allyNameIndex = 0
+const allySeekCache = new Map<number, { x: number; y: number; kind: 'farm' | 'ranch'; expiresAt: number }>()
 
 export function resetAvatarState(): void {
   allyNameIndex = 0
+  allySeekCache.clear()
 }
 
 export { avatarEntityRadius } from './avatar-radius'
@@ -56,14 +64,38 @@ export function countRanches(entities: CircleEntity[]): number {
   return entities.filter((e) => e.avatarRole === 'ranch').length
 }
 
-/** 牧场×10 < 农场数 → 停建农场（AI 与玩家共用） */
-export function canBuildMoreFarms(entities: CircleEntity[]): boolean {
-  return countRanches(entities) * 10 >= countFarms(entities)
+/** 可移动的圆：玩家与后代（不含农场/牧场建筑） */
+export function countMobileCircles(entities: CircleEntity[]): number {
+  let count = 0
+  for (const e of entities) {
+    if (!isActive(e) || e.isFrozen) continue
+    if (e.avatarRole === 'farm' || e.avatarRole === 'ranch') continue
+    count++
+  }
+  return count
 }
 
-/** 牧场×10 < 世界圆总数 → 牧场停止生成后代 */
+/** 农场数 < 牧场数×N → 允许建农场 */
+export function canBuildMoreFarms(entities: CircleEntity[]): boolean {
+  return countFarms(entities) < countRanches(entities) * FARMS_PER_RANCH
+}
+
+/** 可移动圆数 < 牧场数×N → 牧场可产后代 */
 export function canRanchSpawnAlly(entities: CircleEntity[]): boolean {
-  return countRanches(entities) * 10 >= entities.length
+  return countMobileCircles(entities) < countRanches(entities) * ALLIES_PER_RANCH
+}
+
+export function tickAvatarTransformCooldowns(entities: CircleEntity[], dt: number): void {
+  for (const entity of entities) {
+    if (entity.avatarTransformCooldown > 0) {
+      entity.avatarTransformCooldown = Math.max(0, entity.avatarTransformCooldown - dt)
+    }
+  }
+}
+
+function trimPellets(pellets: Pellet[]): Pellet[] {
+  if (pellets.length <= AVATAR_MAX_PELLETS) return pellets
+  return pellets.slice(pellets.length - AVATAR_MAX_PELLETS)
 }
 
 function structureRadius(kind: 'farm' | 'ranch'): number {
@@ -117,6 +149,7 @@ export function canBeginAvatarTransform(
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (!entity.isPlayer && entity.avatarRole !== 'ally') return false
   if (entity.mass < buildCost(kind)) return false
+  if (entity.avatarTransformCooldown > 0) return false
   if (kind === 'farm' && !canBuildMoreFarms(entities)) return false
   if (!canPlaceAvatarTransform(entity, kind, entities)) return false
   return true
@@ -176,7 +209,13 @@ export function findNearestAvatarTransformSpot(
   entity: CircleEntity,
   kind: 'farm' | 'ranch',
   entities: CircleEntity[],
+  now = 0,
 ): { x: number; y: number } | null {
+  const cached = allySeekCache.get(entity.id)
+  if (cached && cached.kind === kind && cached.expiresAt > now) {
+    return { x: cached.x, y: cached.y }
+  }
+
   const structureR = structureRadius(kind)
   const leftover = Math.max(PLAYER_START_MASS, entity.mass - buildCost(kind))
   const childRadius = avatarChildRadius(leftover)
@@ -190,14 +229,15 @@ export function findNearestAvatarTransformSpot(
   }
 
   if (isValidSpot(entity.x, entity.y)) {
+    allySeekCache.set(entity.id, { x: entity.x, y: entity.y, kind, expiresAt: now + AVATAR_SEEK_CACHE_SEC })
     return { x: entity.x, y: entity.y }
   }
 
   const step = 60
-  const maxRings = 30
+  const maxRings = entities.length > 120 ? 12 : entities.length > 60 ? 18 : 24
   for (let ring = 1; ring <= maxRings; ring++) {
     const dist = ring * step
-    const samples = Math.max(16, ring * 4)
+    const samples = Math.min(24, Math.max(12, ring * 3))
     let best: { x: number; y: number; d: number } | null = null
     for (let i = 0; i < samples; i++) {
       const angle = (Math.PI * 2 * i) / samples
@@ -207,8 +247,12 @@ export function findNearestAvatarTransformSpot(
       const d = Math.hypot(x - entity.x, y - entity.y)
       if (!best || d < best.d) best = { x, y, d }
     }
-    if (best) return { x: best.x, y: best.y }
+    if (best) {
+      allySeekCache.set(entity.id, { x: best.x, y: best.y, kind, expiresAt: now + AVATAR_SEEK_CACHE_SEC })
+      return { x: best.x, y: best.y }
+    }
   }
+  allySeekCache.delete(entity.id)
   return null
 }
 
@@ -223,24 +267,51 @@ function moveEntityToward(entity: CircleEntity, targetX: number, targetY: number
   clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
 }
 
-function tryAllyFarmTransform(
+function tryAllyTransform(
   ally: CircleEntity,
   entities: CircleEntity[],
   pellets: Pellet[],
+  kind: 'farm' | 'ranch',
 ): { entities: CircleEntity[]; pellets: Pellet[]; absorbed: Pellet[] } {
-  if (!canBeginAvatarTransform(ally, 'farm', entities)) {
+  if (!canBeginAvatarTransform(ally, kind, entities)) {
     return { entities, pellets, absorbed: [] }
   }
   const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
-  const nextEntities = completeAvatarTransform(entities, ally, 'farm', -1).entities
-  return { entities: nextEntities, pellets: nextPellets, absorbed }
+  const result = completeAvatarTransform(entities, ally, kind, -1)
+  return { entities: result.entities, pellets: nextPellets, absorbed }
+}
+
+/** AI 根据农场/牧场比例决定优先化身类型 */
+export function decideAllyTransformKind(
+  ally: CircleEntity,
+  entities: CircleEntity[],
+): 'farm' | 'ranch' | null {
+  if (ally.avatarTransformCooldown > 0) return null
+
+  const farms = countFarms(entities)
+  const ranches = countRanches(entities)
+  const ranchReady =
+    ally.mass >= RANCH_BUILD_COST && canPlaceAvatarTransform(ally, 'ranch', entities)
+  const farmReady =
+    ally.mass >= FARM_BUILD_COST &&
+    canBuildMoreFarms(entities) &&
+    canPlaceAvatarTransform(ally, 'farm', entities)
+
+  const ranchPressure = farms >= Math.max(1, ranches) * Math.ceil(FARMS_PER_RANCH * 0.6)
+  const needRanch = ranchPressure || !canBuildMoreFarms(entities)
+
+  if (needRanch && ranchReady) return 'ranch'
+  if (farmReady) return 'farm'
+  if (ranchReady && ranches === 0) return 'ranch'
+  return null
 }
 
 function absorbAndFilterPellets(
   entity: CircleEntity,
   pellets: Pellet[],
+  grid?: PelletGrid,
 ): { pellets: Pellet[]; absorbed: Pellet[] } {
-  const absorbed = absorbPelletsForAvatar(entity, pellets)
+  const absorbed = absorbPelletsForAvatar(entity, pellets, grid)
   if (absorbed.length === 0) return { pellets, absorbed }
   const absorbedIds = new Set(absorbed.map((p) => p.id))
   return { pellets: pellets.filter((p) => !absorbedIds.has(p.id)), absorbed }
@@ -282,6 +353,7 @@ export function completeAvatarTransform(
 
   const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
   const child = createCircle(spawn.x, spawn.y, leftover, wasPlayer, roster)
+  child.avatarTransformCooldown = AVATAR_TRANSFORM_COOLDOWN_SEC
   if (!wasPlayer) {
     child.avatarRole = 'ally'
     child.name = entity.builderName
@@ -323,51 +395,59 @@ export function createStarterStructure(
   return structure
 }
 
-export function absorbPelletsForAvatar(entity: CircleEntity, pellets: Pellet[]): Pellet[] {
+export function absorbPelletsForAvatar(
+  entity: CircleEntity,
+  pellets: Pellet[],
+  grid?: PelletGrid,
+): Pellet[] {
   if (!isActive(entity) || entity.isFrozen) return []
   const radius = avatarEntityRadius(entity)
   const absorbed: Pellet[] = []
-  for (const pellet of pellets) {
-    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) continue
+  const collect = (pellet: Pellet) => {
+    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
     entity.mass = addMassLogarithmic(entity.mass, pellet.mass)
     absorbed.push(pellet)
+  }
+  if (grid) {
+    grid.forEachInRadius(entity.x, entity.y, radius, collect)
+  } else {
+    for (const pellet of pellets) collect(pellet)
   }
   return absorbed
 }
 
-export function countPelletsNearFarm(farm: CircleEntity, pellets: Pellet[]): number {
-  let count = 0
-  for (const pellet of pellets) {
-    if (Math.hypot(pellet.x - farm.x, pellet.y - farm.y) <= FARM_PELLET_SENSE_RADIUS) count++
-  }
-  return count
+export function countPelletsNearFarm(farm: CircleEntity, grid: PelletGrid): number {
+  return grid.countInRadius(farm.x, farm.y, FARM_PELLET_SENSE_RADIUS)
 }
 
-export function spawnPelletsAroundFarm(farm: CircleEntity, pellets: Pellet[]): Pellet[] {
+export function spawnPelletsAroundFarm(farm: CircleEntity): Pellet[] {
   const spawned: Pellet[] = []
   for (let i = 0; i < FARM_PELLET_COUNT; i++) {
     const angle = (Math.PI * 2 * i) / FARM_PELLET_COUNT + Math.random() * 0.25
     const r = FARM_PELLET_RING_RADIUS + Math.random() * 35
     spawned.push(createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r))
   }
-  return [...pellets, ...spawned]
+  return spawned
 }
 
 export function updateFarmStructures(
   entities: CircleEntity[],
   pellets: Pellet[],
+  grid: PelletGrid,
   dt: number,
 ): Pellet[] {
-  let nextPellets = pellets
+  if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
+
   for (const entity of entities) {
     if (entity.avatarRole !== 'farm' || !entity.isFrozen) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
     entity.pelletSpawnTimer = FARM_PELLET_INTERVAL_SEC
-    if (countPelletsNearFarm(entity, nextPellets) >= FARM_NEARBY_PELLET_CAP) continue
-    nextPellets = spawnPelletsAroundFarm(entity, nextPellets)
+    if (pellets.length >= AVATAR_MAX_PELLETS) break
+    if (countPelletsNearFarm(entity, grid) >= FARM_NEARBY_PELLET_CAP) continue
+    pellets.push(...spawnPelletsAroundFarm(entity))
   }
-  return nextPellets
+  return trimPellets(pellets)
 }
 
 export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): CircleEntity[] {
@@ -401,26 +481,27 @@ export function updateAlly(
   ally: CircleEntity,
   entities: CircleEntity[],
   pellets: Pellet[],
+  grid: PelletGrid,
   dt: number,
+  now: number,
 ): { pellets: Pellet[]; absorbed: Pellet[]; entities: CircleEntity[] } {
   if (!isActive(ally) || ally.isFrozen) {
     return { pellets, absorbed: [], entities }
   }
 
-  const prioritizeFarmTransform =
-    ally.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
+  const transformKind = decideAllyTransformKind(ally, entities)
 
-  if (prioritizeFarmTransform) {
-    const immediate = tryAllyFarmTransform(ally, entities, pellets)
+  if (transformKind) {
+    const immediate = tryAllyTransform(ally, entities, pellets, transformKind)
     if (immediate.entities !== entities) {
       return { pellets: immediate.pellets, absorbed: immediate.absorbed, entities: immediate.entities }
     }
 
-    const spot = findNearestAvatarTransformSpot(ally, 'farm', entities)
+    const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)
     if (spot) {
       moveEntityToward(ally, spot.x, spot.y, dt)
-      const { pellets: movedPellets, absorbed: movedAbsorbed } = absorbAndFilterPellets(ally, pellets)
-      const afterMove = tryAllyFarmTransform(ally, entities, movedPellets)
+      const { pellets: movedPellets, absorbed: movedAbsorbed } = absorbAndFilterPellets(ally, pellets, grid)
+      const afterMove = tryAllyTransform(ally, entities, movedPellets, transformKind)
       return {
         pellets: afterMove.pellets,
         absorbed: [...movedAbsorbed, ...afterMove.absorbed],
@@ -429,23 +510,15 @@ export function updateAlly(
     }
   }
 
-  let nearest: Pellet | null = null
-  let nearestDist = Infinity
-  for (const pellet of pellets) {
-    const dist = Math.hypot(pellet.x - ally.x, pellet.y - ally.y)
-    if (dist < nearestDist) {
-      nearestDist = dist
-      nearest = pellet
-    }
-  }
-
+  const nearest = grid.findNearest(ally.x, ally.y)
   if (nearest) {
     moveEntityToward(ally, nearest.x, nearest.y, dt)
   }
 
-  const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
-  if (prioritizeFarmTransform) {
-    const afterEat = tryAllyFarmTransform(ally, entities, nextPellets)
+  const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets, grid)
+  const retryKind = decideAllyTransformKind(ally, entities)
+  if (retryKind) {
+    const afterEat = tryAllyTransform(ally, entities, nextPellets, retryKind)
     return { pellets: afterEat.pellets, absorbed: [...absorbed, ...afterEat.absorbed], entities: afterEat.entities }
   }
 
@@ -470,6 +543,11 @@ export function getAvatarTransformHints(
     return { farm: 'Q 农场(未就绪)', ranch: 'E 牧场(未就绪)' }
   }
 
+  if (entity.avatarTransformCooldown > 0) {
+    const sec = Math.ceil(entity.avatarTransformCooldown)
+    return { farm: `Q 冷却(${sec}s)`, ranch: `E 冷却(${sec}s)` }
+  }
+
   const farmMassOk = entity.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
   const ranchMassOk = entity.mass >= RANCH_BUILD_COST
   const farmPlaceOk = farmMassOk && canPlaceAvatarTransform(entity, 'farm', entities)
@@ -477,7 +555,7 @@ export function getAvatarTransformHints(
 
   let farm = 'Q 农场(未就绪)'
   if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
-  else if (farmMassOk && !canBuildMoreFarms(entities)) farm = 'Q 农场(数量上限)'
+  else if (farmMassOk && !canBuildMoreFarms(entities)) farm = 'Q 农场(需更多牧场)'
   else if (farmMassOk) farm = 'Q 农场(位置被占)'
 
   let ranch = 'E 牧场(质量不足)'
@@ -487,7 +565,12 @@ export function getAvatarTransformHints(
   return { farm, ranch }
 }
 
-export function countTribeStructures(entities: CircleEntity[]): { farms: number; ranches: number; allies: number } {
+export function countTribeStructures(entities: CircleEntity[]): {
+  farms: number
+  ranches: number
+  allies: number
+  circles: number
+} {
   let farms = 0
   let ranches = 0
   let allies = 0
@@ -496,5 +579,5 @@ export function countTribeStructures(entities: CircleEntity[]): { farms: number;
     if (e.avatarRole === 'ranch') ranches++
     if (e.avatarRole === 'ally' && isActive(e) && !e.isFrozen) allies++
   }
-  return { farms, ranches, allies }
+  return { farms, ranches, allies, circles: countMobileCircles(entities) }
 }

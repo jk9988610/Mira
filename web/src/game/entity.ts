@@ -23,6 +23,8 @@ export interface CircleEntity {
   allySpawnTimer: number
   avatarIncubateTimer: number
   pendingAvatarKind: 'none' | 'farm' | 'ranch'
+  /** 化身冷却剩余时间（秒） */
+  avatarTransformCooldown: number
   builderName: string
 }
 
@@ -59,6 +61,7 @@ export function createCircle(
     allySpawnTimer: 0,
     avatarIncubateTimer: 0,
     pendingAvatarKind: 'none',
+    avatarTransformCooldown: 0,
     builderName: roster.name,
   }
 }

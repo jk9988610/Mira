@@ -12,6 +12,7 @@ import {
   getAvatarTransformHints,
   getControlledEntity,
   resetAvatarState,
+  tickAvatarTransformCooldowns,
   updateAlly,
   updateFarmStructures,
   updateRanchStructures,
@@ -24,6 +25,7 @@ import {
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, type CircleEntity } from '../game/entity'
 import { PLAYER_START_MASS } from '../game/physics'
+import { PelletGrid } from '../game/pellet-grid'
 import { drawPellet, spawnPellets, type Pellet } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
@@ -40,6 +42,7 @@ export function createAvatarGameScene(
   let controlledId = 0
   let elapsed = 0
   let absorbFlash = 0
+  const pelletGrid = new PelletGrid()
 
   const reset = () => {
     resetAvatarState()
@@ -85,6 +88,9 @@ export function createAvatarGameScene(
         return
       }
 
+      tickAvatarTransformCooldowns(entities, dt)
+      pelletGrid.rebuild(pellets)
+
       const player = getControlledEntity(entities, controlledId)
 
       if (input.splitPressed && canBeginAvatarTransform(player, 'farm', entities)) {
@@ -105,22 +111,27 @@ export function createAvatarGameScene(
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
       }
 
-      pellets = updateFarmStructures(entities, pellets, dt)
+      pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
+      pelletGrid.rebuild(pellets)
       entities = updateRanchStructures(entities, dt)
 
-      for (const entity of [...entities]) {
+      for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i]
         if (entity.avatarRole !== 'ally' || !isActive(entity)) continue
-        const result = updateAlly(entity, entities, pellets, dt)
+        const result = updateAlly(entity, entities, pellets, pelletGrid, dt, elapsed)
         pellets = result.pellets
         entities = result.entities
         if (result.absorbed.length > 0) absorbFlash = 0.15
       }
 
+      pelletGrid.rebuild(pellets)
+
       const controlled = getControlledEntity(entities, controlledId)
       if (controlled && isActive(controlled) && !controlled.isFrozen) {
-        const absorbed = absorbPelletsForAvatar(controlled, pellets)
+        const absorbed = absorbPelletsForAvatar(controlled, pellets, pelletGrid)
         if (absorbed.length > 0) {
-          pellets = pellets.filter((p) => !absorbed.some((a) => a.id === p.id))
+          const absorbedIds = new Set(absorbed.map((p) => p.id))
+          pellets = pellets.filter((p) => !absorbedIds.has(p.id))
           absorbFlash = 0.18
           sfx.absorbPellet()
         }
@@ -136,6 +147,13 @@ export function createAvatarGameScene(
       const focusX = controlled?.x ?? WORLD_WIDTH / 2
       const focusY = controlled?.y ?? WORLD_HEIGHT / 2
       const cam = computeCamera(focusX, focusY, focusMass, width, height)
+      const viewPad = 120
+      const halfW = width / cam.renderScale / 2 + viewPad
+      const halfH = height / cam.renderScale / 2 + viewPad
+      const minX = cam.camX - halfW
+      const maxX = cam.camX + halfW
+      const minY = cam.camY - halfH
+      const maxY = cam.camY + halfH
 
       const sorted = [...entities].sort((a, b) => avatarEntityRadius(b) - avatarEntityRadius(a))
 
@@ -150,8 +168,14 @@ export function createAvatarGameScene(
       ctx.clip()
 
       drawWorld(ctx)
-      for (const pellet of pellets) drawPellet(ctx, pellet)
+      for (const pellet of pellets) {
+        if (pellet.x < minX || pellet.x > maxX || pellet.y < minY || pellet.y > maxY) continue
+        drawPellet(ctx, pellet)
+      }
       for (const entity of sorted) {
+        if (entity.x < minX - 80 || entity.x > maxX + 80 || entity.y < minY - 80 || entity.y > maxY + 80) {
+          continue
+        }
         if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') {
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
@@ -171,7 +195,7 @@ export function createAvatarGameScene(
         ranchHint: hints.ranch,
         farms: tribe.farms,
         ranches: tribe.ranches,
-        allies: tribe.allies,
+        circles: tribe.circles,
       })
     },
   }
