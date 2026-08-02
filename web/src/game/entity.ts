@@ -16,7 +16,16 @@ export interface CircleEntity {
   invincibleTimer: number
   impulseX: number
   impulseY: number
+  /** 化身模式：农场 / 牧场 / 友方后代 */
+  avatarRole: AvatarRole
+  isFrozen: boolean
+  pelletSpawnTimer: number
+  allySpawnTimer: number
+  avatarIncubateTimer: number
+  pendingAvatarKind: 'none' | 'farm' | 'ranch'
 }
+
+export type AvatarRole = 'none' | 'farm' | 'ranch' | 'ally'
 
 let nextId = 1
 
@@ -43,6 +52,12 @@ export function createCircle(
     invincibleTimer: 0,
     impulseX: 0,
     impulseY: 0,
+    avatarRole: 'none',
+    isFrozen: false,
+    pelletSpawnTimer: 0,
+    allySpawnTimer: 0,
+    avatarIncubateTimer: 0,
+    pendingAvatarKind: 'none',
   }
 }
 

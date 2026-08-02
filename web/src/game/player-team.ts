@@ -1,5 +1,5 @@
 import type { CircleEntity } from './entity'
-import { isActive } from './entity'
+import { clampEntityToWorld, createCircle, entityRadius, isActive } from './entity'
 import {
   MAX_HUMAN_CLONES,
   MERGE_INSIDE_RATIO,
@@ -9,12 +9,12 @@ import {
 } from './match-config'
 import { massToRadius, PLAYER_START_MASS } from './physics'
 import { PLAYER_ROSTER } from './roster'
-import { createCircle } from './entity'
-import { clampEntityToWorld } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 import { speedForMass } from './movement'
 
 const CENTER_PULL_SPEED = 280
+const GATHER_SPEED = 320
+const DETECTION_FACTOR = 11
 const SPLIT_LAUNCH_SPEED = 520
 const SPLIT_RECOIL = 0.38
 const IMPULSE_DECAY = 4.8
@@ -139,6 +139,9 @@ export function trySplitHuman(
   const dy = dirLen > 0.1 ? moveY / dirLen : 0
 
   const clone = createCircle(target.x, target.y, half, true, PLAYER_ROSTER)
+  const sep = entityRadius(target) + entityRadius(clone) + 4
+  clone.x = target.x + dx * sep
+  clone.y = target.y + dy * sep
   clone.impulseX = dx * SPLIT_LAUNCH_SPEED
   clone.impulseY = dy * SPLIT_LAUNCH_SPEED
   target.impulseX = -dx * SPLIT_LAUNCH_SPEED * SPLIT_RECOIL
@@ -147,6 +150,63 @@ export function trySplitHuman(
   clampEntityToWorld(clone, WORLD_WIDTH, WORLD_HEIGHT)
   clampEntityToWorld(target, WORLD_WIDTH, WORLD_HEIGHT)
   return clone
+}
+
+/** 按住 E：各分身朝自身探测范围内质量最大的圆移动 */
+export function updateHumanGather(
+  humans: CircleEntity[],
+  allEntities: CircleEntity[],
+  dt: number,
+): void {
+  for (const human of humans) {
+    const vision = entityRadius(human) * DETECTION_FACTOR
+    let target: CircleEntity | null = null
+    let bestMass = -1
+
+    for (const other of allEntities) {
+      if (other.id === human.id || !isActive(other)) continue
+      const dist = Math.hypot(other.x - human.x, other.y - human.y)
+      if (dist > vision || other.mass <= bestMass) continue
+      bestMass = other.mass
+      target = other
+    }
+
+    if (!target) continue
+    const dx = target.x - human.x
+    const dy = target.y - human.y
+    const dist = Math.hypot(dx, dy)
+    if (dist < 1) continue
+    human.x += (dx / dist) * GATHER_SPEED * dt
+    human.y += (dy / dist) * GATHER_SPEED * dt
+    clampEntityToWorld(human, WORLD_WIDTH, WORLD_HEIGHT)
+  }
+}
+
+/** 分身之间保持碰撞体积，不互相覆盖 */
+export function separateHumanClones(entities: CircleEntity[]): void {
+  const humans = getActiveHumans(entities)
+  for (let i = 0; i < humans.length; i++) {
+    for (let j = i + 1; j < humans.length; j++) {
+      const a = humans[i]
+      const b = humans[j]
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      let dist = Math.hypot(dx, dy)
+      const minDist = entityRadius(a) + entityRadius(b)
+      if (dist >= minDist - 0.5) continue
+      if (dist < 0.001) dist = 0.001
+      const overlap = minDist - dist
+      const nx = dx / dist
+      const ny = dy / dist
+      const push = overlap * 0.5
+      a.x -= nx * push
+      a.y -= ny * push
+      b.x += nx * push
+      b.y += ny * push
+      clampEntityToWorld(a, WORLD_WIDTH, WORLD_HEIGHT)
+      clampEntityToWorld(b, WORLD_WIDTH, WORLD_HEIGHT)
+    }
+  }
 }
 
 /** 多分身时朝质量中心聚拢（非按键触发） */

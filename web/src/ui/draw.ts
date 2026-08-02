@@ -99,6 +99,7 @@ export function drawBindingRow(
 }
 
 import type { LeaderboardView } from '../game/leaderboard'
+import { entityRadius, type CircleEntity } from '../game/entity'
 
 export interface HudData {
   timeRemaining: number
@@ -157,8 +158,8 @@ export function drawGameHud(
   ctx.font = '13px system-ui, sans-serif'
   const hint =
     data.cloneCount > 1
-      ? `分身 ${data.cloneCount}/16 · Q发射分裂 · 朝质量中心聚拢`
-      : `分身 ${data.cloneCount}/16 · Q发射分裂`
+      ? `分身 ${data.cloneCount}/16 · Q分裂 E聚集 · 朝质量中心聚拢`
+      : `分身 ${data.cloneCount}/16 · Q分裂 E聚集`
   roundRect(ctx, 16, 58, ctx.measureText(hint).width + 20, 28, 8)
   ctx.fill()
   ctx.fillStyle = '#8aa0c8'
@@ -338,6 +339,83 @@ export function drawGamepadBanner(
   ctx.fill()
   ctx.fillStyle = color
   ctx.fillText(text, width / 2, y + 21)
+}
+
+export interface AvatarHudData {
+  mass: number
+  zoom: number
+  farmReady: boolean
+  ranchReady: boolean
+  incubating: boolean
+  farms: number
+  ranches: number
+  allies: number
+}
+
+export function drawAvatarHud(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  data: AvatarHudData,
+): void {
+  drawHudMass(ctx, width, data.mass, data.zoom)
+
+  const farmHint = data.farmReady ? 'Q 化身农场' : 'Q 农场(质量不足)'
+  const ranchHint = data.ranchReady ? 'E 化身牧场' : 'E 牧场(质量不足)'
+  const status = data.incubating ? ' · 化身中…' : ''
+  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 后代 ${data.allies}`
+  const hint = `${farmHint} · ${ranchHint}${status}`
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+  ctx.font = '13px system-ui, sans-serif'
+  roundRect(ctx, 16, 16, ctx.measureText(hint).width + 20, 28, 8)
+  ctx.fill()
+  ctx.fillStyle = data.incubating ? '#ffc44d' : '#8aa0c8'
+  ctx.fillText(hint, 26, 35)
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
+  roundRect(ctx, 16, 50, ctx.measureText(tribe).width + 20, 24, 8)
+  ctx.fill()
+  ctx.fillStyle = '#7f8ca3'
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillText(tribe, 26, 66)
+}
+
+export function drawAvatarStructure(
+  ctx: CanvasRenderingContext2D,
+  entity: CircleEntity,
+  time = 0,
+): void {
+  const r = entityRadius(entity)
+  const { x, y, avatarRole, colorLight, colorDark, strokeColor, name } = entity
+
+  ctx.save()
+  const pulse = 0.85 + 0.15 * Math.sin(time * 2)
+  const ringColor = avatarRole === 'farm' ? 'rgba(143, 211, 255, 0.55)' : 'rgba(255, 196, 77, 0.55)'
+
+  ctx.beginPath()
+  ctx.arc(x, y, r * pulse + 10, 0, Math.PI * 2)
+  ctx.strokeStyle = ringColor
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
+  gradient.addColorStop(0, colorLight)
+  gradient.addColorStop(1, colorDark)
+  ctx.fillStyle = gradient
+  ctx.beginPath()
+  ctx.arc(x, y, r, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = strokeColor
+  ctx.lineWidth = 2
+  ctx.stroke()
+
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+  ctx.font = `600 ${Math.min(14, r * 0.34)}px system-ui, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(name, x, y)
+  ctx.restore()
 }
 
 function roundRect(
