@@ -1,7 +1,8 @@
-import { PELLET_MAX_RADIUS } from './pellet'
-
 /** 面密度 σ；质量 m = σ·π·r² */
 export const SURFACE_DENSITY = 0.12
+
+/** 与 pellet.ts 中 PELLET_MAX_RADIUS 保持一致，避免 physics↔pellet 循环依赖 */
+export const PELLET_MAX_RADIUS = 14
 
 export function massToRadius(mass: number): number {
   return Math.sqrt(mass / (SURFACE_DENSITY * Math.PI))

@@ -1,7 +1,8 @@
+import { avatarChildRadius, avatarEntityRadius } from './avatar-radius'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
-import { addMassLogarithmic, massToRadiusLogarithmic, PLAYER_START_MASS } from './physics'
+import { addMassLogarithmic, PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
-import { clampEntityToWorld, createCircle, entityRadius, isActive } from './entity'
+import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
   AVATAR_SPAWN_OFFSET,
   FARM_BUILD_COST,
@@ -26,11 +27,7 @@ export function resetAvatarState(): void {
   allyNameIndex = 0
 }
 
-export function avatarEntityRadius(entity: CircleEntity): number {
-  if (entity.avatarRole === 'farm') return entityRadius({ ...entity, mass: FARM_STRUCTURE_MASS })
-  if (entity.avatarRole === 'ranch') return entityRadius({ ...entity, mass: RANCH_STRUCTURE_MASS })
-  return massToRadiusLogarithmic(entity.mass)
-}
+export { avatarEntityRadius } from './avatar-radius'
 
 export function getControlledEntity(
   entities: CircleEntity[],
@@ -140,7 +137,7 @@ export function completeAvatarTransform(
 
   const leftover = Math.max(PLAYER_START_MASS, entity.mass)
   const wasPlayer = entity.isPlayer && entity.id === controlledId
-  const childRadius = massToRadiusLogarithmic(leftover)
+  const childRadius = avatarChildRadius(leftover)
   const spawn = findClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
 
   const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
@@ -234,7 +231,7 @@ export function updateFarmStructures(
 }
 
 export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): CircleEntity[] {
-  const childRadius = massToRadiusLogarithmic(PLAYER_START_MASS)
+  const childRadius = avatarChildRadius(PLAYER_START_MASS)
   const spawn = findClearSpawnPosition(ranch.x, ranch.y, childRadius, entities, ranch.id)
   const roster = AI_ROSTER[allyNameIndex % AI_ROSTER.length]
   allyNameIndex++
