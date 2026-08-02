@@ -1,4 +1,8 @@
+import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 import type { Pellet } from './pellet'
+
+/** 颗粒邻近查询的最大半径（覆盖整张地图对角线） */
+const MAX_QUERY_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT)
 
 /** 颗粒空间网格，用于加速邻近查询 */
 export class PelletGrid {
@@ -22,11 +26,12 @@ export class PelletGrid {
   }
 
   forEachInRadius(x: number, y: number, radius: number, fn: (pellet: Pellet) => void): void {
-    const r2 = radius * radius
-    const minCx = Math.floor((x - radius) / this.cellSize)
-    const maxCx = Math.floor((x + radius) / this.cellSize)
-    const minCy = Math.floor((y - radius) / this.cellSize)
-    const maxCy = Math.floor((y + radius) / this.cellSize)
+    const safeRadius = Number.isFinite(radius) ? Math.min(radius, MAX_QUERY_RADIUS) : MAX_QUERY_RADIUS
+    const r2 = safeRadius * safeRadius
+    const minCx = Math.floor((x - safeRadius) / this.cellSize)
+    const maxCx = Math.floor((x + safeRadius) / this.cellSize)
+    const minCy = Math.floor((y - safeRadius) / this.cellSize)
+    const maxCy = Math.floor((y + safeRadius) / this.cellSize)
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
         const bucket = this.buckets.get(cx * 100003 + cy)
@@ -48,13 +53,15 @@ export class PelletGrid {
     return count
   }
 
-  findNearest(x: number, y: number, maxRadius = Infinity): Pellet | null {
+  findNearest(x: number, y: number, maxRadius = MAX_QUERY_RADIUS): Pellet | null {
     let nearest: Pellet | null = null
-    let nearestDist = maxRadius
+    let nearestDistSq = maxRadius * maxRadius
     this.forEachInRadius(x, y, maxRadius, (pellet) => {
-      const dist = Math.hypot(pellet.x - x, pellet.y - y)
-      if (dist < nearestDist) {
-        nearestDist = dist
+      const dx = pellet.x - x
+      const dy = pellet.y - y
+      const distSq = dx * dx + dy * dy
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq
         nearest = pellet
       }
     })

@@ -532,7 +532,7 @@ export function updateAlly(
     }
   }
 
-  const nearest = grid.findNearest(ally.x, ally.y)
+  const nearest = grid.findNearest(ally.x, ally.y, 2400)
   if (nearest) {
     moveEntityToward(ally, nearest.x, nearest.y, dt)
   }
