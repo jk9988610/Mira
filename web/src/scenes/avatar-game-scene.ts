@@ -6,10 +6,10 @@ import {
   applyFrozenMovement,
   avatarEntityRadius,
   canBeginAvatarTransform,
-  canBuildMoreFarms,
   completeAvatarTransform,
   countTribeStructures,
   createStarterStructure,
+  getAvatarTransformHints,
   getControlledEntity,
   resetAvatarState,
   updateAlly,
@@ -17,9 +17,7 @@ import {
   updateRanchStructures,
 } from '../game/avatar-system'
 import {
-  FARM_BUILD_COST,
   AVATAR_INITIAL_PELLETS,
-  RANCH_BUILD_COST,
   STARTER_FARM_OFFSET,
   STARTER_RANCH_OFFSET,
 } from '../game/avatar-config'
@@ -165,11 +163,12 @@ export function createAvatarGameScene(
       ctx.restore()
 
       const tribe = countTribeStructures(entities)
+      const hints = getAvatarTransformHints(controlled, entities)
       drawAvatarHud(ctx, width, {
         mass: focusMass,
         zoom: cam.zoom,
-        farmReady: (controlled?.mass ?? 0) >= FARM_BUILD_COST && canBuildMoreFarms(entities),
-        ranchReady: (controlled?.mass ?? 0) >= RANCH_BUILD_COST,
+        farmHint: hints.farm,
+        ranchHint: hints.ranch,
         farms: tribe.farms,
         ranches: tribe.ranches,
         allies: tribe.allies,

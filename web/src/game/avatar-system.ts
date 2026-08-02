@@ -1,6 +1,6 @@
 import { avatarChildRadius, avatarEntityRadius } from './avatar-radius'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
-import { addMassLogarithmic, PLAYER_START_MASS } from './physics'
+import { addMassLogarithmic, massToRadius, PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
 import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
@@ -66,6 +66,47 @@ export function canRanchSpawnAlly(entities: CircleEntity[]): boolean {
   return countRanches(entities) * 10 >= entities.length
 }
 
+function structureRadius(kind: 'farm' | 'ranch'): number {
+  return massToRadius(structureMass(kind))
+}
+
+function isAvatarStructure(entity: CircleEntity): boolean {
+  return entity.avatarRole === 'farm' || entity.avatarRole === 'ranch'
+}
+
+/** 在 (x,y) 放置指定建筑是否会与现有农场/牧场重叠 */
+export function wouldOverlapStructures(
+  x: number,
+  y: number,
+  radius: number,
+  entities: CircleEntity[],
+  ignoreId: number,
+): boolean {
+  for (const other of entities) {
+    if (other.id === ignoreId || !isAvatarStructure(other)) continue
+    const otherR = avatarEntityRadius(other)
+    const dist = Math.hypot(other.x - x, other.y - y)
+    if (dist < radius + otherR + SPAWN_CLEARANCE) return true
+  }
+  return false
+}
+
+/** 化身后建筑与新生圆是否都有合法位置 */
+export function canPlaceAvatarTransform(
+  entity: CircleEntity,
+  kind: 'farm' | 'ranch',
+  entities: CircleEntity[],
+): boolean {
+  const structureR = structureRadius(kind)
+  if (wouldOverlapStructures(entity.x, entity.y, structureR, entities, entity.id)) {
+    return false
+  }
+
+  const leftover = Math.max(PLAYER_START_MASS, entity.mass - buildCost(kind))
+  const childRadius = avatarChildRadius(leftover)
+  return hasClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
+}
+
 export function canBeginAvatarTransform(
   entity: CircleEntity | null,
   kind: 'farm' | 'ranch',
@@ -77,6 +118,7 @@ export function canBeginAvatarTransform(
   if (!entity.isPlayer && entity.avatarRole !== 'ally') return false
   if (entity.mass < buildCost(kind)) return false
   if (kind === 'farm' && !canBuildMoreFarms(entities)) return false
+  if (!canPlaceAvatarTransform(entity, kind, entities)) return false
   return true
 }
 
@@ -90,13 +132,32 @@ function overlapsOthers(x: number, y: number, radius: number, entities: CircleEn
   return false
 }
 
+export function hasClearSpawnPosition(
+  originX: number,
+  originY: number,
+  radius: number,
+  entities: CircleEntity[],
+  ignoreId: number,
+): boolean {
+  for (let ring = 0; ring < 4; ring++) {
+    const dist = AVATAR_SPAWN_OFFSET + ring * 55
+    for (let i = 0; i < 16; i++) {
+      const angle = (Math.PI * 2 * i) / 16 + ring * 0.4
+      const x = originX + Math.cos(angle) * dist
+      const y = originY + Math.sin(angle) * dist
+      if (!overlapsOthers(x, y, radius, entities, ignoreId)) return true
+    }
+  }
+  return false
+}
+
 export function findClearSpawnPosition(
   originX: number,
   originY: number,
   radius: number,
   entities: CircleEntity[],
   ignoreId: number,
-): { x: number; y: number } {
+): { x: number; y: number } | null {
   for (let ring = 0; ring < 4; ring++) {
     const dist = AVATAR_SPAWN_OFFSET + ring * 55
     for (let i = 0; i < 16; i++) {
@@ -108,7 +169,7 @@ export function findClearSpawnPosition(
       }
     }
   }
-  return { x: originX + AVATAR_SPAWN_OFFSET, y: originY }
+  return null
 }
 
 function rosterFromEntity(entity: CircleEntity) {
@@ -131,6 +192,10 @@ export function completeAvatarTransform(
   kind: 'farm' | 'ranch',
   controlledId: number,
 ): TransformResult {
+  if (!canBeginAvatarTransform(entity, kind, entities)) {
+    return { entities, newControlledId: null }
+  }
+
   const cost = buildCost(kind)
   entity.builderName = entity.name.replace(/·后$/, '').replace(/的(农场|牧场)$/, '')
   entity.mass -= cost
@@ -139,6 +204,7 @@ export function completeAvatarTransform(
   const wasPlayer = entity.isPlayer && entity.id === controlledId
   const childRadius = avatarChildRadius(leftover)
   const spawn = findClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
+  if (!spawn) return { entities, newControlledId: null }
 
   const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
   const child = createCircle(spawn.x, spawn.y, leftover, wasPlayer, roster)
@@ -233,6 +299,7 @@ export function updateFarmStructures(
 export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): CircleEntity[] {
   const childRadius = avatarChildRadius(PLAYER_START_MASS)
   const spawn = findClearSpawnPosition(ranch.x, ranch.y, childRadius, entities, ranch.id)
+  if (!spawn) return entities
   const roster = AI_ROSTER[allyNameIndex % AI_ROSTER.length]
   allyNameIndex++
   const ally = createCircle(spawn.x, spawn.y, PLAYER_START_MASS, false, roster)
@@ -313,6 +380,31 @@ export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: 
   entity.x += (moveX / len) * speed * dt
   entity.y += (moveY / len) * speed * dt
   clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+}
+
+export function getAvatarTransformHints(
+  entity: CircleEntity | null,
+  entities: CircleEntity[],
+): { farm: string; ranch: string } {
+  if (!entity) {
+    return { farm: 'Q 农场(未就绪)', ranch: 'E 牧场(未就绪)' }
+  }
+
+  const farmMassOk = entity.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
+  const ranchMassOk = entity.mass >= RANCH_BUILD_COST
+  const farmPlaceOk = farmMassOk && canPlaceAvatarTransform(entity, 'farm', entities)
+  const ranchPlaceOk = ranchMassOk && canPlaceAvatarTransform(entity, 'ranch', entities)
+
+  let farm = 'Q 农场(未就绪)'
+  if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
+  else if (farmMassOk && !canBuildMoreFarms(entities)) farm = 'Q 农场(数量上限)'
+  else if (farmMassOk) farm = 'Q 农场(位置被占)'
+
+  let ranch = 'E 牧场(质量不足)'
+  if (ranchMassOk && ranchPlaceOk) ranch = 'E 化身牧场'
+  else if (ranchMassOk) ranch = 'E 牧场(位置被占)'
+
+  return { farm, ranch }
 }
 
 export function countTribeStructures(entities: CircleEntity[]): { farms: number; ranches: number; allies: number } {
