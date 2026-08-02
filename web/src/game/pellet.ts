@@ -1,4 +1,4 @@
-import { SURFACE_DENSITY } from './physics'
+import { SURFACE_DENSITY, PELLET_MAX_RADIUS } from './physics'
 
 export interface Pellet {
   id: number
@@ -19,7 +19,7 @@ const MASS_MULTIPLIERS: Record<number, number> = {
 
 const SIDE_OPTIONS = [3, 4, 5, 6] as const
 export const PELLET_MIN_RADIUS = 6
-export const PELLET_MAX_RADIUS = 14
+export { PELLET_MAX_RADIUS } from './physics'
 
 let nextId = 1
 

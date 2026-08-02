@@ -1,3 +1,7 @@
+import type { LeaderboardView } from '../game/leaderboard'
+import type { CircleEntity } from '../game/entity'
+import { avatarEntityRadius } from '../game/avatar-radius'
+
 export function clearScreen(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -97,10 +101,6 @@ export function drawBindingRow(
   ctx.font = '600 18px system-ui, sans-serif'
   ctx.fillText(listening ? '请按键…' : value, x + rowWidth - 16, y + 30)
 }
-
-import type { LeaderboardView } from '../game/leaderboard'
-import type { CircleEntity } from '../game/entity'
-import { avatarEntityRadius } from '../game/avatar-system'
 
 export interface HudData {
   timeRemaining: number
