@@ -6,6 +6,7 @@ import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
   ALLIES_PER_RANCH,
   AVATAR_SEEK_CACHE_SEC,
+  AVATAR_SEEK_FAIL_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
   AVATAR_TRANSFORM_COOLDOWN_SEC,
   AVATAR_MAX_PELLETS,
@@ -28,7 +29,10 @@ import { AI_ROSTER, PLAYER_ROSTER } from './roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 let allyNameIndex = 0
-const allySeekCache = new Map<number, { x: number; y: number; kind: 'farm' | 'ranch'; expiresAt: number }>()
+type AllySeekCache =
+  | { kind: 'farm' | 'ranch'; status: 'hit'; x: number; y: number; expiresAt: number }
+  | { kind: 'farm' | 'ranch'; status: 'miss'; expiresAt: number }
+const allySeekCache = new Map<number, AllySeekCache>()
 
 export function resetAvatarState(): void {
   allyNameIndex = 0
@@ -41,7 +45,10 @@ export function getControlledEntity(
   entities: CircleEntity[],
   controlledId: number,
 ): CircleEntity | null {
-  return entities.find((e) => e.id === controlledId && e.isPlayer && isActive(e)) ?? null
+  const direct =
+    entities.find((e) => e.id === controlledId && e.isPlayer && isActive(e) && !e.isFrozen) ?? null
+  if (direct) return direct
+  return entities.find((e) => e.isPlayer && isActive(e) && !e.isFrozen) ?? null
 }
 
 function buildCost(kind: 'farm' | 'ranch'): number {
@@ -172,10 +179,12 @@ export function hasClearSpawnPosition(
   entities: CircleEntity[],
   ignoreId: number,
 ): boolean {
-  for (let ring = 0; ring < 4; ring++) {
+  const rings = entities.length > 120 ? 2 : entities.length > 60 ? 3 : 4
+  const samples = entities.length > 120 ? 8 : 16
+  for (let ring = 0; ring < rings; ring++) {
     const dist = AVATAR_SPAWN_OFFSET + ring * 55
-    for (let i = 0; i < 16; i++) {
-      const angle = (Math.PI * 2 * i) / 16 + ring * 0.4
+    for (let i = 0; i < samples; i++) {
+      const angle = (Math.PI * 2 * i) / samples + ring * 0.4
       const x = originX + Math.cos(angle) * dist
       const y = originY + Math.sin(angle) * dist
       if (!overlapsOthers(x, y, radius, entities, ignoreId)) return true
@@ -213,6 +222,7 @@ export function findNearestAvatarTransformSpot(
 ): { x: number; y: number } | null {
   const cached = allySeekCache.get(entity.id)
   if (cached && cached.kind === kind && cached.expiresAt > now) {
+    if (cached.status === 'miss') return null
     return { x: cached.x, y: cached.y }
   }
 
@@ -229,15 +239,21 @@ export function findNearestAvatarTransformSpot(
   }
 
   if (isValidSpot(entity.x, entity.y)) {
-    allySeekCache.set(entity.id, { x: entity.x, y: entity.y, kind, expiresAt: now + AVATAR_SEEK_CACHE_SEC })
+    allySeekCache.set(entity.id, {
+      kind,
+      status: 'hit',
+      x: entity.x,
+      y: entity.y,
+      expiresAt: now + AVATAR_SEEK_CACHE_SEC,
+    })
     return { x: entity.x, y: entity.y }
   }
 
   const step = 60
-  const maxRings = entities.length > 120 ? 12 : entities.length > 60 ? 18 : 24
+  const maxRings = entities.length > 120 ? 8 : entities.length > 60 ? 12 : 16
   for (let ring = 1; ring <= maxRings; ring++) {
     const dist = ring * step
-    const samples = Math.min(24, Math.max(12, ring * 3))
+    const samples = Math.min(16, Math.max(8, ring * 2))
     let best: { x: number; y: number; d: number } | null = null
     for (let i = 0; i < samples; i++) {
       const angle = (Math.PI * 2 * i) / samples
@@ -248,11 +264,21 @@ export function findNearestAvatarTransformSpot(
       if (!best || d < best.d) best = { x, y, d }
     }
     if (best) {
-      allySeekCache.set(entity.id, { x: best.x, y: best.y, kind, expiresAt: now + AVATAR_SEEK_CACHE_SEC })
+      allySeekCache.set(entity.id, {
+        kind,
+        status: 'hit',
+        x: best.x,
+        y: best.y,
+        expiresAt: now + AVATAR_SEEK_CACHE_SEC,
+      })
       return { x: best.x, y: best.y }
     }
   }
-  allySeekCache.delete(entity.id)
+  allySeekCache.set(entity.id, {
+    kind,
+    status: 'miss',
+    expiresAt: now + AVATAR_SEEK_FAIL_CACHE_SEC,
+  })
   return null
 }
 
@@ -281,7 +307,7 @@ function tryAllyTransform(
   return { entities: result.entities, pellets: nextPellets, absorbed }
 }
 
-/** AI 根据农场/牧场比例决定优先化身类型 */
+/** AI 根据农场/牧场比例决定优先化身类型（仅看质量与比例，位置另寻） */
 export function decideAllyTransformKind(
   ally: CircleEntity,
   entities: CircleEntity[],
@@ -290,19 +316,15 @@ export function decideAllyTransformKind(
 
   const farms = countFarms(entities)
   const ranches = countRanches(entities)
-  const ranchReady =
-    ally.mass >= RANCH_BUILD_COST && canPlaceAvatarTransform(ally, 'ranch', entities)
-  const farmReady =
-    ally.mass >= FARM_BUILD_COST &&
-    canBuildMoreFarms(entities) &&
-    canPlaceAvatarTransform(ally, 'farm', entities)
+  const ranchMassOk = ally.mass >= RANCH_BUILD_COST
+  const farmMassOk = ally.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
 
   const ranchPressure = farms >= Math.max(1, ranches) * Math.ceil(FARMS_PER_RANCH * 0.6)
   const needRanch = ranchPressure || !canBuildMoreFarms(entities)
 
-  if (needRanch && ranchReady) return 'ranch'
-  if (farmReady) return 'farm'
-  if (ranchReady && ranches === 0) return 'ranch'
+  if (needRanch && ranchMassOk) return 'ranch'
+  if (farmMassOk) return 'farm'
+  if (ranchMassOk && ranches === 0) return 'ranch'
   return null
 }
 
@@ -516,12 +538,6 @@ export function updateAlly(
   }
 
   const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets, grid)
-  const retryKind = decideAllyTransformKind(ally, entities)
-  if (retryKind) {
-    const afterEat = tryAllyTransform(ally, entities, nextPellets, retryKind)
-    return { pellets: afterEat.pellets, absorbed: [...absorbed, ...afterEat.absorbed], entities: afterEat.entities }
-  }
-
   return { pellets: nextPellets, absorbed, entities }
 }
 
