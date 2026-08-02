@@ -23,7 +23,7 @@ export function createModesScene(app: App, go: (scene: string) => void) {
       if (input.downPressed) focus.move(1)
       if (input.upPressed) focus.move(-1)
       if (input.confirmPressed) activate(focus.getIndex())
-      if (input.backPressed) go('menu')
+      if (input.pausePressed) go('menu')
     },
     onTap(x: number, y: number, width: number, height: number) {
       const startY = height * 0.4
@@ -45,7 +45,7 @@ export function createModesScene(app: App, go: (scene: string) => void) {
       MODE_ITEMS.forEach((label, i) => {
         drawMenuItem(ctx, width, startY + i * 68, label, focus.getIndex() === i)
       })
-      drawHint(ctx, width, height, 'A 确认 · B 返回')
+      drawHint(ctx, width, height, 'A 确认 · Start 返回')
     },
   }
 }

@@ -62,7 +62,7 @@ export function createMenuScene(app: App, go: (scene: string) => void) {
       MENU_ITEMS.forEach((label, i) => {
         drawMenuItem(ctx, width, startY + i * 68, label, focus.getIndex() === i)
       })
-      drawHint(ctx, width, height, '十字键/摇杆切换 · A 确认 · 也可触屏点击')
+      drawHint(ctx, width, height, '十字键/摇杆切换 · A 确认 · Start 暂停')
     },
   }
 }
@@ -79,7 +79,7 @@ export function createPauseScene(app: App, go: (scene: string) => void, resume: 
       const input = app.input.snapshot()
       if (input.downPressed) focus.move(1)
       if (input.upPressed) focus.move(-1)
-      if (input.backPressed) resume()
+      if (input.pausePressed) resume()
       if (input.confirmPressed) {
         if (focus.getIndex() === 0) resume()
         else go('menu')
@@ -93,7 +93,7 @@ export function createPauseScene(app: App, go: (scene: string) => void, resume: 
       ;['继续游戏', '返回主菜单'].forEach((label, i) => {
         drawMenuItem(ctx, width, startY + i * 68, label, focus.getIndex() === i)
       })
-      drawHint(ctx, width, height, 'B/Esc 继续 · ↑↓ 选择')
+      drawHint(ctx, width, height, 'A 继续 · Start 关闭暂停')
     },
   }
 }
