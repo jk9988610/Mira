@@ -42,7 +42,13 @@ export function createAvatarGameScene(
   let controlledId = 0
   let elapsed = 0
   let absorbFlash = 0
+  let allyUpdateTick = 0
   const pelletGrid = new PelletGrid()
+
+  const syncControlledId = () => {
+    const controlled = getControlledEntity(entities, controlledId)
+    if (controlled && controlled.id !== controlledId) controlledId = controlled.id
+  }
 
   const reset = () => {
     resetAvatarState()
@@ -98,6 +104,7 @@ export function createAvatarGameScene(
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
+        pelletGrid.rebuild(pellets)
       }
 
       if (input.gatherPressed && canBeginAvatarTransform(player, 'ranch', entities)) {
@@ -105,6 +112,7 @@ export function createAvatarGameScene(
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
+        pelletGrid.rebuild(pellets)
       }
 
       if (player && !player.isFrozen) {
@@ -112,19 +120,23 @@ export function createAvatarGameScene(
       }
 
       pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
-      pelletGrid.rebuild(pellets)
       entities = updateRanchStructures(entities, dt)
 
+      allyUpdateTick++
+      const allyStride = entities.length > 120 ? 2 : 1
       for (let i = 0; i < entities.length; i++) {
+        if (allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const entity = entities[i]
         if (entity.avatarRole !== 'ally' || !isActive(entity)) continue
-        const result = updateAlly(entity, entities, pellets, pelletGrid, dt, elapsed)
+        const result = updateAlly(entity, entities, pellets, pelletGrid, dt * allyStride, elapsed)
         pellets = result.pellets
         entities = result.entities
         if (result.absorbed.length > 0) absorbFlash = 0.15
       }
 
       pelletGrid.rebuild(pellets)
+
+      syncControlledId()
 
       const controlled = getControlledEntity(entities, controlledId)
       if (controlled && isActive(controlled) && !controlled.isFrozen) {

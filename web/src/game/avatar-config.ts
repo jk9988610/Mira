@@ -28,6 +28,8 @@ export const AVATAR_TRANSFORM_COOLDOWN_SEC = 3
 export const AVATAR_MAX_PELLETS = 1200
 /** AI 寻位目标缓存时间（秒） */
 export const AVATAR_SEEK_CACHE_SEC = 0.4
+/** 寻位失败后的冷却（秒），避免每帧全图搜索导致卡死 */
+export const AVATAR_SEEK_FAIL_CACHE_SEC = 1.5
 
 /** @deprecated */
 export const AVATAR_FARM_MASS_THRESHOLD = FARM_BUILD_COST
