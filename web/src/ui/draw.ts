@@ -345,8 +345,8 @@ export function drawGamepadBanner(
 export interface AvatarHudData {
   mass: number
   zoom: number
-  farmReady: boolean
-  ranchReady: boolean
+  farmHint: string
+  ranchHint: string
   farms: number
   ranches: number
   allies: number
@@ -399,10 +399,8 @@ export function drawAvatarHud(
 ): void {
   drawHudMass(ctx, width, data.mass, data.zoom)
 
-  const farmHint = data.farmReady ? 'Q 化身农场' : 'Q 农场(未就绪)'
-  const ranchHint = data.ranchReady ? 'E 化身牧场' : 'E 牧场(质量不足)'
   const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 后代 ${data.allies}`
-  const hint = `${farmHint} · ${ranchHint}`
+  const hint = `${data.farmHint} · ${data.ranchHint}`
 
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
