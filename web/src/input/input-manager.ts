@@ -19,6 +19,8 @@ export interface InputSnapshot {
   backPressed: boolean
   pausePressed: boolean
   splitPressed: boolean
+  gatherHeld: boolean
+  gatherPressed: boolean
   upPressed: boolean
   downPressed: boolean
 }
@@ -146,6 +148,8 @@ export class InputManager {
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
       splitPressed: this.wasActionPressed('SPLIT'),
+      gatherHeld: this.isActionHeld('GATHER'),
+      gatherPressed: this.wasActionPressed('GATHER'),
       upPressed,
       downPressed,
     }

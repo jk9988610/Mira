@@ -26,8 +26,10 @@ import {
   getHumanCameraFocus,
   getHumanTotalMass,
   resolveHumanMerges,
+  separateHumanClones,
   soonestHumanRespawn,
   trySplitHuman,
+  updateHumanGather,
   updateHumanCenterPull,
 } from '../game/player-team'
 import { PLAYER_START_MASS } from '../game/physics'
@@ -159,10 +161,17 @@ export function createGameScene(
       }
 
       for (const human of getActiveHumans(players)) {
-        applyMovement(human, input.moveX, input.moveY, dt)
+        if (!input.gatherHeld) {
+          applyMovement(human, input.moveX, input.moveY, dt)
+        }
         applyEntityImpulse(human, dt)
       }
 
+      if (input.gatherHeld) {
+        updateHumanGather(getActiveHumans(players), players, dt)
+      }
+
+      separateHumanClones(players)
       updateHumanCenterPull(players, dt)
 
       const removedPelletIds = new Set<number>()

@@ -5,7 +5,9 @@ import { SceneManager } from './core/scene-manager'
 import { loadBindings, saveBindings } from './input/actions'
 import { InputManager } from './input/input-manager'
 import { createBindingsScene } from './scenes/bindings-scene'
+import { createAvatarGameScene } from './scenes/avatar-game-scene'
 import { createGameScene } from './scenes/game-scene'
+import { createModesScene } from './scenes/modes-scene'
 import { createMenuScene, createPauseScene } from './scenes/menu-scene'
 
 function main() {
@@ -18,6 +20,7 @@ function main() {
 
   const scenes = new SceneManager({
     menu: () => createMenuScene(app, (name) => scenes.switchTo(name)),
+    modes: () => createModesScene(app, (name) => scenes.switchTo(name)),
     bindings: () =>
       createBindingsScene(
         app,
@@ -47,10 +50,29 @@ function main() {
         },
         () => paused,
       ),
+    'avatar-game': () =>
+      createAvatarGameScene(
+        app,
+        (name) => scenes.switchTo(name),
+        (visible) => {
+          paused = visible
+          if (visible) {
+            pauseOverlay = createPauseScene(app, (name) => scenes.switchTo(name), () => {
+              paused = false
+              pauseOverlay = null
+            })
+            pauseOverlay.enter()
+          } else {
+            pauseOverlay?.exit()
+            pauseOverlay = null
+          }
+        },
+        () => paused,
+      ),
   })
 
   app.scenes = scenes
-  if (!localStorage.getItem('mira_bindings_v4')) {
+  if (!localStorage.getItem('mira_bindings_v5')) {
     saveBindings(bindings)
   }
   requestAppFullscreen()
