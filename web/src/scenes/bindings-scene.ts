@@ -32,11 +32,11 @@ export function createBindingsScene(
           setBindings(working)
           listening = false
         }
-        if (input.backPressed) listening = false
+        if (input.pausePressed) listening = false
         return
       }
 
-      if (input.backPressed) {
+      if (input.pausePressed) {
         go('menu')
         return
       }
@@ -76,7 +76,7 @@ export function createBindingsScene(
         focus.getIndex() === ALL_ACTIONS.length,
         false,
       )
-      drawHint(ctx, width, height, '↑↓ 选择 · Enter/A 重绑 · B/Esc 返回')
+      drawHint(ctx, width, height, '↑↓ 选择 · Enter/A 重绑 · Start 返回')
     },
   }
 }

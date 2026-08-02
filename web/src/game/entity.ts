@@ -23,6 +23,7 @@ export interface CircleEntity {
   allySpawnTimer: number
   avatarIncubateTimer: number
   pendingAvatarKind: 'none' | 'farm' | 'ranch'
+  builderName: string
 }
 
 export type AvatarRole = 'none' | 'farm' | 'ranch' | 'ally'
@@ -58,6 +59,7 @@ export function createCircle(
     allySpawnTimer: 0,
     avatarIncubateTimer: 0,
     pendingAvatarKind: 'none',
+    builderName: roster.name,
   }
 }
 

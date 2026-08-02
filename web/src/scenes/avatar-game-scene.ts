@@ -14,9 +14,9 @@ import {
   updateRanchStructures,
 } from '../game/avatar-system'
 import {
-  AVATAR_FARM_MASS_THRESHOLD,
+  FARM_BUILD_COST,
   AVATAR_INITIAL_PELLETS,
-  AVATAR_RANCH_MASS_THRESHOLD,
+  RANCH_BUILD_COST,
 } from '../game/avatar-config'
 import { computeCamera } from '../game/camera'
 import { absorbPelletsForEntity } from '../game/collision'
@@ -29,7 +29,7 @@ import { clearScreen, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
 
 export function createAvatarGameScene(
   app: App,
-  go: (scene: string) => void,
+  _go: (scene: string) => void,
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
 ) {
@@ -66,10 +66,6 @@ export function createAvatarGameScene(
       const input = app.input.snapshot()
       if (input.pausePressed) {
         showPause(true)
-        return
-      }
-      if (input.backPressed) {
-        go('menu')
         return
       }
 
@@ -162,8 +158,8 @@ export function createAvatarGameScene(
       drawAvatarHud(ctx, width, {
         mass: focusMass,
         zoom: cam.zoom,
-        farmReady: (controlled?.mass ?? 0) >= AVATAR_FARM_MASS_THRESHOLD,
-        ranchReady: (controlled?.mass ?? 0) >= AVATAR_RANCH_MASS_THRESHOLD,
+        farmReady: (controlled?.mass ?? 0) >= FARM_BUILD_COST,
+        ranchReady: (controlled?.mass ?? 0) >= RANCH_BUILD_COST,
         incubating: (controlled?.avatarIncubateTimer ?? 0) > 0,
         farms: tribe.farms,
         ranches: tribe.ranches,
