@@ -145,7 +145,6 @@ export function canBeginAvatarTransform(
   if (!entity || !isActive(entity)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
-  if (!entity.isPlayer && entity.avatarRole !== 'ally') return false
   if (entity.mass < buildCost(kind)) return false
   if (entity.avatarTransformCooldown > 0) return false
   if (kind === 'farm' && !canBuildMoreFarms(entities)) return false
@@ -427,10 +426,10 @@ export function updateFarmStructures(
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
     entity.pelletSpawnTimer = FARM_PELLET_INTERVAL_SEC
-    if (pellets.length >= AVATAR_MAX_PELLETS) break
-    if (countPelletsNearFarm(entity, grid) >= FARM_NEARBY_PELLET_CAP) continue
-    pellets.push(...spawnPelletsAroundFarm(entity))
     entity.structureProduceCount++
+    if (pellets.length < AVATAR_MAX_PELLETS && countPelletsNearFarm(entity, grid) < FARM_NEARBY_PELLET_CAP) {
+      pellets.push(...spawnPelletsAroundFarm(entity))
+    }
     if (entity.structureProduceCount >= FARM_PELLET_CYCLES_BEFORE_REVERT) {
       endAvatarTransform(entity)
     }
@@ -465,10 +464,16 @@ export function updateRanchStructures(entities: CircleEntity[], dt: number): Cir
     entity.allySpawnTimer -= dt
     if (entity.allySpawnTimer > 0) continue
     entity.allySpawnTimer = RANCH_ALLY_INTERVAL_SEC
-    if (!canRanchSpawnAlly(next)) continue
-    next = spawnRanchAlly(next, entity)
-    entity.structureProduceCount++
-    if (entity.structureProduceCount >= RANCH_ALLIES_BEFORE_REVERT) {
+
+    if (canRanchSpawnAlly(next)) {
+      const beforeCount = next.length
+      next = spawnRanchAlly(next, entity)
+      if (next.length > beforeCount) entity.structureProduceCount++
+    }
+
+    const quotaMet = entity.structureProduceCount >= RANCH_ALLIES_BEFORE_REVERT
+    const cannotProduceMore = !canRanchSpawnAlly(next)
+    if (quotaMet || (entity.structureProduceCount > 0 && cannotProduceMore)) {
       endAvatarTransform(entity)
     }
   }
@@ -578,17 +583,19 @@ export function getAvatarTransformHints(
     return { farm: `Q 冷却(${sec}s)`, ranch: `E 冷却(${sec}s)` }
   }
 
-  const farmMassOk = entity.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
+  const farmMassOk = entity.mass >= FARM_BUILD_COST
+  const farmQuotaOk = canBuildMoreFarms(entities)
   const ranchMassOk = entity.mass >= RANCH_BUILD_COST
-  const farmPlaceOk = farmMassOk && canPlaceAvatarTransform(entity, 'farm', entities)
+  const farmPlaceOk = farmMassOk && farmQuotaOk && canPlaceAvatarTransform(entity, 'farm', entities)
   const ranchPlaceOk = ranchMassOk && canPlaceAvatarTransform(entity, 'ranch', entities)
   const saturated = entity.absorptionPaused
 
   let farm = 'Q 农场(未就绪)'
   if (saturated) farm = 'Q 农场(饱食中)'
-  else if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
-  else if (farmMassOk && !canBuildMoreFarms(entities)) farm = 'Q 农场(需更多牧场)'
-  else if (farmMassOk) farm = 'Q 农场(位置被占)'
+  else if (farmMassOk && farmQuotaOk && farmPlaceOk) farm = 'Q 化身农场'
+  else if (farmMassOk && !farmQuotaOk) farm = 'Q 农场(需先化身牧场)'
+  else if (farmMassOk && farmQuotaOk) farm = 'Q 农场(位置被占)'
+  else if (!farmMassOk) farm = 'Q 农场(质量不足)'
 
   let ranch = 'E 牧场(质量不足)'
   if (ranchMassOk && ranchPlaceOk) ranch = 'E 化身牧场'

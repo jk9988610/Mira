@@ -34,6 +34,15 @@ import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } fro
 
 type PauseBridge = { fn: (() => void) | null }
 
+function isNpcMobile(entity: CircleEntity): boolean {
+  return (
+    isActive(entity) &&
+    !entity.isFrozen &&
+    !entity.isPlayer &&
+    (entity.avatarRole === 'none' || entity.avatarRole === 'ally')
+  )
+}
+
 const STARTER_OFFSETS = [
   { x: 0, y: 0 },
   { x: 220, y: -120 },
@@ -123,7 +132,7 @@ export function createAvatarGameScene(
         if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') continue
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
-        } else if (entity.avatarRole === 'ally') {
+        } else if (isNpcMobile(entity)) {
           movingIds.add(entity.id)
         }
       }
@@ -159,7 +168,7 @@ export function createAvatarGameScene(
       for (let i = 0; i < entities.length; i++) {
         if (allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const entity = entities[i]
-        if (entity.avatarRole !== 'ally' || !isActive(entity)) continue
+        if (!isNpcMobile(entity)) continue
         const result = updateAlly(entity, entities, pellets, pelletGrid, dt * allyStride, elapsed)
         pellets = result.pellets
         entities = result.entities
