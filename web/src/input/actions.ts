@@ -35,10 +35,10 @@ export const ACTION_LABELS: Record<Action, string> = {
   CONFIRM: '确认',
   BACK: '返回',
   PAUSE: '暂停',
-  SPLIT: '分身',
-  GATHER: '聚集',
-  SCHOOL: '学校',
-  PARK: '乐园',
+  SPLIT: '上班',
+  GATHER: '生产',
+  SCHOOL: '学习',
+  PARK: '娱乐',
 }
 
 export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
