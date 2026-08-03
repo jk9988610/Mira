@@ -10,7 +10,7 @@ import {
   drawTitle,
 } from '../ui/draw'
 
-const MENU_ITEMS = ['开始游戏', '其他模式', '按键绑定', '设置（占位）'] as const
+const MENU_ITEMS = ['开始游戏', '其他模式', '按键绑定', '设置'] as const
 
 export function createMenuScene(app: App, go: (scene: string) => void) {
   const focus = new FocusList(MENU_ITEMS.length)
@@ -22,6 +22,7 @@ export function createMenuScene(app: App, go: (scene: string) => void) {
     if (item === '开始游戏') go('game')
     if (item === '其他模式') go('modes')
     if (item === '按键绑定') go('bindings')
+    if (item === '设置') go('settings')
   }
 
   return {

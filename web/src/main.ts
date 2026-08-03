@@ -8,14 +8,18 @@ import { VirtualControls } from './input/virtual-controls'
 import { createBindingsScene } from './scenes/bindings-scene'
 import { createAvatarGameScene } from './scenes/avatar-game-scene'
 import { createGameScene } from './scenes/game-scene'
+import { createLayoutEditorScene } from './scenes/layout-editor-scene'
 import { createModesScene } from './scenes/modes-scene'
 import { createMenuScene, createPauseScene } from './scenes/menu-scene'
+import { createSettingsScene } from './scenes/settings-scene'
+
+const GAME_SCENES = new Set(['game', 'avatar-game'])
 
 function main() {
   let bindings = loadBindings()
   const input = new InputManager(bindings)
   const app = new App(input)
-  new VirtualControls(input)
+  const virtualControls = new VirtualControls(input)
 
   let paused = false
   let pauseOverlay: ReturnType<typeof createPauseScene> | null = null
@@ -23,6 +27,8 @@ function main() {
   const scenes = new SceneManager({
     menu: () => createMenuScene(app, (name) => scenes.switchTo(name)),
     modes: () => createModesScene(app, (name) => scenes.switchTo(name)),
+    settings: () => createSettingsScene(app, (name) => scenes.switchTo(name)),
+    'layout-editor': () => createLayoutEditorScene(app, (name) => scenes.switchTo(name), virtualControls),
     bindings: () =>
       createBindingsScene(
         app,
@@ -72,6 +78,12 @@ function main() {
         () => paused,
       ),
   })
+
+  const originalSwitchTo = scenes.switchTo.bind(scenes)
+  scenes.switchTo = (name: string) => {
+    originalSwitchTo(name)
+    virtualControls.setInGame(GAME_SCENES.has(name))
+  }
 
   app.scenes = scenes
   if (!localStorage.getItem('mira_bindings_v5')) {

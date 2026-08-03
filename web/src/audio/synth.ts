@@ -1,4 +1,17 @@
+import { loadVolume, saveVolume } from '../settings/settings'
+
 type WaveType = OscillatorType
+
+let masterVolume = loadVolume()
+
+export function getMasterVolume(): number {
+  return masterVolume
+}
+
+export function setMasterVolume(volume: number): void {
+  masterVolume = Math.max(0, Math.min(1, volume))
+  saveVolume(masterVolume)
+}
 
 class SynthAudio {
   private ctx: AudioContext | null = null
@@ -25,7 +38,7 @@ class SynthAudio {
     osc.type = type
     osc.frequency.setValueAtTime(frequency, ctx.currentTime)
     gain.gain.setValueAtTime(0, ctx.currentTime)
-    gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + attack)
+    gain.gain.linearRampToValueAtTime(volume * masterVolume, ctx.currentTime + attack)
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration)
     osc.connect(gain)
     gain.connect(ctx.destination)
@@ -48,7 +61,7 @@ class SynthAudio {
     osc.type = type
     osc.frequency.setValueAtTime(from, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(Math.max(to, 1), ctx.currentTime + duration)
-    gain.gain.setValueAtTime(volume, ctx.currentTime)
+    gain.gain.setValueAtTime(volume * masterVolume, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration)
     osc.connect(gain)
     gain.connect(ctx.destination)

@@ -19,7 +19,7 @@ body {
   height: 100%;
 }
 
-/* 虚拟手柄：左侧 360° 摇杆 + 右侧 Xbox 布局 */
+/* 虚拟手柄：各组件独立定位 */
 .virtual-controls {
   position: fixed;
   inset: 0;
@@ -33,14 +33,26 @@ body {
   display: none;
 }
 
-.vc-joystick {
+.virtual-controls--edit .vc-part {
+  outline: 2px dashed rgba(143, 211, 255, 0.65);
+  outline-offset: 4px;
+  cursor: grab;
+}
+
+.virtual-controls--edit .vc-part:active {
+  cursor: grabbing;
+}
+
+.vc-part {
   position: absolute;
-  left: max(16px, env(safe-area-inset-left));
-  bottom: max(20px, env(safe-area-inset-bottom));
-  width: 148px;
-  height: 148px;
+  transform: translate(-50%, -50%);
   pointer-events: auto;
   touch-action: none;
+}
+
+.vc-joystick {
+  width: 148px;
+  height: 148px;
 }
 
 .vc-joystick-base {
@@ -66,20 +78,8 @@ body {
   will-change: transform;
 }
 
-.vc-buttons {
-  position: absolute;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
-  width: 196px;
-  height: 196px;
-  pointer-events: none;
-}
-
 .vc-btn,
 .vc-shoulder {
-  position: absolute;
-  pointer-events: auto;
-  touch-action: none;
   border: none;
   color: #fff;
   font: 700 15px/1 system-ui, sans-serif;
@@ -95,55 +95,45 @@ body {
   height: 52px;
   border-radius: 50%;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
 }
 
 .vc-btn--pressed,
 .vc-shoulder.vc-btn--pressed {
-  transform: scale(0.92);
+  transform: translate(-50%, -50%) scale(0.92);
   filter: brightness(1.25);
 }
 
 .vc-btn-a {
-  left: 72px;
-  bottom: 0;
   background: linear-gradient(145deg, #4caf50, #2e7d32);
   border: 2px solid #81c784;
 }
 
 .vc-btn-b {
-  right: 0;
-  bottom: 36px;
   background: linear-gradient(145deg, #ef5350, #c62828);
   border: 2px solid #ef9a9a;
 }
 
 .vc-btn-x {
-  left: 0;
-  bottom: 36px;
   background: linear-gradient(145deg, #42a5f5, #1565c0);
   border: 2px solid #90caf9;
 }
 
 .vc-btn-y {
-  left: 72px;
-  top: 0;
   background: linear-gradient(145deg, #ffca28, #f9a825);
   border: 2px solid #ffe082;
   color: #3e2723;
 }
 
 .vc-btn-start {
-  right: 68px;
-  bottom: 88px;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   font-size: 18px;
   background: linear-gradient(145deg, #546e7a, #37474f);
   border: 2px solid #90a4ae;
 }
 
 .vc-shoulder {
-  top: max(12px, env(safe-area-inset-top));
   width: 72px;
   height: 36px;
   border-radius: 8px;
@@ -152,12 +142,4 @@ body {
   color: #a8bdd8;
   font-size: 13px;
   font-weight: 600;
-}
-
-.vc-lb {
-  left: max(16px, env(safe-area-inset-left));
-}
-
-.vc-rb {
-  right: max(16px, env(safe-area-inset-right));
 }
