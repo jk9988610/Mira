@@ -30,6 +30,7 @@ import {
   SPAWN_CLEARANCE,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
+import { isPursuingMate } from './avatar-reproduction'
 import { syncEntityGeo } from './geo'
 import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
 import { addTraitIntake, canAbsorbPelletKind, workEfficiency } from './avatar-traits'
@@ -566,6 +567,10 @@ export function updateAlly(
   }
 
   const intent = updateNpcIntent(ally, entities, grid, dt, now)
+
+  if (isPursuingMate(ally, now)) {
+    return { pellets, absorbed: [], entities }
+  }
 
   const transformKind = decideNpcTransformKind(ally, entities, now)
 

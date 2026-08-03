@@ -1,14 +1,12 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
 import { avatarEntityRadius } from './avatar-radius'
-import {
-  groupCohesionTarget,
-  shouldFemaleWaitForSuitor,
-} from './family'
+import { groupCohesionTarget } from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
   isActivelySeekingMate,
-  tryApproachForProduction,
+  isPursuingMate,
+  updateMatePursuit,
 } from './avatar-reproduction'
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
@@ -20,11 +18,6 @@ import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 const PELLET_SEEK_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT) * 0.95
-
-function hash01(seed: number): number {
-  const x = Math.sin(seed * 12.9898) * 43758.5453
-  return x - Math.floor(x)
-}
 
 function countStructures(entities: CircleEntity[]): { farm: number; school: number; park: number } {
   let farm = 0
@@ -45,7 +38,7 @@ export function decideNpcTransformKind(
 ): TransformKind | null {
   if (isJuvenile(entity)) return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
-  if (shouldFemaleWaitForSuitor(entity, entities, now)) return null
+  if (isPursuingMate(entity, now)) return null
   return pickWeightedTransformKind(
     entity,
     countStructures(entities),
@@ -69,9 +62,7 @@ export function intentLabel(
     return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
   }
 
-  if (entity.aiIntent === 'wait' && isActivelySeekingMate(entity, gameTimeSec)) {
-    return '等待·求偶'
-  }
+  if (isPursuingMate(entity, gameTimeSec)) return '奔赴·求偶'
 
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
   const phase = currentSchedulePhase(entity, gameTimeSec, seeking)
@@ -88,14 +79,7 @@ export function intentLabel(
               ? '吸收快乐'
               : schedulePhaseLabel(phase)
 
-  if (isJuvenile(entity)) {
-    return base
-  }
-
-  if (seeking && entity.gender === 'female' && entity.aiIntent === 'wait') {
-    return '等待·求偶'
-  }
-
+  if (isJuvenile(entity)) return base
   if (seeking) return `求偶·${base}`
   return base
 }
@@ -173,9 +157,10 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
-  if (shouldFemaleWaitForSuitor(entity, entities, now)) {
-    entity.aiIntent = 'wait'
-    return { moving: false, sleeping: false }
+  if (isPursuingMate(entity, now)) {
+    entity.aiIntent = 'wander'
+    updateMatePursuit(entity, entities, dt, now)
+    return { moving: true, sleeping: false }
   }
 
   const seeking = isActivelySeekingMate(entity, now)
@@ -193,13 +178,6 @@ export function updateNpcIntent(
     entity.aiIntent = phase
   } else if (entity.aiPelletTargetTimer <= 0.05) {
     entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
-  }
-
-  if (seeking && entity.gender === 'male') {
-    const glance = phase === 'wander' || hash01(entity.id + now * 0.3) < (seeking ? 0.14 : 0.06)
-    if (glance && tryApproachForProduction(entity, entities, dt, now)) {
-      return { moving: true, sleeping: false }
-    }
   }
 
   const activeNeed = entity.aiIntent

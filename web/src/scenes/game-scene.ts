@@ -21,13 +21,14 @@ import {
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
-  findSeekingPartner,
+  syncMateTargets,
   tickProductionCooldowns,
-  tryApproachForProduction,
+  updateMatePursuit,
   updateProductionPairs,
 } from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
+import { isPursuingMate } from '../game/avatar-reproduction'
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PelletGrid } from '../game/pellet-grid'
@@ -168,10 +169,7 @@ export function createGameScene(
       }
 
       if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
-        if (player.gender === 'male') {
-          const partner = findSeekingPartner(player, entities, elapsed)
-          if (partner) player.aiMateTargetId = partner.id
-        }
+        player.mateSeekUrge = Math.min(1, player.mateSeekUrge + 0.35)
       }
 
       if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
@@ -186,9 +184,11 @@ export function createGameScene(
         sfx.absorbPellet()
       }
 
+      syncMateTargets(entities, elapsed)
+
       if (player && !player.isFrozen && player.productionStage === 'none') {
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
-        if (player.gender === 'male') tryApproachForProduction(player, entities, dt, elapsed)
+        updateMatePursuit(player, entities, dt, elapsed, false)
       }
 
       tickProductionCooldowns(entities, dt)
@@ -220,7 +220,7 @@ export function createGameScene(
         if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
-          if (entity.aiMateTargetId > 0) movingIds.add(entity.id)
+          if (isPursuingMate(entity, elapsed)) movingIds.add(entity.id)
         } else if (isNpcMobile(entity) && entity.aiIntent !== 'sleep') {
           movingIds.add(entity.id)
         }
@@ -231,7 +231,7 @@ export function createGameScene(
       syncControlledId()
 
       const controlled = getControlledEntity(entities, controlledId)
-      if (controlled && isActive(controlled) && !controlled.isFrozen) {
+      if (controlled && isActive(controlled) && !controlled.isFrozen && !isPursuingMate(controlled, elapsed)) {
         const absorbed = absorbPelletsForAvatar(controlled, pellets, pelletGrid)
         if (absorbed.length > 0) {
           const absorbedIds = new Set(absorbed.map((p) => p.id))
