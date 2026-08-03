@@ -2,8 +2,8 @@ import { PLAYER_START_MASS } from './physics'
 
 /** 饱食/知识/快乐/健康均以质量同类数值表示 */
 export const SATIETY_CAP = PLAYER_START_MASS * 3
-export const KNOWLEDGE_CAP = PLAYER_START_MASS * 2.5
-export const JOY_CAP = PLAYER_START_MASS * 2.5
+export const KNOWLEDGE_CAP = PLAYER_START_MASS * 1.6
+export const JOY_CAP = PLAYER_START_MASS * 1.6
 export const HEALTH_CAP = PLAYER_START_MASS * 5
 export const HEALTH_FLOOR = PLAYER_START_MASS * 0.4
 
@@ -20,7 +20,7 @@ export const SATIETY_GAIN_PER_MASS = 0.22
 export const SATIETY_PER_INTAKE_MASS = 0.35
 export const SATIETY_ABSORB_BATCH_RATIO = 0.72
 
-export const TRAIT_IDLE_DECAY = PLAYER_START_MASS * 0.004
+export const TRAIT_IDLE_DECAY = PLAYER_START_MASS * 0.0025
 export const TRAIT_SLEEP_DECAY = PLAYER_START_MASS * 0.001
 export const TRAIT_LOW_THRESHOLD = PLAYER_START_MASS * 0.3
 export const TRAIT_DIGEST_RATE = PLAYER_START_MASS * 0.14
@@ -77,4 +77,12 @@ export const NPC_ARRIVE_DIST = 36
 export const NPC_JITTER_DIST = 8
 
 /** 上次化身类型权重衰减 */
-export const TRANSFORM_REPEAT_PENALTY = 0.32
+export const TRANSFORM_REPEAT_PENALTY = 0.38
+
+/** 农场/校园/乐园化身权重（农场为主） */
+export const FARM_TRANSFORM_WEIGHT = 4.2
+export const SCHOOL_TRANSFORM_WEIGHT = 0.35
+export const PARK_TRANSFORM_WEIGHT = 0.3
+
+/** 跳过化身的随机概率（越低越常化身） */
+export const TRANSFORM_SKIP_CHANCE = 0.18

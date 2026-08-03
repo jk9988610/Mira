@@ -12,12 +12,15 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 const SEEK_SCAN_RADIUS = 820
 
+export function canEngageProduction(entity: CircleEntity): boolean {
+  return isAdult(entity) && !entity.isFrozen
+}
+
 export function isSeekingMate(entity: CircleEntity): boolean {
   return (
-    isAdult(entity) &&
+    canEngageProduction(entity) &&
     entity.productionStage === 'none' &&
-    entity.productionCooldown <= 0 &&
-    !entity.isFrozen
+    entity.productionCooldown <= 0
   )
 }
 
