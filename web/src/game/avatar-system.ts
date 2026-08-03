@@ -165,9 +165,10 @@ export function canBeginAvatarTransform(
   entity: CircleEntity | null,
   _kind: TransformKind,
   entities: CircleEntity[],
+  gameTimeSec = 0,
 ): boolean {
   if (!entity || !isActive(entity)) return false
-  if (isJuvenile(entity)) return false
+  if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (entity.avatarTransformCooldown > 0) return false
@@ -650,8 +651,9 @@ function transformHint(
   kind: TransformKind,
   key: string,
   label: string,
+  gameTimeSec = 0,
 ): string {
-  if (isJuvenile(entity)) return `${key} 未成年禁化身`
+  if (isJuvenile(entity, gameTimeSec)) return `${key} 未成年禁化身`
   if (entity.avatarRole === kind) return `${key} 化身${label}中`
   if (entity.avatarTransformCooldown > 0) return `${key} 冷却(${Math.ceil(entity.avatarTransformCooldown)}s)`
   if (!canPlaceAvatarTransform(entity, kind, entities)) return `${key} ${label}(位置被占)`
@@ -675,6 +677,7 @@ export interface AvatarTransformHints {
 export function getAvatarTransformHints(
   entity: CircleEntity | null,
   entities: CircleEntity[],
+  gameTimeSec = 0,
 ): AvatarTransformHints {
   const farmCount = countFarmStructures(entities)
   const schoolCount = countSchoolStructures(entities)
@@ -696,16 +699,16 @@ export function getAvatarTransformHints(
     }
   }
 
-  const canFarm = canBeginAvatarTransform(entity, 'farm', entities)
-  const canSchool = canBeginAvatarTransform(entity, 'school', entities)
-  const canPark = canBeginAvatarTransform(entity, 'park', entities)
+  const canFarm = canBeginAvatarTransform(entity, 'farm', entities, gameTimeSec)
+  const canSchool = canBeginAvatarTransform(entity, 'school', entities, gameTimeSec)
+  const canPark = canBeginAvatarTransform(entity, 'park', entities, gameTimeSec)
   const canMate =
-    !isJuvenile(entity) &&
+    !isJuvenile(entity, gameTimeSec) &&
     entity.productionStage === 'none' &&
     !entity.isFrozen &&
-    isAdult(entity)
+    isAdult(entity, gameTimeSec)
 
-  if (isJuvenile(entity)) {
+  if (isJuvenile(entity, gameTimeSec)) {
     return {
       farmHint: 'Q 未成年禁化身',
       produceHint: 'E 未成年禁生产',
@@ -738,15 +741,15 @@ export function getAvatarTransformHints(
   }
 
   return {
-    farmHint: transformHint(entity, entities, 'farm', 'Q', '农场'),
+    farmHint: transformHint(entity, entities, 'farm', 'Q', '农场', gameTimeSec),
     produceHint:
       entity.productionStage !== 'none'
         ? 'E 生产中'
         : canMate
           ? 'E 生产'
           : 'E 生产(需成年异性)',
-    schoolHint: transformHint(entity, entities, 'school', 'Z', '校园'),
-    parkHint: transformHint(entity, entities, 'park', 'X', '乐园'),
+    schoolHint: transformHint(entity, entities, 'school', 'Z', '校园', gameTimeSec),
+    parkHint: transformHint(entity, entities, 'park', 'X', '乐园', gameTimeSec),
     canFarm,
     canMate,
     canSchool,

@@ -1,4 +1,4 @@
-import { ADULT_MASS_THRESHOLD, SATIETY_CAP } from '../game/avatar-config'
+import { SATIETY_CAP } from '../game/avatar-config'
 import { intentLabel } from '../game/avatar-ai'
 import { formatCitizenId } from '../game/citizen-id'
 import { formatDnaFingerprint } from '../game/dna'
@@ -12,7 +12,7 @@ import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
 import type { AvatarRole, CircleEntity } from '../game/entity'
-import { isJuvenile } from '../game/entity'
+import { isJuvenile, secondsUntilAdult } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
 export function clearScreen(
@@ -175,9 +175,10 @@ function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: 
   return null
 }
 
-function formatAgeLine(entity: CircleEntity, ageSec: number): string {
-  if (isJuvenile(entity)) {
-    return `年龄 ${ageSec}s · 未成年（${Math.round(ADULT_MASS_THRESHOLD)}质量成年）`
+function formatAgeLine(entity: CircleEntity, ageSec: number, gameTimeSec: number): string {
+  if (isJuvenile(entity, gameTimeSec)) {
+    const remain = Math.ceil(secondsUntilAdult(entity, gameTimeSec))
+    return `年龄 ${ageSec}s · 未成年（${remain}s后成年）`
   }
   return `年龄 ${ageSec}s · 成年`
 }
@@ -194,7 +195,8 @@ export function drawAvatarEntityStats(
     `身份证 ${formatCitizenId(entity)}`,
     `DNA ${formatDnaFingerprint(entity.dnaFingerprint)}`,
     `${entity.name} · ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`,
-    `${formatAgeLine(entity, ageSec)} · 出生 ${formatGameTime(entity.birthGameTimeSec)}`,
+    formatAgeLine(entity, ageSec, gameTimeSec),
+    `出生 ${formatGameTime(entity.birthGameTimeSec)}`,
     `出生地 (${Math.round(entity.birthX)}, ${Math.round(entity.birthY)})`,
     `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,

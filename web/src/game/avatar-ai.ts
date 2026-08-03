@@ -1,6 +1,5 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
 import { avatarEntityRadius } from './avatar-radius'
-import { groupCohesionTarget } from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
@@ -36,7 +35,7 @@ export function decideNpcTransformKind(
   entities: CircleEntity[],
   now = 0,
 ): TransformKind | null {
-  if (isJuvenile(entity)) return null
+  if (isJuvenile(entity, now)) return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
   if (isPursuingMate(entity, now)) return null
   return pickWeightedTransformKind(
@@ -79,7 +78,7 @@ export function intentLabel(
               ? '吸收快乐'
               : schedulePhaseLabel(phase)
 
-  if (isJuvenile(entity)) return base
+  if (isJuvenile(entity, gameTimeSec)) return base
   if (seeking) return `求偶·${base}`
   return base
 }
@@ -109,17 +108,11 @@ function moveToward(
   syncEntityGeo(entity)
 }
 
-function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = [], seekingMate = false): void {
-  const group = groupCohesionTarget(entity, entities, seekingMate)
-  if (group) {
-    moveToward(entity, group.x, group.y, dt, 0.62, avatarEntityRadius(entity) * 0.65)
-    return
-  }
-
+function wander(entity: CircleEntity, dt: number, seekingMate = false): void {
   entity.wanderTimer -= dt
   if (entity.wanderTimer <= 0) {
-    entity.wanderAngle += (Math.random() - 0.5) * (seekingMate ? 1.6 : 1.2)
-    entity.wanderTimer = seekingMate ? 0.8 + Math.random() * 1.4 : 1.2 + Math.random() * 2
+    entity.wanderAngle += (Math.random() - 0.5) * (seekingMate ? 1.4 : 1.0)
+    entity.wanderTimer = seekingMate ? 1.0 + Math.random() * 1.6 : 1.6 + Math.random() * 2.4
   }
   const speed = speedForMass(entity.mass) * (seekingMate ? 0.42 : 0.35)
   entity.x += Math.cos(entity.wanderAngle) * speed * dt
@@ -154,7 +147,8 @@ export function updateNpcIntent(
   entity.aiPelletTargetTimer = Math.max(0, entity.aiPelletTargetTimer - dt)
 
   if (entity.productionStage === 'active') {
-    return { moving: true, sleeping: false }
+    entity.aiIntent = 'wait'
+    return { moving: false, sleeping: false }
   }
 
   if (isPursuingMate(entity, now)) {
@@ -163,21 +157,26 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
+  const juvenile = isJuvenile(entity, now)
   const seeking = isActivelySeekingMate(entity, now)
-  const phase = currentSchedulePhase(entity, now, seeking)
+  let phase = currentSchedulePhase(entity, now, seeking)
 
   if (phase === 'sleep') {
     entity.aiIntent = 'sleep'
     return { moving: false, sleeping: true }
   }
 
+  if (juvenile && phase === 'wander') {
+    phase = 'eat'
+  }
+
   if (phase === 'wander') {
     entity.aiIntent = 'wander'
-    wander(entity, dt, entities, seeking)
+    wander(entity, dt, seeking)
   } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
     entity.aiIntent = phase
   } else if (entity.aiPelletTargetTimer <= 0.05) {
-    entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
+    entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4), now)
   }
 
   const activeNeed = entity.aiIntent
@@ -188,8 +187,8 @@ export function updateNpcIntent(
       moveToward(entity, pellet.x, pellet.y, dt, 0.92, absorbArrive)
       return { moving: true, sleeping: false }
     }
-    if (phase === 'wander') wander(entity, dt * 0.5, entities, seeking)
-    return { moving: phase === 'wander', sleeping: false }
+    if (!juvenile && phase === 'wander') wander(entity, dt * 0.5, seeking)
+    return { moving: !juvenile && phase === 'wander', sleeping: false }
   }
 
   if (activeNeed === 'wander') {

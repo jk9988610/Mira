@@ -50,10 +50,10 @@ export function needPlay(entity: CircleEntity): number {
   return 1 - Math.min(1, entity.joy / JOY_CAP)
 }
 
-export function computeNeedWeights(entity: CircleEntity): NeedWeights {
+export function computeNeedWeights(entity: CircleEntity, gameTimeSec = 0): NeedWeights {
   const eat = needEat(entity)
   const hungerBoost = entity.satiety <= SATIETY_LOW_THRESHOLD ? 0.5 : 0
-  if (isJuvenile(entity)) {
+  if (isJuvenile(entity, gameTimeSec)) {
     return {
       eat: (eat + hungerBoost) * JUVENILE_EAT_MULT,
       learn: needLearn(entity) * JUVENILE_LEARN_MULT,
@@ -67,8 +67,8 @@ export function computeNeedWeights(entity: CircleEntity): NeedWeights {
   }
 }
 
-export function pickWeightedNeed(entity: CircleEntity, seed: number): NeedKind {
-  const w = computeNeedWeights(entity)
+export function pickWeightedNeed(entity: CircleEntity, seed: number, gameTimeSec = 0): NeedKind {
+  const w = computeNeedWeights(entity, gameTimeSec)
   const items: { kind: NeedKind; value: number }[] = [
     { kind: 'eat', value: w.eat },
     { kind: 'learn', value: w.learn },
@@ -89,7 +89,7 @@ export function canConsiderTransform(
   gameTimeSec: number,
   seekingMate = false,
 ): boolean {
-  if (!isAdult(entity)) return false
+  if (!isAdult(entity, gameTimeSec)) return false
   if (entity.productionStage !== 'none' || entity.isFrozen) return false
   const phase = currentSchedulePhase(entity, gameTimeSec, seekingMate)
   if (!isTransformPhase(phase)) return false

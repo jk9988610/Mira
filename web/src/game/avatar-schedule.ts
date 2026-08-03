@@ -18,13 +18,13 @@ const ADULT_WEIGHTS: PhaseWeight[] = [
   { phase: 'wander', weight: 0.3 },
 ]
 
-/** 未成年：觅食为主，其次知识/快乐，少闲逛 */
+/** 未成年：觅食为主，极少闲逛 */
 const JUVENILE_WEIGHTS: PhaseWeight[] = [
-  { phase: 'sleep', weight: 0.12 },
-  { phase: 'eat', weight: 0.46 },
-  { phase: 'learn', weight: 0.16 },
-  { phase: 'play', weight: 0.14 },
-  { phase: 'wander', weight: 0.12 },
+  { phase: 'sleep', weight: 0.14 },
+  { phase: 'eat', weight: 0.50 },
+  { phase: 'learn', weight: 0.18 },
+  { phase: 'play', weight: 0.16 },
+  { phase: 'wander', weight: 0.02 },
 ]
 
 /** 求偶意图：更多闲逛时间 */
@@ -65,7 +65,7 @@ export function currentSchedulePhase(
 ): SchedulePhase {
   const offset = entity.scheduleOffsetSec + entity.id * 2.3
   const t = ((gameTimeSec + offset) % SCHEDULE_DAY_SEC) / SCHEDULE_DAY_SEC
-  if (isJuvenile(entity)) return phaseFromCumulative(t, JUVENILE_CUMULATIVE)
+  if (isJuvenile(entity, gameTimeSec)) return phaseFromCumulative(t, JUVENILE_CUMULATIVE)
   if (seekingMate) return phaseFromCumulative(t, SEEKING_CUMULATIVE)
   return phaseFromCumulative(t, ADULT_CUMULATIVE)
 }

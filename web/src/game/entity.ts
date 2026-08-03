@@ -1,4 +1,4 @@
-import { ADULT_MASS_THRESHOLD, SCHEDULE_DAY_SEC } from './avatar-config'
+import { ADULT_AGE_SEC, SCHEDULE_DAY_SEC } from './avatar-config'
 import { initEntityDna } from './dna'
 import { syncEntityGeo } from './geo'
 import { massToRadius, PLAYER_START_MASS } from './physics'
@@ -100,12 +100,20 @@ export interface CircleEntity {
 
 let nextId = 1
 
-export function isAdult(entity: CircleEntity): boolean {
-  return entity.mass >= ADULT_MASS_THRESHOLD
+export function entityAgeSec(entity: CircleEntity, gameTimeSec: number): number {
+  return Math.max(0, gameTimeSec - entity.birthGameTimeSec)
 }
 
-export function isJuvenile(entity: CircleEntity): boolean {
-  return !isAdult(entity)
+export function secondsUntilAdult(entity: CircleEntity, gameTimeSec: number): number {
+  return Math.max(0, ADULT_AGE_SEC - entityAgeSec(entity, gameTimeSec))
+}
+
+export function isAdult(entity: CircleEntity, gameTimeSec = 0): boolean {
+  return entityAgeSec(entity, gameTimeSec) >= ADULT_AGE_SEC
+}
+
+export function isJuvenile(entity: CircleEntity, gameTimeSec = 0): boolean {
+  return !isAdult(entity, gameTimeSec)
 }
 
 export function createCircle(

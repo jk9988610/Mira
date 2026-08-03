@@ -36,12 +36,12 @@ export function isPursuingMate(entity: CircleEntity, now = 0): boolean {
   return isActivelySeekingMate(entity, now) && entity.aiMateTargetId > 0
 }
 
-function canMatePair(a: CircleEntity, b: CircleEntity): boolean {
+function canMatePair(a: CircleEntity, b: CircleEntity, gameTimeSec = 0): boolean {
   if (a.gender === b.gender) return false
   const male = a.gender === 'male' ? a : b
   const female = a.gender === 'female' ? a : b
   if (areKin(male, female)) return false
-  return isSeekingMate(male) && isSeekingMate(female)
+  return isSeekingMate(male, gameTimeSec) && isSeekingMate(female, gameTimeSec)
 }
 
 /** 雌性追随最强信号，雄性锁定回应自己的雌性 */
@@ -57,7 +57,7 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
     }
     if (e.aiMateTargetId > 0) {
       const partner = entities.find((p) => p.id === e.aiMateTargetId)
-      if (!partner || !isActive(partner) || !isActivelySeekingMate(partner, now) || !canMatePair(e, partner)) {
+      if (!partner || !isActive(partner) || !isActivelySeekingMate(partner, now) || !canMatePair(e, partner, now)) {
         e.aiMateTargetId = 0
       }
     }
@@ -135,7 +135,7 @@ export function updateMatePursuit(
   const male = entity.gender === 'male' ? entity : target
   const female = entity.gender === 'female' ? entity : target
 
-  if (circlesTouch(entity, target) && canStartProduction(male, female)) {
+  if (circlesTouch(entity, target) && canStartProduction(male, female, now)) {
     beginProductionPair(male, female)
     male.aiMateTargetId = 0
     female.aiMateTargetId = 0
@@ -151,19 +151,19 @@ function hash01(seed: number): number {
   return x - Math.floor(x)
 }
 
-export function canEngageProduction(entity: CircleEntity): boolean {
-  return isAdult(entity) && !entity.isFrozen
+export function canEngageProduction(entity: CircleEntity, gameTimeSec = 0): boolean {
+  return isAdult(entity, gameTimeSec) && !entity.isFrozen
 }
 
-export function isSeekingMate(entity: CircleEntity): boolean {
-  if (!canEngageProduction(entity) || entity.productionStage !== 'none') return false
+export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
+  if (!canEngageProduction(entity, gameTimeSec) || entity.productionStage !== 'none') return false
   if (entity.gender === 'male') return true
   return entity.productionCooldown <= 0
 }
 
 /** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
 export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
-  if (!isSeekingMate(entity)) return false
+  if (!isSeekingMate(entity, now)) return false
   const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
   return roll < 0.28 + entity.mateSeekUrge * 0.62
 }
@@ -173,8 +173,12 @@ function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
   return dist < avatarEntityRadius(a) + avatarEntityRadius(b) - 2
 }
 
-export function canStartProduction(male: CircleEntity, female: CircleEntity): boolean {
-  if (!isAdult(male) || !isAdult(female)) return false
+export function canStartProduction(
+  male: CircleEntity,
+  female: CircleEntity,
+  gameTimeSec = 0,
+): boolean {
+  if (!isAdult(male, gameTimeSec) || !isAdult(female, gameTimeSec)) return false
   if (male.gender !== 'male' || female.gender !== 'female') return false
   if (!isSeekingMate(male) || !isSeekingMate(female)) return false
   if (male.isFrozen || female.isFrozen) return false
@@ -281,22 +285,6 @@ export function updateProductionPairs(
     const female = entity.gender === 'female' ? entity : partner
     processed.add(male.id)
     processed.add(female.id)
-
-    const escortDist = avatarEntityRadius(male) + avatarEntityRadius(female) + 24
-    const dx = female.x - male.x
-    const dy = female.y - male.y
-    const d = Math.hypot(dx, dy)
-    if (d > escortDist && d > 1) {
-      const speed = MATE_PURSUIT_SPEED
-      male.x += (dx / d) * speed * dt
-      male.y += (dy / d) * speed * dt
-      female.x -= (dx / d) * speed * dt * 0.9
-      female.y -= (dy / d) * speed * dt * 0.9
-      clampAvatarEntityToWorld(male, WORLD_WIDTH, WORLD_HEIGHT)
-      clampAvatarEntityToWorld(female, WORLD_WIDTH, WORLD_HEIGHT)
-      syncEntityGeo(male)
-      syncEntityGeo(female)
-    }
 
     male.productionTimer -= dt
     female.productionTimer -= dt
