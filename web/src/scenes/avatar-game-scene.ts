@@ -47,6 +47,8 @@ export function createAvatarGameScene(
   let elapsed = 0
   let absorbFlash = 0
   let allyUpdateTick = 0
+  let prevSplitHeld = false
+  let prevGatherHeld = false
   const pelletGrid = new PelletGrid()
 
   const syncControlledId = () => {
@@ -103,14 +105,19 @@ export function createAvatarGameScene(
 
       const player = getControlledEntity(entities, controlledId)
 
-      if (input.splitPressed && canBeginAvatarTransform(player, 'farm', entities)) {
+      const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
+      const gatherTrigger = input.gatherPressed || (input.gatherHeld && !prevGatherHeld)
+      prevSplitHeld = input.splitHeld
+      prevGatherHeld = input.gatherHeld
+
+      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
         const result = completeAvatarTransform(entities, player!, 'farm', controlledId)
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
-      if (input.gatherPressed && canBeginAvatarTransform(player, 'ranch', entities)) {
+      if (gatherTrigger && canBeginAvatarTransform(player, 'ranch', entities)) {
         const result = completeAvatarTransform(entities, player!, 'ranch', controlledId)
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId

@@ -165,25 +165,36 @@ export class VirtualControls {
     const buttons = this.root.querySelectorAll<HTMLElement>('[data-btn]')
     for (const btn of buttons) {
       const code = btn.dataset.btn!
-      const press = (e: PointerEvent) => {
+      const press = () => {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, true)
         btn.classList.add('vc-btn--pressed')
-        e.preventDefault()
-        e.stopPropagation()
       }
-      const release = (e: PointerEvent) => {
+      const release = () => {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, false)
         btn.classList.remove('vc-btn--pressed')
-        e.preventDefault()
       }
       btn.addEventListener('pointerdown', (e) => {
         if (this.layoutEditMode) return
         btn.setPointerCapture(e.pointerId)
-        press(e)
+        press()
+        e.preventDefault()
+        e.stopPropagation()
       })
-      btn.addEventListener('pointerup', release)
+      btn.addEventListener(
+        'touchstart',
+        (e) => {
+          if (this.layoutEditMode) return
+          press()
+          e.preventDefault()
+        },
+        { passive: false },
+      )
+      btn.addEventListener('pointerup', (e) => {
+        release()
+        e.preventDefault()
+      })
       btn.addEventListener('pointercancel', release)
       btn.addEventListener('lostpointercapture', release)
     }
