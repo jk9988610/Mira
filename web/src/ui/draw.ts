@@ -1,5 +1,5 @@
 import type { LeaderboardView } from '../game/leaderboard'
-import { getAvatarTransformCountdownSec } from '../game/avatar-system'
+import { getAvatarTransformCountdownSec, schedulePhaseLabel } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
 import type { AvatarRole, CircleEntity } from '../game/entity'
@@ -374,6 +374,9 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
   if (roleStatus) lines.push(roleStatus)
+  if (!entity.isPlayer && (entity.avatarRole === 'none' || entity.avatarRole === 'ally')) {
+    lines.push(schedulePhaseLabel(entity))
+  }
 
   const lineHeight = 12
   const boxWidth = 108

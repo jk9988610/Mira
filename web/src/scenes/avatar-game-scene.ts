@@ -126,16 +126,6 @@ export function createAvatarGameScene(
       tickAvatarTransformCooldowns(entities, dt)
 
       const player = getControlledEntity(entities, controlledId)
-      const movingIds = new Set<number>()
-      for (const entity of entities) {
-        if (!isActive(entity) || entity.isFrozen) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') continue
-        if (entity.id === player?.id) {
-          if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
-        } else if (isNpcMobile(entity)) {
-          movingIds.add(entity.id)
-        }
-      }
 
       const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
       const gatherTrigger = input.gatherPressed || (input.gatherHeld && !prevGatherHeld)
@@ -176,6 +166,17 @@ export function createAvatarGameScene(
       }
 
       pelletGrid.rebuild(pellets)
+
+      const movingIds = new Set<number>()
+      for (const entity of entities) {
+        if (!isActive(entity) || entity.isFrozen) continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') continue
+        if (entity.id === player?.id) {
+          if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
+        } else if (isNpcMobile(entity) && !entity.aiSleeping && entity.aiSchedulePhase === 'forage') {
+          movingIds.add(entity.id)
+        }
+      }
 
       entities = tickMobileAvatarVitality(entities, dt, movingIds)
       syncControlledId()

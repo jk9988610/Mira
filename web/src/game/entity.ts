@@ -55,6 +55,23 @@ export interface CircleEntity {
   feedRegularity: number
   /** 寿命评估倒计时 */
   lifespanEvalTimer: number
+  /** 化身工作经历（牧场时刻），最近几次农场/牧场 */
+  transformHistory: ('farm' | 'ranch')[]
+  /** 当日时刻 0~DAY_DURATION_SEC */
+  dayTimeSec: number
+  /** 第几天（用于工作日/周末） */
+  dayNumber: number
+  /** AI 当前日程阶段 */
+  aiSchedulePhase: 'work' | 'sleep' | 'forage' | 'weekend'
+  /** AI 是否处于睡眠代谢 */
+  aiSleeping: boolean
+  /** 缓存觅食目标颗粒 id */
+  aiPelletTargetId: number
+  aiPelletTargetTimer: number
+  /** 游荡/休息锚点 */
+  aiAnchorX: number
+  aiAnchorY: number
+  aiAnchorTimer: number
 }
 
 export type AvatarRole = 'none' | 'farm' | 'ranch' | 'ally'
@@ -106,6 +123,16 @@ export function createCircle(
     avatarTransformCount: 0,
     feedRegularity: 0.5,
     lifespanEvalTimer: 0,
+    transformHistory: [],
+    dayTimeSec: 0,
+    dayNumber: 0,
+    aiSchedulePhase: 'forage',
+    aiSleeping: false,
+    aiPelletTargetId: 0,
+    aiPelletTargetTimer: 0,
+    aiAnchorX: x,
+    aiAnchorY: y,
+    aiAnchorTimer: 0,
   }
 }
 

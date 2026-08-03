@@ -26,13 +26,13 @@ import {
   FARM_PELLET_INTERVAL_SEC,
   FARM_PELLET_RING_RADIUS,
   FARM_PELLET_SENSE_RADIUS,
-  FARMS_PER_RANCH,
   RANCH_ALLIES_BEFORE_REVERT,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
   SATIETY_ABSORB_BATCH_THRESHOLD,
   SPAWN_CLEARANCE,
 } from './avatar-config'
+import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
@@ -86,9 +86,9 @@ export function countMobileCircles(entities: CircleEntity[]): number {
   return count
 }
 
-/** 农场数 < 牧场数×N → 允许建农场 */
-export function canBuildMoreFarms(entities: CircleEntity[]): boolean {
-  return countFarms(entities) < countRanches(entities) * FARMS_PER_RANCH
+/** @deprecated 农场/牧场不再设数量制衡 */
+export function canBuildMoreFarms(_entities: CircleEntity[]): boolean {
+  return true
 }
 
 /** 可移动圆数 < 牧场数×N → 牧场可产后代 */
@@ -150,7 +150,6 @@ export function canBeginAvatarTransform(
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (entity.mass < buildCost(kind)) return false
   if (entity.avatarTransformCooldown > 0) return false
-  if (kind === 'farm' && !canBuildMoreFarms(entities)) return false
   if (!canPlaceAvatarTransform(entity, kind, entities)) return false
   return true
 }
@@ -297,25 +296,12 @@ function tryAllyTransform(
   return { entities: result.entities, pellets: nextPellets, absorbed }
 }
 
-/** AI 根据农场/牧场比例决定优先化身类型（仅看质量与比例，位置另寻） */
+/** @deprecated 使用 decideNpcTransformKind */
 export function decideAllyTransformKind(
   ally: CircleEntity,
   entities: CircleEntity[],
 ): 'farm' | 'ranch' | null {
-  if (ally.avatarTransformCooldown > 0) return null
-
-  const farms = countFarms(entities)
-  const ranches = countRanches(entities)
-  const ranchMassOk = ally.mass >= RANCH_BUILD_COST
-  const farmMassOk = ally.mass >= FARM_BUILD_COST && canBuildMoreFarms(entities)
-
-  const ranchPressure = farms >= Math.max(1, ranches) * Math.ceil(FARMS_PER_RANCH * 0.6)
-  const needRanch = ranchPressure || !canBuildMoreFarms(entities)
-
-  if (needRanch && ranchMassOk) return 'ranch'
-  if (farmMassOk) return 'farm'
-  if (ranchMassOk && ranches === 0) return 'ranch'
-  return null
+  return decideNpcTransformKind(ally, entities)
 }
 
 function absorbAndFilterPellets(
@@ -364,6 +350,7 @@ export function completeAvatarTransform(
   entity.structureProduceCount = 0
   entity.avatarTransformCount++
   entity.absorptionPaused = false
+  recordTransformHistory(entity, kind)
 
   return { entities }
 }
@@ -521,7 +508,10 @@ export function updateAlly(
     return { pellets, absorbed: [], entities }
   }
 
-  const transformKind = decideAllyTransformKind(ally, entities)
+  const intent = updateNpcIntent(ally, entities, grid, dt)
+  ally.aiSleeping = intent.sleeping
+
+  const transformKind = decideNpcTransformKind(ally, entities)
 
   if (transformKind) {
     const immediate = tryAllyTransform(ally, entities, pellets, transformKind)
@@ -542,13 +532,12 @@ export function updateAlly(
     }
   }
 
-  const nearest = grid.findNearest(ally.x, ally.y, 2400)
-  if (nearest) {
-    moveEntityToward(ally, nearest.x, nearest.y, dt)
+  if (ally.aiSchedulePhase === 'forage' || ally.aiSchedulePhase === 'work') {
+    const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets, grid)
+    return { pellets: nextPellets, absorbed, entities }
   }
 
-  const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets, grid)
-  return { pellets: nextPellets, absorbed, entities }
+  return { pellets, absorbed: [], entities }
 }
 
 export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: number, dt: number): void {
@@ -588,6 +577,7 @@ export function tickMobileAvatarVitality(
   return next
 }
 
+export { decideNpcTransformKind, schedulePhaseLabel } from './avatar-ai'
 export { initOptimalAvatarState, satietyLabel } from './avatar-vitality'
 export { healthLabel } from './avatar-mass'
 
@@ -614,17 +604,15 @@ export function getAvatarTransformHints(
   }
 
   const farmMassOk = entity.mass >= FARM_BUILD_COST
-  const farmQuotaOk = canBuildMoreFarms(entities)
   const ranchMassOk = entity.mass >= RANCH_BUILD_COST
-  const farmPlaceOk = farmMassOk && farmQuotaOk && canPlaceAvatarTransform(entity, 'farm', entities)
+  const farmPlaceOk = farmMassOk && canPlaceAvatarTransform(entity, 'farm', entities)
   const ranchPlaceOk = ranchMassOk && canPlaceAvatarTransform(entity, 'ranch', entities)
   const satiated = entity.absorptionPaused
 
   let farm = 'Q 农场(未就绪)'
   if (satiated) farm = 'Q 农场(饱食中)'
-  else if (farmMassOk && farmQuotaOk && farmPlaceOk) farm = 'Q 化身农场'
-  else if (farmMassOk && !farmQuotaOk) farm = 'Q 农场(需先化身牧场)'
-  else if (farmMassOk && farmQuotaOk) farm = 'Q 农场(位置被占)'
+  else if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
+  else if (farmMassOk) farm = 'Q 农场(位置被占)'
   else if (!farmMassOk) farm = 'Q 农场(质量不足)'
 
   let ranch = 'E 牧场(质量不足)'

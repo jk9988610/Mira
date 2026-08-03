@@ -13,6 +13,7 @@ import {
   SATIETY_IDLE_DECAY,
   SATIETY_LOW_THRESHOLD,
   SATIETY_MOVE_DECAY,
+  SATIETY_SLEEP_DECAY,
   SATIETY_STARVE_MASS_DRAIN,
 } from './avatar-config'
 import {
@@ -25,6 +26,8 @@ import {
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
 import { PLAYER_START_MASS } from './physics'
+import { initNpcSchedule } from './avatar-ai'
+import { DAY_DURATION_SEC } from './avatar-config'
 
 export function initAvatarVitality(entity: CircleEntity): void {
   initEntityMass(entity, entity.mass, HEALTH_MAX)
@@ -39,6 +42,10 @@ export function initAvatarVitality(entity: CircleEntity): void {
   entity.avatarTransformCount = 0
   entity.feedRegularity = 0.5
   entity.lifespanEvalTimer = LIFESPAN_EVAL_INTERVAL_SEC
+  entity.transformHistory = []
+  if (!entity.isPlayer) {
+    initNpcSchedule(entity, (entity.id * 5) % DAY_DURATION_SEC)
+  }
 }
 
 /** 开局最佳状态：高饱食、充足寿命、可立即化身 */
@@ -167,8 +174,8 @@ export function tickAvatarMetabolism(
 
   tickDigestion(entity, dt)
 
-  let decay = SATIETY_IDLE_DECAY * dt
-  if (isMoving) decay += SATIETY_MOVE_DECAY * dt
+  let decay = entity.aiSleeping ? SATIETY_SLEEP_DECAY * dt : SATIETY_IDLE_DECAY * dt
+  if (!entity.aiSleeping && isMoving) decay += SATIETY_MOVE_DECAY * dt
   entity.satiety = Math.max(0, entity.satiety - decay)
 
   if (entity.satiety <= 0) {
