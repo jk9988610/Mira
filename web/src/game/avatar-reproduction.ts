@@ -1,4 +1,10 @@
-import { PRODUCTION_COOLDOWN_SEC, PRODUCTION_DURATION_SEC } from './avatar-config'
+import {
+  MATE_PURSUIT_SPEED,
+  MATE_SIGNAL_MIN_STRENGTH,
+  MATE_SIGNAL_RANGE_RATIO,
+  PRODUCTION_COOLDOWN_SEC,
+  PRODUCTION_DURATION_SEC,
+} from './avatar-config'
 import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import { initAvatarVitality } from './avatar-vitality'
 import { inheritPalette } from './color-genetics'
@@ -10,7 +16,135 @@ import { createCircle, isActive, isAdult } from './entity'
 import { PLAYER_START_MASS } from './physics'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-const SEEK_SCAN_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT) * 0.9
+const MATE_SIGNAL_RANGE = WORLD_WIDTH * MATE_SIGNAL_RANGE_RATIO
+
+function distanceBetween(a: CircleEntity, b: CircleEntity): number {
+  return Math.hypot(b.x - a.x, b.y - a.y)
+}
+
+/** 雄性求偶信号强度，随距离二次衰减 */
+export function mateSignalStrength(male: CircleEntity, female: CircleEntity): number {
+  const dist = distanceBetween(male, female)
+  if (dist > MATE_SIGNAL_RANGE) return 0
+  const t = dist / MATE_SIGNAL_RANGE
+  const decay = (1 - t) * (1 - t)
+  const urge = 0.55 + male.mateSeekUrge * 0.45
+  return decay * urge
+}
+
+export function isPursuingMate(entity: CircleEntity, now = 0): boolean {
+  return isActivelySeekingMate(entity, now) && entity.aiMateTargetId > 0
+}
+
+function canMatePair(a: CircleEntity, b: CircleEntity): boolean {
+  if (a.gender === b.gender) return false
+  const male = a.gender === 'male' ? a : b
+  const female = a.gender === 'female' ? a : b
+  if (areKin(male, female)) return false
+  return isSeekingMate(male) && isSeekingMate(female)
+}
+
+/** 雌性追随最强信号，雄性锁定回应自己的雌性 */
+export function syncMateTargets(entities: CircleEntity[], now = 0): void {
+  for (const e of entities) {
+    if (!isActive(e) || e.isFrozen || e.productionStage !== 'none') {
+      e.aiMateTargetId = 0
+      continue
+    }
+    if (!isActivelySeekingMate(e, now)) {
+      e.aiMateTargetId = 0
+      continue
+    }
+    if (e.aiMateTargetId > 0) {
+      const partner = entities.find((p) => p.id === e.aiMateTargetId)
+      if (!partner || !isActive(partner) || !isActivelySeekingMate(partner, now) || !canMatePair(e, partner)) {
+        e.aiMateTargetId = 0
+      }
+    }
+  }
+
+  for (const female of entities) {
+    if (!isActive(female) || female.isFrozen || female.gender !== 'female') continue
+    if (!isActivelySeekingMate(female, now)) continue
+
+    let bestMale: CircleEntity | null = null
+    let bestStrength = MATE_SIGNAL_MIN_STRENGTH
+    for (const male of entities) {
+      if (!isActive(male) || male.isFrozen || male.gender !== 'male') continue
+      if (!isActivelySeekingMate(male, now)) continue
+      if (areKin(male, female)) continue
+      const strength = mateSignalStrength(male, female)
+      if (strength > bestStrength) {
+        bestStrength = strength
+        bestMale = male
+      }
+    }
+    female.aiMateTargetId = bestMale?.id ?? 0
+  }
+
+  for (const male of entities) {
+    if (!isActive(male) || male.isFrozen || male.gender !== 'male') continue
+    if (!isActivelySeekingMate(male, now)) continue
+
+    let bestFemale: CircleEntity | null = null
+    let bestDist = Infinity
+    for (const female of entities) {
+      if (!isActive(female) || female.isFrozen || female.gender !== 'female') continue
+      if (!isActivelySeekingMate(female, now)) continue
+      if (female.aiMateTargetId !== male.id) continue
+      if (areKin(male, female)) continue
+      const d = distanceBetween(male, female)
+      if (d < bestDist) {
+        bestDist = d
+        bestFemale = female
+      }
+    }
+    male.aiMateTargetId = bestFemale?.id ?? 0
+  }
+}
+
+function moveTowardPartner(entity: CircleEntity, partner: CircleEntity, dt: number): void {
+  const dx = partner.x - entity.x
+  const dy = partner.y - entity.y
+  const dist = Math.hypot(dx, dy)
+  if (dist <= 1) return
+  entity.x += (dx / dist) * MATE_PURSUIT_SPEED * dt
+  entity.y += (dy / dist) * MATE_PURSUIT_SPEED * dt
+  clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+  syncEntityGeo(entity)
+}
+
+/** 双向奔赴；moveSelf=false 时仅检测接触（用于玩家手动移动） */
+export function updateMatePursuit(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  dt: number,
+  now = 0,
+  moveSelf = true,
+): boolean {
+  if (!isPursuingMate(entity, now) || entity.productionStage !== 'none' || entity.isFrozen) {
+    return false
+  }
+
+  const target = entities.find((e) => e.id === entity.aiMateTargetId && isActive(e) && isPursuingMate(e, now))
+  if (!target) {
+    entity.aiMateTargetId = 0
+    return false
+  }
+
+  const male = entity.gender === 'male' ? entity : target
+  const female = entity.gender === 'female' ? entity : target
+
+  if (circlesTouch(entity, target) && canStartProduction(male, female)) {
+    beginProductionPair(male, female)
+    male.aiMateTargetId = 0
+    female.aiMateTargetId = 0
+    return true
+  }
+
+  if (moveSelf) moveTowardPartner(entity, target, dt)
+  return true
+}
 
 function hash01(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
@@ -153,11 +287,15 @@ export function updateProductionPairs(
     const dy = female.y - male.y
     const d = Math.hypot(dx, dy)
     if (d > escortDist && d > 1) {
-      const speed = 100
+      const speed = MATE_PURSUIT_SPEED
       male.x += (dx / d) * speed * dt
       male.y += (dy / d) * speed * dt
+      female.x -= (dx / d) * speed * dt * 0.9
+      female.y -= (dy / d) * speed * dt * 0.9
       clampAvatarEntityToWorld(male, WORLD_WIDTH, WORLD_HEIGHT)
+      clampAvatarEntityToWorld(female, WORLD_WIDTH, WORLD_HEIGHT)
       syncEntityGeo(male)
+      syncEntityGeo(female)
     }
 
     male.productionTimer -= dt
@@ -169,72 +307,4 @@ export function updateProductionPairs(
   }
 
   return next
-}
-
-/** 雄性在求偶意图下扫描附近同等意图的异性（非近亲） */
-export function findSeekingPartner(
-  male: CircleEntity,
-  entities: CircleEntity[],
-  now = 0,
-): CircleEntity | null {
-  if (!isActivelySeekingMate(male, now) || male.gender !== 'male') return null
-
-  let best: CircleEntity | null = null
-  let bestD = Infinity
-  for (const other of entities) {
-    if (other.id === male.id || !isActive(other) || other.isFrozen) continue
-    if (!isActivelySeekingMate(other, now) || other.gender !== 'female') continue
-    if (areKin(male, other)) continue
-    const d = Math.hypot(other.x - male.x, other.y - male.y)
-    if (d < SEEK_SCAN_RADIUS && d < bestD) {
-      bestD = d
-      best = other
-    }
-  }
-  return best
-}
-
-export function tryApproachForProduction(
-  male: CircleEntity,
-  entities: CircleEntity[],
-  dt: number,
-  now = 0,
-): boolean {
-  if (!isActivelySeekingMate(male, now) || male.gender !== 'male' || male.productionStage !== 'none') {
-    return false
-  }
-
-  const target =
-    (male.aiMateTargetId > 0
-      ? entities.find((e) => e.id === male.aiMateTargetId && isActivelySeekingMate(e, now))
-      : null) ?? findSeekingPartner(male, entities, now)
-
-  if (!target) {
-    male.aiMateTargetId = 0
-    return false
-  }
-
-  male.aiMateTargetId = target.id
-  if (circlesTouch(male, target) && canStartProduction(male, target)) {
-    beginProductionPair(male, target)
-    male.aiMateTargetId = 0
-    return true
-  }
-
-  const dx = target.x - male.x
-  const dy = target.y - male.y
-  const dist = Math.hypot(dx, dy)
-  if (dist <= 1) return false
-  const speed = 95
-  male.x += (dx / dist) * speed * dt
-  male.y += (dy / dist) * speed * dt
-  clampAvatarEntityToWorld(male, WORLD_WIDTH, WORLD_HEIGHT)
-  syncEntityGeo(male)
-  return true
-}
-
-/** @deprecated 使用 findSeekingPartner */
-export function tryPairProduction(seeker: CircleEntity, entities: CircleEntity[]): CircleEntity | null {
-  if (seeker.gender === 'male') return findSeekingPartner(seeker, entities)
-  return null
 }
