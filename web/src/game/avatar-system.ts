@@ -28,8 +28,11 @@ import {
   LEARN_PELLET_COUNT,
   LEARN_PELLET_INTERVAL_SEC,
   SPAWN_CLEARANCE,
+  ORDER_FULFILL_RADIUS,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
+import { fulfillMarketOrder } from './family-market'
+import { hasJuvenileOffspringToPlan } from './avatar-needs'
 import { isPursuingMate } from './avatar-reproduction'
 import { syncEntityGeo } from './geo'
 import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
@@ -386,6 +389,13 @@ export function completeAvatarTransform(
   entity.absorptionPaused = false
   recordTransformHistory(entity, kind)
 
+  if (entity.marketContractOrderId > 0) {
+    fulfillMarketOrder(entity.marketContractOrderId, entity.id)
+    entity.marketContractOrderId = 0
+    entity.contractTargetX = 0
+    entity.contractTargetY = 0
+  }
+
   return { entities }
 }
 
@@ -572,7 +582,11 @@ function updatePendingAvatarTransform(
   const kind = ally.pendingAvatarKind
   ally.aiIntent = ally.avatarTransformCooldown > 0 ? 'wait' : 'wander'
 
-  const spot = findNearestAvatarTransformSpot(ally, kind, entities, now)
+  const useContractSpot =
+    ally.marketContractOrderId > 0 && ally.contractTargetX !== 0 && ally.contractTargetY !== 0
+  const spot = useContractSpot
+    ? { x: ally.contractTargetX, y: ally.contractTargetY }
+    : findNearestAvatarTransformSpot(ally, kind, entities, now)
   if (!spot) {
     ally.pendingAvatarKind = 'none'
     return null
@@ -584,6 +598,13 @@ function updatePendingAvatarTransform(
   if (!atTransformSpot(ally, spot.x, spot.y)) {
     moveEntityToward(ally, spot.x, spot.y, dt)
     return { pellets, absorbed: [], entities }
+  }
+
+  if (useContractSpot) {
+    const dist = Math.hypot(ally.contractTargetX - ally.x, ally.contractTargetY - ally.y)
+    if (dist > ORDER_FULFILL_RADIUS) {
+      return { pellets, absorbed: [], entities }
+    }
   }
 
   if (ally.avatarTransformCooldown > 0) {
@@ -620,7 +641,9 @@ export function updateAlly(
     return { pellets, absorbed: [], entities }
   }
 
-  const transformKind = decideNpcTransformKind(ally, entities, now)
+  const transformKind = hasJuvenileOffspringToPlan(ally, entities, now)
+    ? decideNpcTransformKind(ally, entities, now)
+    : null
 
   if (transformKind) {
     const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)

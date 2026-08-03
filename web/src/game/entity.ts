@@ -96,6 +96,16 @@ export interface CircleEntity {
   aiAnchorY: number
   aiAnchorTimer: number
   aiMateTargetId: number
+  /** 出生后依恋母亲剩余秒数 */
+  motherBondTimer: number
+  /** 闲逛目标方向（单位向量） */
+  wanderDirX: number
+  wanderDirY: number
+  /** 正在履行的市场订单 id */
+  marketContractOrderId: number
+  /** 市场订单服务点位 */
+  contractTargetX: number
+  contractTargetY: number
 }
 
 let nextId = 1
@@ -201,6 +211,12 @@ export function createCircle(
     aiMateTargetId: 0,
     mateSeekUrge: 0.45 + Math.random() * 0.5,
     scheduleOffsetSec: Math.random() * SCHEDULE_DAY_SEC,
+    motherBondTimer: 0,
+    wanderDirX: Math.cos(Math.random() * Math.PI * 2),
+    wanderDirY: Math.sin(Math.random() * Math.PI * 2),
+    marketContractOrderId: 0,
+    contractTargetX: 0,
+    contractTargetY: 0,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id

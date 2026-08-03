@@ -1,7 +1,9 @@
 import {
+  ELDER_MATE_AGE_SEC,
   MATE_PURSUIT_SPEED,
   MATE_SIGNAL_MIN_STRENGTH,
   MATE_SIGNAL_RANGE_RATIO,
+  OFFSPRING_MOTHER_BOND_SEC,
   PRODUCTION_COOLDOWN_SEC,
   PRODUCTION_DURATION_SEC,
 } from './avatar-config'
@@ -12,24 +14,35 @@ import { areKin } from './kinship'
 import { syncEntityGeo } from './geo'
 import { offspringName } from './naming'
 import type { CircleEntity, Gender } from './entity'
-import { createCircle, isActive, isAdult } from './entity'
+import { createCircle, entityAgeSec, isActive, isAdult } from './entity'
 import { PLAYER_START_MASS } from './physics'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 const MATE_SIGNAL_RANGE = WORLD_WIDTH * MATE_SIGNAL_RANGE_RATIO
 
+function elderMateFactor(entity: CircleEntity, gameTimeSec: number): number {
+  const age = entityAgeSec(entity, gameTimeSec)
+  if (age < ELDER_MATE_AGE_SEC) return 1
+  const t = Math.min(1, (age - ELDER_MATE_AGE_SEC) / 40)
+  return Math.max(0.06, 1 - t * 0.92)
+}
+
 function distanceBetween(a: CircleEntity, b: CircleEntity): number {
   return Math.hypot(b.x - a.x, b.y - a.y)
 }
 
-/** 雄性求偶信号强度，随距离二次衰减 */
-export function mateSignalStrength(male: CircleEntity, female: CircleEntity): number {
+/** 雄性求偶信号强度，随距离二次衰减；高龄大幅衰减 */
+export function mateSignalStrength(
+  male: CircleEntity,
+  female: CircleEntity,
+  gameTimeSec = 0,
+): number {
   const dist = distanceBetween(male, female)
   if (dist > MATE_SIGNAL_RANGE) return 0
   const t = dist / MATE_SIGNAL_RANGE
   const decay = (1 - t) * (1 - t)
   const urge = 0.55 + male.mateSeekUrge * 0.45
-  return decay * urge
+  return decay * urge * elderMateFactor(male, gameTimeSec) * elderMateFactor(female, gameTimeSec)
 }
 
 export function isPursuingMate(entity: CircleEntity, now = 0): boolean {
@@ -73,7 +86,7 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
       if (!isActive(male) || male.gender !== 'male') continue
       if (!isActivelySeekingMate(male, now)) continue
       if (areKin(male, female)) continue
-      const strength = mateSignalStrength(male, female)
+      const strength = mateSignalStrength(male, female, now)
       if (strength > bestStrength) {
         bestStrength = strength
         bestMale = male
@@ -174,8 +187,10 @@ export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
 /** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
 export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
   if (!isSeekingMate(entity, now)) return false
+  const elder = elderMateFactor(entity, now)
+  if (elder < 0.12) return false
   const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
-  return roll < 0.28 + entity.mateSeekUrge * 0.62
+  return roll < (0.28 + entity.mateSeekUrge * 0.62) * elder
 }
 
 function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
@@ -249,6 +264,7 @@ function spawnChild(
     },
   )
   child.avatarRole = 'ally'
+  child.motherBondTimer = OFFSPRING_MOTHER_BOND_SEC
   initAvatarVitality(child, birthGameTimeSec)
   clampAvatarEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
   syncEntityGeo(child)
@@ -262,10 +278,13 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
     e.productionStage = 'none'
     e.productionTimer = 0
     e.productionPartnerId = 0
-    e.pendingAvatarKind = 'none'
+    if (e.id !== female.id) e.pendingAvatarKind = 'none'
   }
   male.productionCooldown = PRODUCTION_COOLDOWN_SEC
   female.productionCooldown = PRODUCTION_COOLDOWN_SEC
+  female.pendingAvatarKind = 'farm'
+  female.aiAnchorX = female.x
+  female.aiAnchorY = female.y
 }
 
 export function tickProductionCooldowns(entities: CircleEntity[], dt: number): void {
