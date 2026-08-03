@@ -15,6 +15,11 @@ import {
   SATIETY_MOVE_DECAY,
   SATIETY_SLEEP_DECAY,
   SATIETY_STARVE_MASS_DRAIN,
+  TRAIT_IDLE_DECAY,
+  TRAIT_LOW_THRESHOLD,
+  TRAIT_SLEEP_DECAY,
+  HEALTH_DECAY_LOW_TRAIT,
+  VISUAL_SCALE_DEFAULT,
 } from './avatar-config'
 import {
   clampHealth,
@@ -28,6 +33,7 @@ import { isActive } from './entity'
 import { PLAYER_START_MASS } from './physics'
 import { initNpcSchedule } from './avatar-ai'
 import { DAY_DURATION_SEC } from './avatar-config'
+import { tickTraitDigestion } from './avatar-traits'
 
 export function initAvatarVitality(entity: CircleEntity): void {
   initEntityMass(entity, entity.mass, HEALTH_MAX)
@@ -43,6 +49,14 @@ export function initAvatarVitality(entity: CircleEntity): void {
   entity.feedRegularity = 0.5
   entity.lifespanEvalTimer = LIFESPAN_EVAL_INTERVAL_SEC
   entity.transformHistory = []
+  entity.knowledge = entity.isPlayer ? 0.4 : 0.3 + (entity.id % 5) * 0.04
+  entity.knowledgeIntake = 0
+  entity.joy = entity.isPlayer ? 0.4 : 0.3 + (entity.id % 4) * 0.05
+  entity.joyIntake = 0
+  entity.knowledgeAbsorbPaused = false
+  entity.joyAbsorbPaused = false
+  entity.visualScale = VISUAL_SCALE_DEFAULT
+  entity.avatarTransformTimer = 0
   if (!entity.isPlayer) {
     initNpcSchedule(entity, (entity.id * 5) % DAY_DURATION_SEC)
   }
@@ -59,7 +73,15 @@ export function initOptimalAvatarState(entity: CircleEntity): void {
 
 /** 饱食度过高或摄入已满时暂停摄取；回落后恢复 */
 export function updateSatietyAbsorption(entity: CircleEntity): void {
-  if (entity.isFrozen || entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return
+  if (entity.isFrozen) return
+  if (
+    entity.avatarRole === 'farm' ||
+    entity.avatarRole === 'ranch' ||
+    entity.avatarRole === 'school' ||
+    entity.avatarRole === 'park'
+  ) {
+    return
+  }
   if (entity.satiety >= SATIETY_ABSORB_PAUSE || remainingIntakeRoom(entity) <= 0) {
     entity.absorptionPaused = true
   } else if (entity.satiety <= SATIETY_ABSORB_RESUME) {
@@ -69,7 +91,14 @@ export function updateSatietyAbsorption(entity: CircleEntity): void {
 
 export function canAvatarAbsorbPellets(entity: CircleEntity): boolean {
   if (!isActive(entity) || entity.isFrozen) return false
-  if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return false
+  if (
+    entity.avatarRole === 'farm' ||
+    entity.avatarRole === 'ranch' ||
+    entity.avatarRole === 'school' ||
+    entity.avatarRole === 'park'
+  ) {
+    return false
+  }
   updateSatietyAbsorption(entity)
   if (entity.absorptionPaused) return false
   return remainingIntakeRoom(entity) > 0
@@ -88,7 +117,9 @@ function tickHealth(entity: CircleEntity, dt: number): void {
     entity.health = clampHealth(entity.health - HEALTH_DECAY_STARVE * dt)
   } else if (entity.satiety <= SATIETY_LOW_THRESHOLD) {
     entity.health = clampHealth(entity.health - HEALTH_DECAY_LOW_SATIETY * dt)
-  } else if (entity.feedRegularity > 0.65 && entity.satiety > 0.55) {
+  } else if (entity.knowledge <= TRAIT_LOW_THRESHOLD || entity.joy <= TRAIT_LOW_THRESHOLD) {
+    entity.health = clampHealth(entity.health - HEALTH_DECAY_LOW_TRAIT * dt)
+  } else if (entity.feedRegularity > 0.65 && entity.satiety > 0.55 && entity.knowledge > 0.4 && entity.joy > 0.4) {
     entity.health = clampHealth(entity.health + HEALTH_RECOVER_RATE * dt)
   }
 }
@@ -170,13 +201,18 @@ export function tickAvatarMetabolism(
   isMoving: boolean,
 ): void {
   if (!isActive(entity) || entity.isFrozen) return
-  if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return
+  if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') return
 
   tickDigestion(entity, dt)
+  tickTraitDigestion(entity, dt)
 
   let decay = entity.aiSleeping ? SATIETY_SLEEP_DECAY * dt : SATIETY_IDLE_DECAY * dt
   if (!entity.aiSleeping && isMoving) decay += SATIETY_MOVE_DECAY * dt
   entity.satiety = Math.max(0, entity.satiety - decay)
+
+  let traitDecay = entity.aiSleeping ? TRAIT_SLEEP_DECAY * dt : TRAIT_IDLE_DECAY * dt
+  entity.knowledge = Math.max(0, entity.knowledge - traitDecay)
+  entity.joy = Math.max(0, entity.joy - traitDecay)
 
   if (entity.satiety <= 0) {
     drainBodyMass(entity, SATIETY_STARVE_MASS_DRAIN * dt)
@@ -189,7 +225,7 @@ export function tickAvatarMetabolism(
 /** 化身状态下仅流逝寿命，质量与饱食度不变 */
 export function tickAvatarTransformLifespan(entity: CircleEntity, dt: number): void {
   if (!isActive(entity)) return
-  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'ranch') return
+  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'ranch' && entity.avatarRole !== 'school' && entity.avatarRole !== 'park') return
 
   entity.lifespanEvalTimer -= dt
   if (entity.lifespanEvalTimer <= 0) {

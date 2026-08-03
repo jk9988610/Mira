@@ -75,10 +75,17 @@ export class PelletGrid {
     return this.byId.get(id)
   }
 
-  findNearestCandidates(x: number, y: number, maxRadius: number, limit: number): Pellet[] {
+  findNearestCandidates(
+    x: number,
+    y: number,
+    maxRadius: number,
+    limit: number,
+    kind?: import('./pellet').PelletKind,
+  ): Pellet[] {
     const found: { pellet: Pellet; distSq: number }[] = []
     const maxR2 = maxRadius * maxRadius
     this.forEachInRadius(x, y, maxRadius, (pellet) => {
+      if (kind && pellet.kind !== kind) return
       const dx = pellet.x - x
       const dy = pellet.y - y
       const distSq = dx * dx + dy * dy

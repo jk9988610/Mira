@@ -23,16 +23,32 @@ export interface CircleEntity {
   invincibleTimer: number
   impulseX: number
   impulseY: number
-  /** 化身模式：农场 / 牧场 / 友方后代 */
+  /** 化身模式：农场 / 牧场 / 学校 / 乐园 / 友方后代 */
   avatarRole: AvatarRole
   isFrozen: boolean
   pelletSpawnTimer: number
   allySpawnTimer: number
   avatarIncubateTimer: number
-  pendingAvatarKind: 'none' | 'farm' | 'ranch'
+  pendingAvatarKind: TransformKind | 'none'
   /** 化身冷却剩余时间（秒） */
   avatarTransformCooldown: number
+  /** 化身剩余时间（秒），固定 8s */
+  avatarTransformTimer: number
   builderName: string
+  /** 视觉缩放，L/R 控制，不影响质量 */
+  visualScale: number
+  /** 知识水平 0~1 */
+  knowledge: number
+  /** 待消化知识 */
+  knowledgeIntake: number
+  /** 快乐水平 0~1 */
+  joy: number
+  /** 待消化快乐 */
+  joyIntake: number
+  /** 知识摄取暂停 */
+  knowledgeAbsorbPaused: boolean
+  /** 快乐摄取暂停 */
+  joyAbsorbPaused: boolean
   /** 化身模式：剩余寿命（秒） */
   lifespanSec: number
   /** 化身模式：饱食度 0~1，降至 0 时开始消耗质量 */
@@ -55,14 +71,14 @@ export interface CircleEntity {
   feedRegularity: number
   /** 寿命评估倒计时 */
   lifespanEvalTimer: number
-  /** 化身工作经历（牧场时刻），最近几次农场/牧场 */
-  transformHistory: ('farm' | 'ranch')[]
+  /** 化身工作经历 */
+  transformHistory: TransformKind[]
   /** 当日时刻 0~DAY_DURATION_SEC */
   dayTimeSec: number
   /** 第几天（用于工作日/周末） */
   dayNumber: number
   /** AI 当前日程阶段 */
-  aiSchedulePhase: 'work' | 'sleep' | 'forage' | 'weekend'
+  aiSchedulePhase: 'work' | 'learn' | 'sleep' | 'forage' | 'play' | 'weekend'
   /** AI 是否处于睡眠代谢 */
   aiSleeping: boolean
   /** 缓存觅食目标颗粒 id */
@@ -74,7 +90,8 @@ export interface CircleEntity {
   aiAnchorTimer: number
 }
 
-export type AvatarRole = 'none' | 'farm' | 'ranch' | 'ally'
+export type AvatarRole = 'none' | 'farm' | 'ranch' | 'school' | 'park' | 'ally'
+export type TransformKind = 'farm' | 'ranch' | 'school' | 'park'
 
 let nextId = 1
 
@@ -111,7 +128,15 @@ export function createCircle(
     avatarIncubateTimer: 0,
     pendingAvatarKind: 'none',
     avatarTransformCooldown: 0,
+    avatarTransformTimer: 0,
     builderName: roster.name,
+    visualScale: 1,
+    knowledge: 0.35,
+    knowledgeIntake: 0,
+    joy: 0.35,
+    joyIntake: 0,
+    knowledgeAbsorbPaused: false,
+    joyAbsorbPaused: false,
     lifespanSec: 0,
     satiety: 1,
     absorptionPaused: false,

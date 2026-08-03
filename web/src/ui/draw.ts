@@ -1,5 +1,5 @@
 import type { LeaderboardView } from '../game/leaderboard'
-import { getAvatarTransformCountdownSec, schedulePhaseLabel } from '../game/avatar-system'
+import { getAvatarTransformCountdownSec, schedulePhaseLabel, traitLabel } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
 import type { AvatarRole, CircleEntity } from '../game/entity'
@@ -349,14 +349,23 @@ export interface AvatarHudData {
   zoom: number
   farmHint: string
   ranchHint: string
+  schoolHint: string
+  parkHint: string
   farms: number
   ranches: number
+  schools: number
+  parks: number
   circles: number
+  knowledge: number
+  joy: number
+  scale: number
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean): string | null {
   if (isFrozen && role === 'farm') return '化身·农场'
   if (isFrozen && role === 'ranch') return '化身·牧场'
+  if (isFrozen && role === 'school') return '化身·学校'
+  if (isFrozen && role === 'park') return '化身·乐园'
   if (role === 'ally') return '后代'
   return null
 }
@@ -366,7 +375,10 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen)
   const lines = [
     `质量 ${Math.round(entity.mass)}`,
+    `缩放 ${Math.round(entity.visualScale * 100)}%`,
     `饱食 ${Math.round(entity.satiety * 100)}%`,
+    `知识 ${Math.round(entity.knowledge * 100)}% ${traitLabel(entity.knowledge)}`,
+    `快乐 ${Math.round(entity.joy * 100)}% ${traitLabel(entity.joy)}`,
     `健康 ${Math.round(entity.health * 100)}% ${healthLabel(entity.health)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
     `化身 ${entity.avatarTransformCount}次`,
@@ -379,7 +391,7 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   }
 
   const lineHeight = 12
-  const boxWidth = 108
+  const boxWidth = 118
   const boxHeight = lines.length * lineHeight + 8
   const x = entity.x - boxWidth / 2
   const y = entity.y + r + 10
@@ -460,8 +472,9 @@ export function drawAvatarHud(
   _width: number,
   data: AvatarHudData,
 ): void {
-  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 圆 ${data.circles}`
-  const hint = `${data.farmHint} · ${data.ranchHint}`
+  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 学校 ${data.schools} · 乐园 ${data.parks} · 圆 ${data.circles}`
+  const hint = `${data.farmHint} · ${data.ranchHint} · ${data.schoolHint} · ${data.parkHint}`
+  const status = `知识 ${Math.round(data.knowledge * 100)}% · 快乐 ${Math.round(data.joy * 100)}% · 缩放 ${Math.round(data.scale * 100)}% · L/R 调节`
 
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
@@ -472,11 +485,18 @@ export function drawAvatarHud(
   ctx.fillText(hint, 26, 35)
 
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  roundRect(ctx, 16, 50, ctx.measureText(tribe).width + 20, 24, 8)
+  roundRect(ctx, 16, 50, ctx.measureText(status).width + 20, 24, 8)
+  ctx.fill()
+  ctx.fillStyle = '#9eb4d8'
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillText(status, 26, 66)
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
+  roundRect(ctx, 16, 82, ctx.measureText(tribe).width + 20, 24, 8)
   ctx.fill()
   ctx.fillStyle = '#7f8ca3'
   ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(tribe, 26, 66)
+  ctx.fillText(tribe, 26, 98)
 }
 
 export function drawAvatarStructure(
@@ -489,7 +509,14 @@ export function drawAvatarStructure(
 
   ctx.save()
   const pulse = 0.85 + 0.15 * Math.sin(time * 2)
-  const ringColor = avatarRole === 'farm' ? 'rgba(143, 211, 255, 0.55)' : 'rgba(255, 196, 77, 0.55)'
+  const ringColor =
+    avatarRole === 'farm'
+      ? 'rgba(143, 211, 255, 0.55)'
+      : avatarRole === 'ranch'
+        ? 'rgba(255, 196, 77, 0.55)'
+        : avatarRole === 'school'
+          ? 'rgba(130, 170, 255, 0.58)'
+          : 'rgba(255, 150, 210, 0.58)'
 
   ctx.beginPath()
   ctx.arc(x, y, r * pulse + 10, 0, Math.PI * 2)
