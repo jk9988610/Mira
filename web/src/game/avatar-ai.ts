@@ -8,6 +8,7 @@ import {
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
+import { isJuvenile } from './entity'
 import type { PelletGrid } from './pellet-grid'
 import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
@@ -35,6 +36,7 @@ export function decideNpcTransformKind(
   entities: CircleEntity[],
   now = 0,
 ): TransformKind | null {
+  if (isJuvenile(entity)) return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
   return pickWeightedTransformKind(
     entity,
@@ -68,6 +70,10 @@ export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
             : entity.aiIntent === 'play'
               ? '吸收快乐'
               : schedulePhaseLabel(phase)
+
+  if (isJuvenile(entity)) {
+    return `未成年·${base}`
+  }
 
   if (isSeekingMate(entity)) return `求偶·${base}`
   return base

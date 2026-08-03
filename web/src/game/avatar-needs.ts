@@ -1,12 +1,15 @@
 import {
+  FARM_TRANSFORM_WEIGHT,
   JOY_CAP,
   KNOWLEDGE_CAP,
+  PARK_TRANSFORM_WEIGHT,
   SATIETY_CAP,
   SATIETY_LOW_THRESHOLD,
+  SCHOOL_TRANSFORM_WEIGHT,
   TRANSFORM_REPEAT_PENALTY,
+  TRANSFORM_SKIP_CHANCE,
 } from './avatar-config'
-import { currentSchedulePhase } from './avatar-schedule'
-import { isSeekingMate } from './avatar-reproduction'
+import { currentSchedulePhase, isTransformPhase } from './avatar-schedule'
 import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
 import { isAdult } from './entity'
@@ -19,6 +22,10 @@ export interface NeedWeights {
   learn: number
   play: number
 }
+
+const EAT_NEED_MULT = 2.1
+const LEARN_NEED_MULT = 0.32
+const PLAY_NEED_MULT = 0.28
 
 function hash01(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
@@ -39,11 +46,11 @@ export function needPlay(entity: CircleEntity): number {
 
 export function computeNeedWeights(entity: CircleEntity): NeedWeights {
   const eat = needEat(entity)
-  const hungerBoost = entity.satiety <= SATIETY_LOW_THRESHOLD ? 0.45 : 0
+  const hungerBoost = entity.satiety <= SATIETY_LOW_THRESHOLD ? 0.5 : 0
   return {
-    eat: eat + hungerBoost,
-    learn: needLearn(entity),
-    play: needPlay(entity),
+    eat: (eat + hungerBoost) * EAT_NEED_MULT,
+    learn: needLearn(entity) * LEARN_NEED_MULT,
+    play: needPlay(entity) * PLAY_NEED_MULT,
   }
 }
 
@@ -61,20 +68,26 @@ export function pickWeightedNeed(entity: CircleEntity, seed: number): NeedKind {
     roll -= item.value
     if (roll <= 0) return item.kind
   }
-  return items[items.length - 1].kind
+  return 'eat'
 }
 
 export function canConsiderTransform(entity: CircleEntity, gameTimeSec: number): boolean {
   if (!isAdult(entity)) return false
   if (entity.productionStage !== 'none' || entity.isFrozen) return false
-  if (isSeekingMate(entity)) return false
-  if (needEat(entity) > 0.55) return false
-  if (entity.satiety < SATIETY_CAP * 0.45) return false
-  if (currentSchedulePhase(entity, gameTimeSec) !== 'wander') return false
+  const phase = currentSchedulePhase(entity, gameTimeSec)
+  if (!isTransformPhase(phase)) return false
+  if (needEat(entity) > 0.62) return false
+  if (entity.satiety < SATIETY_CAP * 0.38) return false
   return true
 }
 
-/** 化身产出颗粒：仅在闲逛时段、成年且生活无忧时偶尔进行 */
+const TRANSFORM_WEIGHT: Record<TransformKind, number> = {
+  farm: FARM_TRANSFORM_WEIGHT,
+  school: SCHOOL_TRANSFORM_WEIGHT,
+  park: PARK_TRANSFORM_WEIGHT,
+}
+
+/** 化身产出颗粒：饱腹时在觅食/闲逛时段进行，农场为主 */
 export function pickWeightedTransformKind(
   entity: CircleEntity,
   structureCounts: { farm: number; school: number; park: number },
@@ -86,24 +99,24 @@ export function pickWeightedTransformKind(
   const last = entity.transformHistory[entity.transformHistory.length - 1]
   const kinds: TransformKind[] = ['farm', 'school', 'park']
   const scarcity = {
-    farm: 1 / (1 + structureCounts.farm),
+    farm: 1 / (1 + structureCounts.farm * 0.45),
     school: 1 / (1 + structureCounts.school),
     park: 1 / (1 + structureCounts.park),
   }
   const values = kinds.map((kind) => {
-    const base = scarcity[kind]
+    const base = TRANSFORM_WEIGHT[kind] * scarcity[kind]
     const penalty = kind === last ? TRANSFORM_REPEAT_PENALTY : 1
     return base * penalty
   })
   const total = values.reduce((a, b) => a + b, 0)
   if (total < 0.05) return null
-  if (hash01(seed + entity.id) < 0.55) return null
+  if (hash01(seed + entity.id) < TRANSFORM_SKIP_CHANCE) return null
   let roll = hash01(seed) * total
   for (let i = 0; i < kinds.length; i++) {
     roll -= values[i]
     if (roll <= 0) return kinds[i]
   }
-  return kinds[kinds.length - 1]
+  return 'farm'
 }
 
 export function massLabel(mass: number): string {
