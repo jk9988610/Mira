@@ -30,7 +30,6 @@ import { computeCamera } from '../game/camera'
 import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
-import { PLAYER_START_MASS } from '../game/physics'
 import { PelletGrid } from '../game/pellet-grid'
 import { createTraitPellet, drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
 import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
@@ -238,10 +237,9 @@ export function createAvatarGameScene(
       clearScreen(ctx, width, height)
 
       const controlled = getControlledEntity(entities, controlledId)
-      const focusMass = controlled?.mass ?? PLAYER_START_MASS
       const focusX = controlled?.x ?? WORLD_WIDTH / 2
       const focusY = controlled?.y ?? WORLD_HEIGHT / 2
-      const cam = computeCamera(focusX, focusY, focusMass, width, height)
+      const cam = computeCamera(focusX, focusY, STARTER_OPTIMAL_MASS, width, height)
       const view = computeViewBounds(cam.camX, cam.camY, cam.renderScale, width, height)
 
       const sorted = [...entities].sort((a, b) => avatarEntityRadius(b) - avatarEntityRadius(a))
