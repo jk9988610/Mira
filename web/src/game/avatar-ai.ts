@@ -1,5 +1,5 @@
-import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC, TRANSFORM_REPEAT_PENALTY } from './avatar-config'
-import { dominantNeed, type NeedKind } from './avatar-needs'
+import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
+import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { beginProductionPair, tryPairProduction } from './avatar-reproduction'
 import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
@@ -9,35 +9,15 @@ import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-const TRANSFORM_KINDS: TransformKind[] = ['work', 'learn', 'play']
-
-function hash01(seed: number): number {
-  const x = Math.sin(seed * 12.9898) * 43758.5453
-  return x - Math.floor(x)
-}
-
-export function pickWeightedTransformKind(entity: CircleEntity): TransformKind {
-  const last = entity.transformHistory[entity.transformHistory.length - 1]
-  const weights = TRANSFORM_KINDS.map((kind) => (kind === last ? TRANSFORM_REPEAT_PENALTY : 1))
-  const total = weights.reduce((a, b) => a + b, 0)
-  let roll = hash01(entity.id * 2.17 + entity.transformHistory.length * 1.9) * total
-  for (let i = 0; i < TRANSFORM_KINDS.length; i++) {
-    roll -= weights[i]
-    if (roll <= 0) return TRANSFORM_KINDS[i]
-  }
-  return TRANSFORM_KINDS[0]
-}
-
-export function decideNpcTransformKind(entity: CircleEntity, _entities: CircleEntity[]): TransformKind | null {
+export function decideNpcTransformKind(
+  entity: CircleEntity,
+  _entities: CircleEntity[],
+  now = 0,
+): TransformKind | null {
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
-  const need = dominantNeed(entity)
+  const need = pickWeightedNeed(entity, entity.id * 0.83 + now * 0.19)
   if (need === 'eat' || need === 'mate') return null
-  if (need === 'learn') return 'learn'
-  if (need === 'play') return 'play'
-  if (need === 'work' && hash01(entity.id + entity.aiPelletTargetTimer) < 0.65) {
-    return pickWeightedTransformKind(entity)
-  }
-  return null
+  return pickWeightedTransformKind(entity, entity.id * 2.11 + now * 0.23 + entity.transformHistory.length)
 }
 
 export function recordTransformHistory(entity: CircleEntity, kind: TransformKind): void {
@@ -103,6 +83,7 @@ export function updateNpcIntent(
   entities: CircleEntity[],
   grid: PelletGrid,
   dt: number,
+  now = 0,
 ): { moving: boolean; sleeping: boolean } {
   entity.aiPelletTargetTimer = Math.max(0, entity.aiPelletTargetTimer - dt)
 
@@ -111,8 +92,15 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
-  const need = dominantNeed(entity)
-  entity.aiIntent = need === 'work' ? 'work' : need
+  if (entity.aiPelletTargetTimer <= 0.05) {
+    const need = pickWeightedNeed(
+      entity,
+      entity.id * 1.31 + Math.floor(now * 0.4) + entity.transformHistory.length * 1.7,
+    )
+    entity.aiIntent = need === 'work' ? 'work' : need
+  }
+
+  const need = entity.aiIntent
 
   if (need === 'mate') {
     const mate = tryPairProduction(entity, entities)
@@ -123,12 +111,22 @@ export function updateNpcIntent(
       else moveToward(entity, mate.x, mate.y, dt, 0.85)
       return { moving: true, sleeping: false }
     }
+    entity.aiIntent = 'eat'
   }
 
-  const pellet = pickPelletTarget(entity, grid, pelletKindForNeed(need))
-  if (pellet && (need === 'eat' || need === 'learn' || need === 'play')) {
-    moveToward(entity, pellet.x, pellet.y, dt, 0.95)
-    return { moving: true, sleeping: false }
+  let activeNeed = entity.aiIntent
+  if (activeNeed === 'idle') activeNeed = 'eat'
+
+  if (activeNeed === 'eat' || activeNeed === 'learn' || activeNeed === 'play') {
+    const pellet = pickPelletTarget(entity, grid, pelletKindForNeed(activeNeed))
+    if (pellet) {
+      moveToward(entity, pellet.x, pellet.y, dt, 0.95)
+      return { moving: true, sleeping: false }
+    }
+  }
+
+  if (activeNeed === 'work') {
+    return { moving: false, sleeping: false }
   }
 
   return { moving: false, sleeping: false }

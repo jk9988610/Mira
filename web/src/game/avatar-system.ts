@@ -313,7 +313,7 @@ export function decideAllyTransformKind(
   ally: CircleEntity,
   entities: CircleEntity[],
 ): TransformKind | null {
-  return decideNpcTransformKind(ally, entities)
+  return decideNpcTransformKind(ally, entities, 0)
 }
 
 function absorbAndFilterPellets(
@@ -548,9 +548,9 @@ export function updateAlly(
     return { pellets, absorbed: [], entities }
   }
 
-  const intent = updateNpcIntent(ally, entities, grid, dt)
+  const intent = updateNpcIntent(ally, entities, grid, dt, now)
 
-  const transformKind = decideNpcTransformKind(ally, entities)
+  const transformKind = decideNpcTransformKind(ally, entities, now)
 
   if (transformKind) {
     const immediate = tryAllyTransform(ally, entities, pellets, transformKind)

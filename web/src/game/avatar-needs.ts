@@ -1,9 +1,22 @@
-import { JOY_CAP, KNOWLEDGE_CAP, SATIETY_CAP } from './avatar-config'
+import { JOY_CAP, KNOWLEDGE_CAP, SATIETY_CAP, SATIETY_LOW_THRESHOLD, TRANSFORM_REPEAT_PENALTY } from './avatar-config'
 import { PLAYER_START_MASS } from './physics'
-import type { CircleEntity } from './entity'
+import type { CircleEntity, TransformKind } from './entity'
 import { isAdult } from './entity'
 
 export type NeedKind = 'eat' | 'learn' | 'play' | 'mate' | 'work'
+
+export interface NeedWeights {
+  eat: number
+  learn: number
+  play: number
+  mate: number
+  work: number
+}
+
+function hash01(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
 
 export function needEat(entity: CircleEntity): number {
   return 1 - Math.min(1, entity.satiety / SATIETY_CAP)
@@ -23,19 +36,67 @@ export function needMate(entity: CircleEntity): number {
 }
 
 export function needWork(entity: CircleEntity): number {
-  return Math.min(1, 0.35 + needLearn(entity) * 0.25 + needPlay(entity) * 0.2)
+  const hunger = needEat(entity)
+  return Math.min(1, 0.2 + hunger * 0.45 + needLearn(entity) * 0.15 + needPlay(entity) * 0.12)
 }
 
-export function dominantNeed(entity: CircleEntity): NeedKind {
-  const needs: { kind: NeedKind; value: number }[] = [
-    { kind: 'eat', value: needEat(entity) },
-    { kind: 'learn', value: needLearn(entity) },
-    { kind: 'play', value: needPlay(entity) },
-    { kind: 'mate', value: needMate(entity) },
-    { kind: 'work', value: needWork(entity) },
+export function computeNeedWeights(entity: CircleEntity): NeedWeights {
+  const eat = needEat(entity)
+  const learn = needLearn(entity)
+  const play = needPlay(entity)
+  const mate = needMate(entity)
+  const work = needWork(entity)
+  const hungerBoost = entity.satiety <= SATIETY_LOW_THRESHOLD ? 0.35 : 0
+  return {
+    eat: eat + hungerBoost,
+    learn: learn * 0.92,
+    play: play * 0.92,
+    mate,
+    work,
+  }
+}
+
+export function pickWeightedNeed(entity: CircleEntity, seed: number): NeedKind {
+  const w = computeNeedWeights(entity)
+  const items: { kind: NeedKind; value: number }[] = [
+    { kind: 'eat', value: w.eat },
+    { kind: 'learn', value: w.learn },
+    { kind: 'play', value: w.play },
+    { kind: 'mate', value: w.mate },
+    { kind: 'work', value: w.work },
   ]
-  needs.sort((a, b) => b.value - a.value)
-  return needs[0].value > 0.15 ? needs[0].kind : 'eat'
+  const total = items.reduce((sum, item) => sum + item.value, 0)
+  if (total <= 0.05) return 'eat'
+  let roll = hash01(seed) * total
+  for (const item of items) {
+    roll -= item.value
+    if (roll <= 0) return item.kind
+  }
+  return items[items.length - 1].kind
+}
+
+export function pickWeightedTransformKind(entity: CircleEntity, seed: number): TransformKind | null {
+  const w = computeNeedWeights(entity)
+  const last = entity.transformHistory[entity.transformHistory.length - 1]
+  const kinds: TransformKind[] = ['work', 'learn', 'play']
+  const values = kinds.map((kind) => {
+    const base = kind === 'work' ? w.work : kind === 'learn' ? w.learn : w.play
+    const penalty = kind === last ? TRANSFORM_REPEAT_PENALTY : 1
+    return base * penalty
+  })
+  const total = values.reduce((a, b) => a + b, 0)
+  if (total < 0.1) return null
+  let roll = hash01(seed) * total
+  for (let i = 0; i < kinds.length; i++) {
+    roll -= values[i]
+    if (roll <= 0) return kinds[i]
+  }
+  return kinds[kinds.length - 1]
+}
+
+/** @deprecated 使用 pickWeightedNeed */
+export function dominantNeed(entity: CircleEntity): NeedKind {
+  return pickWeightedNeed(entity, entity.id * 1.7 + entity.transformHistory.length * 2.3)
 }
 
 export function massLabel(mass: number): string {
