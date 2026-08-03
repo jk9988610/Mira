@@ -53,9 +53,9 @@ function isNpcMobile(entity: CircleEntity): boolean {
 
 const STARTER_OFFSETS = [
   { x: 0, y: 0 },
-  { x: 68, y: -38 },
-  { x: -62, y: 34 },
-  { x: 50, y: 44 },
+  { x: 272, y: -152 },
+  { x: -248, y: 136 },
+  { x: 200, y: 176 },
 ]
 
 const STARTER_GENDERS: Gender[] = ['male', 'male', 'female', 'female']
@@ -107,11 +107,11 @@ export function createAvatarGameScene(
     })
     controlledId = entities[0].id
     pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 20)
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 48; i++) {
       pellets.push(
         createTraitPellet(
-          20 + Math.random() * (WORLD_WIDTH - 40),
-          20 + Math.random() * (WORLD_HEIGHT - 40),
+          40 + Math.random() * (WORLD_WIDTH - 80),
+          40 + Math.random() * (WORLD_HEIGHT - 80),
           i % 2 === 0 ? 'knowledge' : 'joy',
         ),
       )
