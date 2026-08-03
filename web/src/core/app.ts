@@ -68,6 +68,7 @@ export class App {
     const w = this.canvas.clientWidth
     const h = this.canvas.clientHeight
     this.scenes.render(this.ctx, w, h)
+    this.input.endFrame()
     requestAnimationFrame((t) => this.loop(t))
   }
 }

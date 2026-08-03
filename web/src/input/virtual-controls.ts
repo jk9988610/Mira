@@ -1,5 +1,6 @@
 import { isTouchDevice } from './gamepad'
 import type { InputManager } from './input-manager'
+import { snapPosition } from './layout-grid'
 import { loadVirtualLayout } from '../settings/settings'
 import type { VirtualControlId, VirtualControlsLayout } from './virtual-controls-layout'
 
@@ -9,6 +10,7 @@ const JOY_DEADZONE = 0.12
 /** 虚拟手柄：布局可配置，仅在游戏中显示 */
 export class VirtualControls {
   private readonly root: HTMLElement
+  private readonly gridOverlay: HTMLElement
   private readonly knob: HTMLElement
   private readonly parts = new Map<VirtualControlId, HTMLElement>()
   private activePointer: number | null = null
@@ -25,6 +27,7 @@ export class VirtualControls {
     this.root.id = 'virtual-controls'
     this.root.className = 'virtual-controls virtual-controls--hidden'
     this.root.innerHTML = `
+      <div class="vc-grid-overlay" aria-hidden="true"></div>
       <div class="vc-part vc-shoulder" data-part="btnLb" data-btn="4">LB</div>
       <div class="vc-part vc-shoulder" data-part="btnRb" data-btn="5">RB</div>
       <div class="vc-part vc-joystick" data-part="joystick" aria-label="移动摇杆">
@@ -39,6 +42,7 @@ export class VirtualControls {
       <button type="button" class="vc-part vc-btn vc-btn-start" data-part="btnStart" data-btn="9">▣</button>
     `
     document.body.appendChild(this.root)
+    this.gridOverlay = this.root.querySelector('.vc-grid-overlay')!
     this.knob = this.root.querySelector('.vc-joystick-knob')!
 
     this.root.querySelectorAll<HTMLElement>('[data-part]').forEach((el) => {
@@ -46,12 +50,15 @@ export class VirtualControls {
       this.parts.set(id, el)
     })
 
-    if (!isTouchDevice()) return
-
     this.applyLayout(this.layout)
     this.bindJoystick()
     this.bindButtons()
     this.bindLayoutDrag()
+
+    if (!isTouchDevice()) {
+      this.root.classList.add('virtual-controls--hidden')
+    }
+
     this.input.onStatusChange((status) => {
       this.gamepadActive = status.connected && status.activated
       this.syncVisibility()
@@ -66,6 +73,7 @@ export class VirtualControls {
   setLayoutEditMode(active: boolean): void {
     this.layoutEditMode = active
     this.root.classList.toggle('virtual-controls--edit', active)
+    this.gridOverlay.classList.toggle('vc-grid-overlay--visible', active)
     this.syncVisibility()
   }
 
@@ -93,7 +101,7 @@ export class VirtualControls {
   }
 
   private syncVisibility(): void {
-    const show = isTouchDevice() && (this.inGame || this.layoutEditMode) && !this.gamepadActive
+    const show = (isTouchDevice() || this.layoutEditMode) && (this.inGame || this.layoutEditMode) && !this.gamepadActive
     this.root.classList.toggle('virtual-controls--hidden', !show)
   }
 
@@ -106,6 +114,7 @@ export class VirtualControls {
       zone.setPointerCapture(e.pointerId)
       this.updateJoystick(e, zone)
       e.preventDefault()
+      e.stopPropagation()
     })
     zone.addEventListener('pointermove', (e) => {
       if (this.layoutEditMode || e.pointerId !== this.activePointer) return
@@ -131,7 +140,7 @@ export class VirtualControls {
     const angle = Math.atan2(dy, dx)
     const knobX = dist > 0 ? Math.cos(angle) * clamped : 0
     const knobY = dist > 0 ? Math.sin(angle) * clamped : 0
-    this.knob.style.transform = `translate(${knobX}px, ${knobY}px)`
+    this.knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`
 
     let nx = knobX / JOY_RADIUS
     let ny = knobY / JOY_RADIUS
@@ -148,7 +157,7 @@ export class VirtualControls {
   }
 
   private resetJoystick(): void {
-    this.knob.style.transform = 'translate(0, 0)'
+    this.knob.style.transform = 'translate(-50%, -50%)'
     this.input.setVirtualStick(0, 0)
   }
 
@@ -156,21 +165,23 @@ export class VirtualControls {
     const buttons = this.root.querySelectorAll<HTMLElement>('[data-btn]')
     for (const btn of buttons) {
       const code = btn.dataset.btn!
-      const press = () => {
+      const press = (e: PointerEvent) => {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, true)
         btn.classList.add('vc-btn--pressed')
+        e.preventDefault()
+        e.stopPropagation()
       }
-      const release = () => {
+      const release = (e: PointerEvent) => {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, false)
         btn.classList.remove('vc-btn--pressed')
+        e.preventDefault()
       }
       btn.addEventListener('pointerdown', (e) => {
         if (this.layoutEditMode) return
         btn.setPointerCapture(e.pointerId)
-        press()
-        e.preventDefault()
+        press(e)
       })
       btn.addEventListener('pointerup', release)
       btn.addEventListener('pointercancel', release)
@@ -179,7 +190,6 @@ export class VirtualControls {
   }
 
   private bindLayoutDrag(): void {
-    const clamp = (v: number) => Math.max(0.05, Math.min(0.95, v))
     for (const [id, el] of this.parts) {
       el.addEventListener('pointerdown', (e) => {
         if (!this.layoutEditMode) return
@@ -187,17 +197,23 @@ export class VirtualControls {
         this.dragPointer = e.pointerId
         el.setPointerCapture(e.pointerId)
         e.preventDefault()
+        e.stopPropagation()
       })
       el.addEventListener('pointermove', (e) => {
         if (!this.layoutEditMode || this.dragPart !== id || e.pointerId !== this.dragPointer) return
-        this.layout[id] = {
-          x: clamp(e.clientX / window.innerWidth),
-          y: clamp(e.clientY / window.innerHeight),
+        const raw = {
+          x: e.clientX / window.innerWidth,
+          y: e.clientY / window.innerHeight,
         }
+        this.layout[id] = snapPosition(raw)
         this.applyLayout(this.layout)
       })
       const endDrag = (e: PointerEvent) => {
         if (e.pointerId !== this.dragPointer) return
+        if (this.dragPart === id) {
+          this.layout[id] = snapPosition(this.layout[id])
+          this.applyLayout(this.layout)
+        }
         this.dragPart = null
         this.dragPointer = null
       }
