@@ -2,7 +2,12 @@ import { isTouchDevice } from './gamepad'
 import type { InputManager } from './input-manager'
 import { snapPosition } from './layout-grid'
 import { loadVirtualLayout } from '../settings/settings'
-import type { VirtualControlId, VirtualControlsLayout } from './virtual-controls-layout'
+import {
+  clampOpacity,
+  type VirtualControlId,
+  type VirtualControlsLayout,
+  VIRTUAL_CONTROL_LABELS,
+} from './virtual-controls-layout'
 
 const JOY_RADIUS = 58
 const JOY_DEADZONE = 0.12
@@ -20,6 +25,7 @@ export class VirtualControls {
   private gamepadActive = false
   private dragPointer: number | null = null
   private dragPart: VirtualControlId | null = null
+  private selectedPart: VirtualControlId | null = null
 
   constructor(
     private readonly input: InputManager,
@@ -75,23 +81,47 @@ export class VirtualControls {
 
   setLayoutEditMode(active: boolean): void {
     this.layoutEditMode = active
+    if (!active) this.selectedPart = null
     this.root.classList.toggle('virtual-controls--edit', active)
     this.gridOverlay.classList.toggle('vc-grid-overlay--visible', active)
+    this.syncPartSelection()
     this.syncVisibility()
   }
 
   getLayout(): VirtualControlsLayout {
-    return { ...this.layout }
+    return structuredClone(this.layout)
+  }
+
+  getSelectedPart(): VirtualControlId | null {
+    return this.selectedPart
+  }
+
+  selectPart(id: VirtualControlId | null): void {
+    this.selectedPart = id
+    this.syncPartSelection()
+  }
+
+  adjustSelectedOpacity(delta: number): void {
+    if (!this.selectedPart) return
+    const current = this.layout[this.selectedPart].opacity ?? 1
+    this.layout[this.selectedPart] = {
+      ...this.layout[this.selectedPart],
+      opacity: clampOpacity(current + delta),
+    }
+    this.applyLayout(this.layout)
   }
 
   applyLayout(layout: VirtualControlsLayout): void {
-    this.layout = { ...layout }
-    for (const [id, pos] of Object.entries(layout) as [VirtualControlId, { x: number; y: number }][]) {
+    this.layout = structuredClone(layout)
+    for (const [id, pos] of Object.entries(this.layout) as [VirtualControlId, { x: number; y: number; opacity?: number }][]) {
       const el = this.parts.get(id)
       if (!el) continue
       el.style.left = `${pos.x * 100}%`
       el.style.top = `${pos.y * 100}%`
+      const opacity = this.layoutEditMode ? 1 : clampOpacity(pos.opacity ?? 1)
+      el.style.opacity = String(opacity)
     }
+    this.syncPartSelection()
   }
 
   getPartElement(id: VirtualControlId): HTMLElement | undefined {
@@ -103,8 +133,18 @@ export class VirtualControls {
     this.root.remove()
   }
 
+  private syncPartSelection(): void {
+    for (const [id, el] of this.parts) {
+      el.classList.toggle('vc-part--selected', this.layoutEditMode && id === this.selectedPart)
+    }
+  }
+
   private syncVisibility(): void {
-    const show = (isTouchDevice() || this.layoutEditMode) && (this.inGame || this.layoutEditMode) && !this.gamepadActive
+    const touchOrEdit = isTouchDevice() || this.layoutEditMode
+    const show =
+      touchOrEdit &&
+      (this.inGame || this.layoutEditMode) &&
+      (!this.gamepadActive || isTouchDevice() || this.layoutEditMode)
     this.root.classList.toggle('virtual-controls--hidden', !show)
   }
 
@@ -164,6 +204,12 @@ export class VirtualControls {
     this.input.setVirtualStick(0, 0)
   }
 
+  private triggerPause(): void {
+    this.input.setVirtualButton('9', true)
+    this.onPause?.()
+    window.setTimeout(() => this.input.setVirtualButton('9', false), 0)
+  }
+
   private bindButtons(): void {
     const buttons = this.root.querySelectorAll<HTMLElement>('[data-btn]')
     for (const btn of buttons) {
@@ -172,7 +218,7 @@ export class VirtualControls {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, true)
         btn.classList.add('vc-btn--pressed')
-        if (code === '9') this.onPause?.()
+        if (code === '9') this.triggerPause()
       }
       const release = () => {
         if (this.layoutEditMode) return
@@ -208,6 +254,8 @@ export class VirtualControls {
     for (const [id, el] of this.parts) {
       el.addEventListener('pointerdown', (e) => {
         if (!this.layoutEditMode) return
+        this.selectedPart = id
+        this.syncPartSelection()
         this.dragPart = id
         this.dragPointer = e.pointerId
         el.setPointerCapture(e.pointerId)
@@ -220,13 +268,13 @@ export class VirtualControls {
           x: e.clientX / window.innerWidth,
           y: e.clientY / window.innerHeight,
         }
-        this.layout[id] = snapPosition(raw)
+        this.layout[id] = { ...this.layout[id], ...snapPosition(raw) }
         this.applyLayout(this.layout)
       })
       const endDrag = (e: PointerEvent) => {
         if (e.pointerId !== this.dragPointer) return
         if (this.dragPart === id) {
-          this.layout[id] = snapPosition(this.layout[id])
+          this.layout[id] = { ...this.layout[id], ...snapPosition(this.layout[id]) }
           this.applyLayout(this.layout)
         }
         this.dragPart = null
@@ -237,3 +285,5 @@ export class VirtualControls {
     }
   }
 }
+
+export { VIRTUAL_CONTROL_LABELS }

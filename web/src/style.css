@@ -43,6 +43,12 @@ body {
   cursor: grabbing;
 }
 
+.virtual-controls--edit .vc-part--selected {
+  outline: 2px solid rgba(143, 211, 255, 0.95);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(143, 211, 255, 0.18);
+}
+
 .vc-grid-overlay {
   position: absolute;
   inset: 0;

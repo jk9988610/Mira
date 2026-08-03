@@ -1,6 +1,7 @@
 import type { App } from '../core/app'
 import { LAYOUT_GRID_STEP } from '../input/layout-grid'
 import type { VirtualControls } from '../input/virtual-controls'
+import { VIRTUAL_CONTROL_LABELS } from '../input/virtual-controls'
 import { loadVirtualLayout, saveVirtualLayout } from '../settings/settings'
 import { clearScreen, drawHint, drawMenuItem, drawTitle } from '../ui/draw'
 
@@ -50,6 +51,8 @@ export function createLayoutEditorScene(
       const input = app.input.snapshot()
       if (input.pausePressed || input.backPressed) cancel()
       if (input.confirmPressed) saveAndExit()
+      if (input.upPressed) virtualControls.adjustSelectedOpacity(0.08)
+      if (input.downPressed) virtualControls.adjustSelectedOpacity(-0.08)
     },
     onTap(x: number, y: number, width: number, height: number) {
       const top = height * 0.82
@@ -66,9 +69,30 @@ export function createLayoutEditorScene(
       ctx.textAlign = 'center'
       ctx.fillStyle = '#8aa0c8'
       ctx.font = '14px system-ui, sans-serif'
-      ctx.fillText('拖动摇杆、按键与 Start · 松手后吸附到网格', width / 2, height * 0.22)
+      ctx.fillText('拖动摇杆、按键与 Start · 松手后吸附到网格', width / 2, height * 0.18)
+
+      const selected = virtualControls.getSelectedPart()
+      const layout = virtualControls.getLayout()
+      if (selected) {
+        const opacity = Math.round((layout[selected].opacity ?? 1) * 100)
+        ctx.fillStyle = '#d7e0f2'
+        ctx.font = '16px system-ui, sans-serif'
+        ctx.fillText(
+          `已选 ${VIRTUAL_CONTROL_LABELS[selected]} · 透明度 ${opacity}%`,
+          width / 2,
+          height * 0.24,
+        )
+        ctx.fillStyle = '#8aa0c8'
+        ctx.font = '13px system-ui, sans-serif'
+        ctx.fillText('↑ / ↓ 调整透明度', width / 2, height * 0.29)
+      } else {
+        ctx.fillStyle = '#8aa0c8'
+        ctx.font = '13px system-ui, sans-serif'
+        ctx.fillText('点选一个组件后可调整透明度', width / 2, height * 0.24)
+      }
+
       drawMenuItem(ctx, width, height * 0.82, '确定并保存', true)
-      drawHint(ctx, width, height, '拖动组件 · 点击确定保存')
+      drawHint(ctx, width, height, '拖动组件 · ↑↓ 透明度 · 确定保存')
     },
   }
 }

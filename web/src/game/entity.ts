@@ -29,16 +29,16 @@ export interface CircleEntity {
   builderName: string
   /** 化身模式：剩余寿命（秒） */
   lifespanSec: number
-  /** 化身模式：饥饿值 0~1，满值时开始消耗质量 */
-  hunger: number
-  /** 化身模式：质量过大时暂停摄取颗粒 */
+  /** 化身模式：饱食度 0~1，降至 0 时开始消耗质量 */
+  satiety: number
+  /** 化身模式：饱食度过高时暂停摄取颗粒 */
   absorptionPaused: boolean
   /** 化身模式：农场/牧场已产出轮次 */
   structureProduceCount: number
   /** 连续低于初始质量的秒数 */
   lowMassSec: number
-  /** 饥饿超过警戒阈值的累计秒数（评估窗口内） */
-  hungerHighSec: number
+  /** 饱食度低于警戒阈值的累计秒数（评估窗口内） */
+  lowSatietySec: number
   /** 评估窗口内休息秒数 */
   restSec: number
   /** 评估窗口内工作（移动）秒数 */
@@ -87,11 +87,11 @@ export function createCircle(
     avatarTransformCooldown: 0,
     builderName: roster.name,
     lifespanSec: 0,
-    hunger: 0,
+    satiety: 1,
     absorptionPaused: false,
     structureProduceCount: 0,
     lowMassSec: 0,
-    hungerHighSec: 0,
+    lowSatietySec: 0,
     restSec: 0,
     workSec: 0,
     avatarTransformCount: 0,

@@ -13,6 +13,8 @@ export interface VirtualControlPosition {
   x: number
   /** 屏幕高度比例（控件中心点） */
   y: number
+  /** 游戏中显示透明度 0~1，默认 1 */
+  opacity?: number
 }
 
 export type VirtualControlsLayout = Record<VirtualControlId, VirtualControlPosition>
@@ -28,16 +30,46 @@ export const VIRTUAL_CONTROL_LABELS: Record<VirtualControlId, string> = {
   btnRb: 'RB',
 }
 
+export const VIRTUAL_CONTROL_IDS: VirtualControlId[] = [
+  'joystick',
+  'btnA',
+  'btnB',
+  'btnX',
+  'btnY',
+  'btnStart',
+  'btnLb',
+  'btnRb',
+]
+
 /** 默认布局：左摇杆，右下 ABXY 十字对齐，Start 顶部居中 */
 const ABXY = { cx: 0.86, cy: 0.74, gap: 0.1 }
 
 export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
-  joystick: { x: 0.15, y: 0.84 },
-  btnY: { x: ABXY.cx, y: ABXY.cy - ABXY.gap },
-  btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy },
-  btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy },
-  btnA: { x: ABXY.cx, y: ABXY.cy + ABXY.gap },
-  btnStart: { x: 0.5, y: 0.08 },
-  btnLb: { x: 0.12, y: 0.08 },
-  btnRb: { x: 0.88, y: 0.08 },
+  joystick: { x: 0.15, y: 0.84, opacity: 1 },
+  btnY: { x: ABXY.cx, y: ABXY.cy - ABXY.gap, opacity: 1 },
+  btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy, opacity: 1 },
+  btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy, opacity: 1 },
+  btnA: { x: ABXY.cx, y: ABXY.cy + ABXY.gap, opacity: 1 },
+  btnStart: { x: 0.5, y: 0.08, opacity: 1 },
+  btnLb: { x: 0.12, y: 0.08, opacity: 1 },
+  btnRb: { x: 0.88, y: 0.08, opacity: 1 },
+}
+
+export function normalizeVirtualLayout(layout: Partial<VirtualControlsLayout>): VirtualControlsLayout {
+  const next = { ...DEFAULT_VIRTUAL_LAYOUT }
+  for (const id of VIRTUAL_CONTROL_IDS) {
+    const pos = layout[id]
+    if (!pos) continue
+    next[id] = {
+      x: pos.x,
+      y: pos.y,
+      opacity: clampOpacity(pos.opacity ?? 1),
+    }
+  }
+  return next
+}
+
+export function clampOpacity(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(0.08, Math.min(1, value))
 }

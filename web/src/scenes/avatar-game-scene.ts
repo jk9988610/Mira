@@ -231,24 +231,13 @@ export function createAvatarGameScene(
 
       const tribe = countTribeStructures(entities)
       const hints = getAvatarTransformHints(controlled, entities)
-      const avatarState =
-        controlled?.avatarRole === 'farm'
-          ? '化身农场中'
-          : controlled?.avatarRole === 'ranch'
-            ? '化身牧场中'
-            : undefined
       drawAvatarHud(ctx, width, {
-        mass: focusMass,
         zoom: cam.zoom,
         farmHint: hints.farm,
         ranchHint: hints.ranch,
         farms: tribe.farms,
         ranches: tribe.ranches,
         circles: tribe.circles,
-        lifespanSec: controlled?.lifespanSec,
-        hunger: controlled?.hunger,
-        absorptionPaused: controlled?.absorptionPaused,
-        avatarState,
       })
     },
   }
