@@ -4,6 +4,7 @@ import { requestAppFullscreen } from './core/fullscreen'
 import { SceneManager } from './core/scene-manager'
 import { loadBindings, saveBindings } from './input/actions'
 import { InputManager } from './input/input-manager'
+import { VirtualControls } from './input/virtual-controls'
 import { createBindingsScene } from './scenes/bindings-scene'
 import { createAvatarGameScene } from './scenes/avatar-game-scene'
 import { createGameScene } from './scenes/game-scene'
@@ -14,6 +15,7 @@ function main() {
   let bindings = loadBindings()
   const input = new InputManager(bindings)
   const app = new App(input)
+  new VirtualControls(input)
 
   let paused = false
   let pauseOverlay: ReturnType<typeof createPauseScene> | null = null
