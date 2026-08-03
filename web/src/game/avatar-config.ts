@@ -8,44 +8,44 @@ export const ABSORPTION_PAUSE_MASS = RANCH_BUILD_COST * 1.15
 /** 质量回落到此值以下时恢复摄取 */
 export const ABSORPTION_RESUME_MASS = RANCH_BUILD_COST * 1.05
 
-/** 静止代谢消耗（质量/秒） */
-export const METABOLISM_IDLE_RATE = PLAYER_START_MASS * 0.0035
-/** 移动时额外代谢消耗（质量/秒） */
-export const METABOLISM_MOVE_RATE = PLAYER_START_MASS * 0.014
-/** 低温时代谢加速倍率 */
-export const METABOLISM_COLD_MULT = 1.8
+/** 静止时饥饿增长（每秒，0~1） */
+export const HUNGER_IDLE_RATE = 0.018
+/** 移动时额外饥饿增长（每秒） */
+export const HUNGER_MOVE_RATE = 0.006
+/** 饥饿超过此值视为「经常挨饿」，影响寿命评估 */
+export const HUNGER_WARN_THRESHOLD = 0.72
+/** 饥饿满值时消耗质量（质量/秒） */
+export const HUNGER_STARVE_MASS_DRAIN = PLAYER_START_MASS * 0.004
+/** 每摄取相当于初始质量一份颗粒，饥饿下降量 */
+export const HUNGER_RELIEF_PER_START_MASS = 0.28
 
-/** 移动时体温上升（每秒） */
-export const TEMPERATURE_MOVE_GAIN = 0.1
-/** 静止时自然散热（每秒） */
-export const TEMPERATURE_IDLE_DECAY = 0.03
-/** 消耗质量维持体温的速率（质量/秒·每单位体温缺口） */
-export const TEMPERATURE_MAINTENANCE_RATE = PLAYER_START_MASS * 0.006
-/** 体温低于此值时死亡 */
-export const TEMPERATURE_DEATH_THRESHOLD = 0.12
-/** 代谢产热：每消耗 1 单位质量带来的体温恢复 */
-export const TEMPERATURE_METABOLIC_HEAT = 0.08
+/** 基础寿命（秒） */
+export const CIRCLE_LIFESPAN_SEC = 360
+/** 寿命评估间隔（秒） */
+export const LIFESPAN_EVAL_INTERVAL_SEC = 30
+/** 化身次数超过此值后开始降低寿命评估 */
+export const LIFESPAN_AVATAR_TRANS_THRESHOLD = 3
+/** 低质量持续超过此秒数后，寿命消耗翻倍 */
+export const LOW_MASS_PENALTY_SEC = 4
 
-/** 可移动圆默认寿命（秒） */
-export const CIRCLE_LIFESPAN_SEC = 240
-
-export const FARM_PELLET_INTERVAL_SEC = 2.2
+export const FARM_PELLET_INTERVAL_SEC = 1.6
 export const FARM_PELLET_RING_RADIUS = 130
-export const FARM_PELLET_COUNT = 14
+export const FARM_PELLET_COUNT = 26
 /** 单农场感知半径内（含其他农场产出的）颗粒上限 */
-export const FARM_NEARBY_PELLET_CAP = 72
+export const FARM_NEARBY_PELLET_CAP = 110
 export const FARM_PELLET_SENSE_RADIUS = FARM_PELLET_RING_RADIUS + 90
 /** 农场产出多少轮颗粒后结束化身 */
-export const FARM_PELLET_CYCLES_BEFORE_REVERT = 8
-export const RANCH_ALLY_INTERVAL_SEC = 30
+export const FARM_PELLET_CYCLES_BEFORE_REVERT = 10
+export const RANCH_ALLY_INTERVAL_SEC = 24
 export const RANCH_SPAWN_RING_RADIUS = 200
 /** 牧场产出多少个圆后结束化身 */
-export const RANCH_ALLIES_BEFORE_REVERT = 1
-export const AVATAR_INITIAL_PELLETS = 220
+export const RANCH_ALLIES_BEFORE_REVERT = 2
+export const AVATAR_INITIAL_PELLETS = 280
 export const AVATAR_SPAWN_OFFSET = 100
-export const STARTER_FARM_OFFSET = { x: 200, y: -70 }
-export const STARTER_RANCH_OFFSET = { x: -180, y: 60 }
 export const SPAWN_CLEARANCE = 48
+
+/** 开局 4 个圆的质量（可立即化身牧场） */
+export const STARTER_OPTIMAL_MASS = RANCH_BUILD_COST
 
 /** 每个牧场最多支撑的农场数（超过则禁止再建农场） */
 export const FARMS_PER_RANCH = 8
@@ -54,15 +54,11 @@ export const ALLIES_PER_RANCH = 4
 /** 化身冷却时间（秒） */
 export const AVATAR_TRANSFORM_COOLDOWN_SEC = 3
 /** 世界颗粒总量上限（性能保护） */
-export const AVATAR_MAX_PELLETS = 1200
+export const AVATAR_MAX_PELLETS = 1400
 /** AI 寻位目标缓存时间（秒） */
 export const AVATAR_SEEK_CACHE_SEC = 0.4
 /** 寻位失败后的冷却（秒），避免每帧全图搜索导致卡死 */
 export const AVATAR_SEEK_FAIL_CACHE_SEC = 1.5
-
-/** 开局农场/牧场的初始质量 */
-export const STARTER_FARM_MASS = FARM_BUILD_COST
-export const STARTER_RANCH_MASS = RANCH_BUILD_COST
 
 /** @deprecated */
 export const AVATAR_FARM_MASS_THRESHOLD = FARM_BUILD_COST

@@ -352,7 +352,7 @@ export interface AvatarHudData {
   ranches: number
   circles: number
   lifespanSec?: number
-  temperature?: number
+  hunger?: number
   absorptionPaused?: boolean
   avatarState?: string
 }
@@ -420,13 +420,11 @@ export function drawAvatarHud(
     ctx.textAlign = 'right'
     ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
     const lifeText = `寿命 ${Math.ceil(data.lifespanSec)}s`
-    const tempText =
-      data.temperature !== undefined
-        ? ` · 体温 ${Math.round(data.temperature * 100)}%`
-        : ''
+    const hungerText =
+      data.hunger !== undefined ? ` · 饥饿 ${Math.round(data.hunger * 100)}%` : ''
     const absorbText = data.absorptionPaused ? ' · 饱食' : ''
     const avatarText = data.avatarState ? ` · ${data.avatarState}` : ''
-    const status = lifeText + tempText + absorbText + avatarText
+    const status = lifeText + hungerText + absorbText + avatarText
     ctx.font = '12px system-ui, sans-serif'
     roundRect(ctx, width - ctx.measureText(status).width - 36, 16, ctx.measureText(status).width + 20, 24, 8)
     ctx.fill()

@@ -3,6 +3,7 @@ import {
   canAvatarAbsorbPellets,
   initAvatarVitality,
   isAvatarLifeExpired,
+  onAvatarPelletAbsorbed,
   tickAvatarMetabolism,
   tickAvatarTransformLifespan,
   updateAbsorptionPause,
@@ -29,23 +30,18 @@ import {
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
   SPAWN_CLEARANCE,
-  STARTER_FARM_MASS,
-  STARTER_RANCH_MASS,
 } from './avatar-config'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
 import { removePelletsByIds } from './pellet-util'
-import { AI_ROSTER, PLAYER_ROSTER } from './roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-let allyNameIndex = 0
 type AllySeekCache =
   | { kind: 'farm' | 'ranch'; status: 'hit'; x: number; y: number; expiresAt: number }
   | { kind: 'farm' | 'ranch'; status: 'miss'; expiresAt: number }
 const allySeekCache = new Map<number, AllySeekCache>()
 
 export function resetAvatarState(): void {
-  allyNameIndex = 0
   allySeekCache.clear()
 }
 
@@ -335,7 +331,7 @@ export interface TransformResult {
   entities: CircleEntity[]
 }
 
-/** 结束化身状态，恢复化身前的质量与体温 */
+/** 结束化身状态，恢复化身前的质量与饥饿 */
 export function endAvatarTransform(entity: CircleEntity): void {
   entity.avatarRole = 'none'
   entity.isFrozen = false
@@ -364,28 +360,10 @@ export function completeAvatarTransform(
   entity.avatarIncubateTimer = 0
   entity.invincibleTimer = 0
   entity.structureProduceCount = 0
+  entity.avatarTransformCount++
   entity.absorptionPaused = false
 
   return { entities }
-}
-
-export function createStarterStructure(
-  x: number,
-  y: number,
-  kind: 'farm' | 'ranch',
-  builderName: string,
-): CircleEntity {
-  const mass = kind === 'farm' ? STARTER_FARM_MASS : STARTER_RANCH_MASS
-  const structure = createCircle(x, y, mass, false, PLAYER_ROSTER)
-  structure.avatarRole = kind
-  structure.isFrozen = true
-  structure.mass = mass
-  structure.builderName = builderName
-  structure.name = structureLabel(kind, builderName)
-  structure.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
-  structure.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC * 0.5 : 0
-  initAvatarVitality(structure)
-  return structure
 }
 
 export function absorbPelletsForAvatar(
@@ -398,7 +376,9 @@ export function absorbPelletsForAvatar(
   const absorbed: Pellet[] = []
   const collect = (pellet: Pellet) => {
     if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
+    const before = entity.mass
     entity.mass = addMassLogarithmic(entity.mass, pellet.mass)
+    onAvatarPelletAbsorbed(entity, entity.mass - before > 0 ? entity.mass - before : pellet.mass)
     absorbed.push(pellet)
   }
   if (grid) {
@@ -462,12 +442,17 @@ export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): C
   const childRadius = avatarChildRadius(PLAYER_START_MASS)
   const spawn = findClearSpawnPosition(ranch.x, ranch.y, childRadius, entities, ranch.id)
   if (!spawn) return entities
-  const roster = AI_ROSTER[allyNameIndex % AI_ROSTER.length]
-  allyNameIndex++
+  const parentName = ranch.builderName || ranch.name.replace(/的牧场$/, '')
+  const roster = {
+    name: parentName,
+    colorLight: ranch.colorLight,
+    colorDark: ranch.colorDark,
+    strokeColor: ranch.strokeColor,
+  }
   const ally = createCircle(spawn.x, spawn.y, PLAYER_START_MASS, false, roster)
   ally.avatarRole = 'ally'
-  ally.name = roster.name
-  ally.builderName = roster.name
+  ally.name = parentName
+  ally.builderName = parentName
   initAvatarVitality(ally)
   clampEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
   return [...entities, ally]
@@ -569,7 +554,7 @@ export function tickMobileAvatarVitality(
   return next
 }
 
-export { temperatureLabel } from './avatar-vitality'
+export { hungerLabel, initOptimalAvatarState } from './avatar-vitality'
 
 export function getAvatarTransformHints(
   entity: CircleEntity | null,
