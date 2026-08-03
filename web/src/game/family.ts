@@ -1,5 +1,5 @@
 import { needEat, needLearn, needPlay } from './avatar-needs'
-import { isSeekingMate } from './avatar-reproduction'
+import { isActivelySeekingMate } from './avatar-reproduction'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isJuvenile } from './entity'
 
@@ -7,6 +7,44 @@ const MOTHER_FOLLOW_RADIUS = 520
 const MOTHER_COMFORT_RADIUS = 140
 const OFFSPRING_CARE_RADIUS = 680
 const MATE_WAIT_RADIUS = 520
+const GROUP_SCAN_RADIUS = 920
+const GROUP_STAY_RADIUS = 480
+const GROUP_SEEK_RADIUS = 640
+
+export function nearbyGroupCenter(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  radius = GROUP_SCAN_RADIUS,
+): { x: number; y: number } | null {
+  let sumX = 0
+  let sumY = 0
+  let count = 0
+  for (const other of entities) {
+    if (other.id === entity.id || !isActive(other) || other.isFrozen) continue
+    if (other.avatarRole !== 'none' && other.avatarRole !== 'ally') continue
+    const d = distanceTo(entity, other)
+    if (d > radius) continue
+    sumX += other.x
+    sumY += other.y
+    count++
+  }
+  if (count === 0) return null
+  return { x: sumX / count, y: sumY / count }
+}
+
+export function groupCohesionTarget(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  seekingMate = false,
+): { x: number; y: number } | null {
+  const center = nearbyGroupCenter(entity, entities)
+  if (!center) return null
+  const maxDist = seekingMate ? GROUP_SEEK_RADIUS : GROUP_STAY_RADIUS
+  const dist = Math.hypot(center.x - entity.x, center.y - entity.y)
+  if (dist > maxDist) return center
+  if (dist > maxDist * 0.55 && Math.random() < 0.18) return center
+  return null
+}
 
 export function findMother(entity: CircleEntity, entities: CircleEntity[]): CircleEntity | null {
   if (entity.motherId <= 0) return null
@@ -50,16 +88,17 @@ export function offspringCareTransformKind(offspring: CircleEntity[]): Transform
 export function shouldMotherPrioritizeOffspring(
   mother: CircleEntity,
   entities: CircleEntity[],
+  now = 0,
 ): boolean {
-  if (mother.gender !== 'female' || !isSeekingMate(mother)) return false
+  if (mother.gender !== 'female' || !isActivelySeekingMate(mother, now)) return false
   return findNearbyJuvenileOffspring(mother, entities).length > 0
 }
 
-export function hasNearbySeekingMate(entity: CircleEntity, entities: CircleEntity[]): boolean {
-  if (!isSeekingMate(entity)) return false
+export function hasNearbySeekingMate(entity: CircleEntity, entities: CircleEntity[], now = 0): boolean {
+  if (!isActivelySeekingMate(entity, now)) return false
   for (const other of entities) {
     if (other.id === entity.id || !isActive(other) || other.isFrozen) continue
-    if (!isSeekingMate(other)) continue
+    if (!isActivelySeekingMate(other, now)) continue
     if (distanceTo(entity, other) <= MATE_WAIT_RADIUS) return true
   }
   return false

@@ -12,6 +12,11 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 const SEEK_SCAN_RADIUS = 820
 
+function hash01(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
+
 export function canEngageProduction(entity: CircleEntity): boolean {
   return isAdult(entity) && !entity.isFrozen
 }
@@ -22,6 +27,13 @@ export function isSeekingMate(entity: CircleEntity): boolean {
     entity.productionStage === 'none' &&
     entity.productionCooldown <= 0
   )
+}
+
+/** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
+export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
+  if (!isSeekingMate(entity)) return false
+  const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
+  return roll < 0.28 + entity.mateSeekUrge * 0.62
 }
 
 function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
@@ -161,14 +173,18 @@ export function updateProductionPairs(
 }
 
 /** 雄性在求偶意图下扫描附近同等意图的异性（非近亲） */
-export function findSeekingPartner(male: CircleEntity, entities: CircleEntity[]): CircleEntity | null {
-  if (!isSeekingMate(male) || male.gender !== 'male') return null
+export function findSeekingPartner(
+  male: CircleEntity,
+  entities: CircleEntity[],
+  now = 0,
+): CircleEntity | null {
+  if (!isActivelySeekingMate(male, now) || male.gender !== 'male') return null
 
   let best: CircleEntity | null = null
   let bestD = Infinity
   for (const other of entities) {
     if (other.id === male.id || !isActive(other) || other.isFrozen) continue
-    if (!isSeekingMate(other) || other.gender !== 'female') continue
+    if (!isActivelySeekingMate(other, now) || other.gender !== 'female') continue
     if (areKin(male, other)) continue
     const d = Math.hypot(other.x - male.x, other.y - male.y)
     if (d < SEEK_SCAN_RADIUS && d < bestD) {
@@ -183,13 +199,16 @@ export function tryApproachForProduction(
   male: CircleEntity,
   entities: CircleEntity[],
   dt: number,
+  now = 0,
 ): boolean {
-  if (!isSeekingMate(male) || male.gender !== 'male' || male.productionStage !== 'none') return false
+  if (!isActivelySeekingMate(male, now) || male.gender !== 'male' || male.productionStage !== 'none') {
+    return false
+  }
 
   const target =
     (male.aiMateTargetId > 0
-      ? entities.find((e) => e.id === male.aiMateTargetId && isSeekingMate(e))
-      : null) ?? findSeekingPartner(male, entities)
+      ? entities.find((e) => e.id === male.aiMateTargetId && isActivelySeekingMate(e, now))
+      : null) ?? findSeekingPartner(male, entities, now)
 
   if (!target) {
     male.aiMateTargetId = 0

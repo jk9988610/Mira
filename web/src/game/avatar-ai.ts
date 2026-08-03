@@ -2,13 +2,14 @@ import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar
 import { avatarEntityRadius } from './avatar-radius'
 import {
   findMother,
+  groupCohesionTarget,
   hasNearbySeekingMate,
   juvenileMotherFollowTarget,
 } from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
-  isSeekingMate,
+  isActivelySeekingMate,
   tryApproachForProduction,
 } from './avatar-reproduction'
 import { clampAvatarEntityToWorld } from './avatar-radius'
@@ -67,11 +68,12 @@ export function intentLabel(
     return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
   }
 
-  if (entity.aiIntent === 'wait' && isSeekingMate(entity)) {
+  if (entity.aiIntent === 'wait' && isActivelySeekingMate(entity, gameTimeSec)) {
     return '等待·求偶'
   }
 
-  const phase = currentSchedulePhase(entity, gameTimeSec)
+  const seeking = isActivelySeekingMate(entity, gameTimeSec)
+  const phase = currentSchedulePhase(entity, gameTimeSec, seeking)
   const base =
     phase === 'sleep'
       ? '睡觉'
@@ -89,11 +91,11 @@ export function intentLabel(
     return `未成年·${base}`
   }
 
-  if (isSeekingMate(entity) && entity.gender === 'female' && entity.aiIntent === 'wait') {
+  if (seeking && entity.gender === 'female' && entity.aiIntent === 'wait') {
     return '等待·求偶'
   }
 
-  if (isSeekingMate(entity)) return `求偶·${base}`
+  if (seeking) return `求偶·${base}`
   return base
 }
 
@@ -122,7 +124,7 @@ function moveToward(
   syncEntityGeo(entity)
 }
 
-function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = []): void {
+function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = [], seekingMate = false): void {
   if (isJuvenile(entity)) {
     const mother = findMother(entity, entities)
     if (mother) {
@@ -132,14 +134,20 @@ function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = [])
         return
       }
     }
+  } else {
+    const group = groupCohesionTarget(entity, entities, seekingMate)
+    if (group) {
+      moveToward(entity, group.x, group.y, dt, 0.62, avatarEntityRadius(entity) * 0.65)
+      return
+    }
   }
 
   entity.wanderTimer -= dt
   if (entity.wanderTimer <= 0) {
-    entity.wanderAngle += (Math.random() - 0.5) * 1.2
-    entity.wanderTimer = 1.2 + Math.random() * 2
+    entity.wanderAngle += (Math.random() - 0.5) * (seekingMate ? 1.6 : 1.2)
+    entity.wanderTimer = seekingMate ? 0.8 + Math.random() * 1.4 : 1.2 + Math.random() * 2
   }
-  const speed = speedForMass(entity.mass) * 0.35
+  const speed = speedForMass(entity.mass) * (seekingMate ? 0.42 : 0.35)
   entity.x += Math.cos(entity.wanderAngle) * speed * dt
   entity.y += Math.sin(entity.wanderAngle) * speed * dt
   clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
@@ -175,7 +183,8 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
-  const phase = currentSchedulePhase(entity, now)
+  const seeking = isActivelySeekingMate(entity, now)
+  const phase = currentSchedulePhase(entity, now, seeking)
 
   if (phase === 'sleep') {
     entity.aiIntent = 'sleep'
@@ -184,21 +193,21 @@ export function updateNpcIntent(
 
   if (phase === 'wander') {
     entity.aiIntent = 'wander'
-    wander(entity, dt, entities)
+    wander(entity, dt, entities, seeking)
   } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
     entity.aiIntent = phase
   } else if (entity.aiPelletTargetTimer <= 0.05) {
     entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
   }
 
-  if (isSeekingMate(entity) && entity.gender === 'female' && hasNearbySeekingMate(entity, entities)) {
+  if (seeking && entity.gender === 'female' && hasNearbySeekingMate(entity, entities, now)) {
     entity.aiIntent = 'wait'
     return { moving: false, sleeping: false }
   }
 
-  if (isSeekingMate(entity) && entity.gender === 'male') {
-    const glance = phase === 'wander' || hash01(entity.id + now * 0.3) < 0.06
-    if (glance && tryApproachForProduction(entity, entities, dt)) {
+  if (seeking && entity.gender === 'male') {
+    const glance = phase === 'wander' || hash01(entity.id + now * 0.3) < (seeking ? 0.14 : 0.06)
+    if (glance && tryApproachForProduction(entity, entities, dt, now)) {
       return { moving: true, sleeping: false }
     }
   }
@@ -211,7 +220,7 @@ export function updateNpcIntent(
       moveToward(entity, pellet.x, pellet.y, dt, 0.92, absorbArrive)
       return { moving: true, sleeping: false }
     }
-    if (phase === 'wander') wander(entity, dt * 0.5, entities)
+    if (phase === 'wander') wander(entity, dt * 0.5, entities, seeking)
     return { moving: phase === 'wander', sleeping: false }
   }
 
