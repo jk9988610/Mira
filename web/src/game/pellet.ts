@@ -1,5 +1,7 @@
 import { SURFACE_DENSITY, PELLET_MAX_RADIUS } from './physics'
 
+export type PelletKind = 'food' | 'knowledge' | 'joy'
+
 export interface Pellet {
   id: number
   x: number
@@ -8,6 +10,7 @@ export interface Pellet {
   radius: number
   mass: number
   hue: number
+  kind: PelletKind
 }
 
 const MASS_MULTIPLIERS: Record<number, number> = {
@@ -32,9 +35,17 @@ export function pelletMass(sides: number, radius: number): number {
   return SURFACE_DENSITY * polygonArea(sides, radius) * multiplier
 }
 
-export function createPellet(x: number, y: number, sides?: number, radius?: number): Pellet {
+export function createPellet(
+  x: number,
+  y: number,
+  sides?: number,
+  radius?: number,
+  kind: PelletKind = 'food',
+): Pellet {
   const s = sides ?? SIDE_OPTIONS[Math.floor(Math.random() * SIDE_OPTIONS.length)]
   const r = radius ?? PELLET_MIN_RADIUS + Math.random() * (PELLET_MAX_RADIUS - PELLET_MIN_RADIUS)
+  const hue =
+    kind === 'knowledge' ? 210 + Math.random() * 25 : kind === 'joy' ? 38 + Math.random() * 28 : 120 + Math.random() * 80
   return {
     id: nextId++,
     x,
@@ -42,8 +53,15 @@ export function createPellet(x: number, y: number, sides?: number, radius?: numb
     sides: s,
     radius: r,
     mass: pelletMass(s, r),
-    hue: 120 + Math.random() * 80,
+    hue,
+    kind,
   }
+}
+
+export function createTraitPellet(x: number, y: number, kind: 'knowledge' | 'joy'): Pellet {
+  const radius = PELLET_MIN_RADIUS + 1 + Math.random() * 3
+  const sides = kind === 'knowledge' ? 4 : 5
+  return createPellet(x, y, sides, radius, kind)
 }
 
 export function spawnPellets(
@@ -79,7 +97,51 @@ export function drawPelletsInView(
 }
 
 export function drawPellet(ctx: CanvasRenderingContext2D, pellet: Pellet): void {
-  const { x, y, sides, radius, hue } = pellet
+  const { x, y, sides, radius, hue, kind } = pellet
+  if (kind === 'knowledge') {
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.fillStyle = `hsl(${hue} 72% 62%)`
+    ctx.strokeStyle = `hsl(${hue} 85% 82%)`
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.rect(-radius, -radius, radius * 2, radius * 2)
+    ctx.fill()
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(-radius * 0.55, 0)
+    ctx.lineTo(0, -radius * 0.55)
+    ctx.lineTo(radius * 0.55, 0)
+    ctx.lineTo(0, radius * 0.55)
+    ctx.closePath()
+    ctx.strokeStyle = `hsl(${hue} 90% 90%)`
+    ctx.stroke()
+    ctx.restore()
+    return
+  }
+  if (kind === 'joy') {
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.fillStyle = `hsl(${hue} 78% 60%)`
+    ctx.strokeStyle = `hsl(${hue} 88% 80%)`
+    ctx.lineWidth = 1.5
+    for (let i = 0; i < 5; i++) {
+      const angle = (Math.PI * 2 * i) / 5 - Math.PI / 2
+      const px = Math.cos(angle) * radius
+      const py = Math.sin(angle) * radius
+      if (i === 0) ctx.beginPath(), ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    }
+    ctx.closePath()
+    ctx.fill()
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(0, 0, radius * 0.28, 0, Math.PI * 2)
+    ctx.fillStyle = `hsl(${hue} 95% 92%)`
+    ctx.fill()
+    ctx.restore()
+    return
+  }
   ctx.beginPath()
   for (let i = 0; i < sides; i++) {
     const angle = (Math.PI * 2 * i) / sides - Math.PI / 2

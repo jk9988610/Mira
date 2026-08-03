@@ -4,28 +4,34 @@ import {
   DAY_WORK_SEC,
   FARM_BUILD_COST,
   NPC_ARRIVE_DIST,
-  NPC_SEPARATION_GAP,
+  NPC_JITTER_DIST,
   NPC_TARGET_CACHE_SEC,
+  PARK_BUILD_COST,
+  PARK_UNLOCK_JOY,
   RANCH_BUILD_COST,
   RANCH_MOMENT_FARM_STREAK,
+  SCHOOL_BUILD_COST,
+  SCHOOL_UNLOCK_KNOWLEDGE,
   WEEKDAY_COUNT,
 } from './avatar-config'
-import { avatarEntityRadius } from './avatar-radius'
-import type { CircleEntity } from './entity'
-import { clampEntityToWorld, isActive } from './entity'
+import { isAdultEntity } from './avatar-traits'
+import { clampAvatarEntityToWorld } from './avatar-radius'
+import type { CircleEntity, TransformKind } from './entity'
+import { isActive } from './entity'
 import type { PelletGrid } from './pellet-grid'
+import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-export type NpcSchedulePhase = 'work' | 'sleep' | 'forage' | 'weekend'
+export type NpcSchedulePhase = 'work' | 'learn' | 'sleep' | 'forage' | 'play' | 'weekend'
 
 export function isWeekend(dayNumber: number): boolean {
   return dayNumber % 7 >= WEEKDAY_COUNT
 }
 
-export function getDayPhase(dayTimeSec: number): 'work' | 'sleep' | 'forage' {
-  const t = ((dayTimeSec % DAY_DURATION_SEC) + DAY_DURATION_SEC) % DAY_DURATION_SEC
-  if (t < DAY_WORK_SEC) return 'work'
+export function getDayPhase(entity: CircleEntity): 'work' | 'learn' | 'sleep' | 'forage' {
+  const t = ((entity.dayTimeSec % DAY_DURATION_SEC) + DAY_DURATION_SEC) % DAY_DURATION_SEC
+  if (t < DAY_WORK_SEC) return isAdultEntity(entity) ? 'work' : 'learn'
   if (t < DAY_WORK_SEC + DAY_SLEEP_SEC) return 'sleep'
   return 'forage'
 }
@@ -44,8 +50,8 @@ export function initNpcSchedule(entity: CircleEntity, dayOffsetSec = 0): void {
 }
 
 function resolveNpcSchedulePhase(entity: CircleEntity): NpcSchedulePhase {
-  if (isWeekend(entity.dayNumber)) return 'weekend'
-  return getDayPhase(entity.dayTimeSec)
+  if (isWeekend(entity.dayNumber)) return 'play'
+  return getDayPhase(entity)
 }
 
 export function tickNpcDayClock(entity: CircleEntity, dt: number): void {
@@ -57,13 +63,35 @@ export function tickNpcDayClock(entity: CircleEntity, dt: number): void {
   entity.aiSchedulePhase = resolveNpcSchedulePhase(entity)
 }
 
-/** 牧场时刻：根据工作经历决定下次化身类型 */
+function canTransformKind(entity: CircleEntity, kind: TransformKind): boolean {
+  if (!isAdultEntity(entity)) return false
+  if (entity.mass < buildCost(kind)) return false
+  if (kind === 'school' && entity.knowledge < SCHOOL_UNLOCK_KNOWLEDGE) return false
+  if (kind === 'park' && entity.joy < PARK_UNLOCK_JOY) return false
+  return true
+}
+
+function buildCost(kind: TransformKind): number {
+  switch (kind) {
+    case 'farm':
+      return FARM_BUILD_COST
+    case 'ranch':
+      return RANCH_BUILD_COST
+    case 'school':
+      return SCHOOL_BUILD_COST
+    case 'park':
+      return PARK_BUILD_COST
+  }
+}
+
+/** 根据知识/快乐与工作经历决定化身 */
 export function decideNpcTransformKind(
   entity: CircleEntity,
   _entities: CircleEntity[],
-): 'farm' | 'ranch' | null {
+): TransformKind | null {
   if (entity.avatarTransformCooldown > 0) return null
   if (entity.aiSchedulePhase !== 'work') return null
+  if (!isAdultEntity(entity)) return null
 
   const history = entity.transformHistory
   const last = history[history.length - 1]
@@ -71,24 +99,25 @@ export function decideNpcTransformKind(
     history.length >= RANCH_MOMENT_FARM_STREAK &&
     history.slice(-RANCH_MOMENT_FARM_STREAK).every((k) => k === 'farm')
 
-  let preferred: 'farm' | 'ranch'
-  if (recentFarms) preferred = 'ranch'
-  else if (last === 'ranch') preferred = 'farm'
-  else if (last === 'farm') preferred = 'ranch'
-  else preferred = entity.id % 2 === 0 ? 'ranch' : 'farm'
+  const options: TransformKind[] = []
+  if (entity.knowledge >= SCHOOL_UNLOCK_KNOWLEDGE && canTransformKind(entity, 'school')) options.push('school')
+  if (entity.joy >= PARK_UNLOCK_JOY && canTransformKind(entity, 'park')) options.push('park')
+  if (canTransformKind(entity, 'farm')) options.push('farm')
+  if (canTransformKind(entity, 'ranch')) options.push('ranch')
+  if (options.length === 0) return null
 
-  const alt = preferred === 'farm' ? 'ranch' : 'farm'
-  const canFarm = entity.mass >= FARM_BUILD_COST
-  const canRanch = entity.mass >= RANCH_BUILD_COST
+  if (recentFarms && options.includes('ranch')) return 'ranch'
+  if (last === 'ranch' && options.includes('farm')) return 'farm'
+  if (last === 'farm' && options.includes('ranch')) return 'ranch'
+  if (entity.knowledge >= 0.7 && options.includes('school')) return 'school'
+  if (entity.joy >= 0.7 && options.includes('park')) return 'park'
+  if (entity.knowledge > entity.joy + 0.12 && options.includes('school')) return 'school'
+  if (entity.joy > entity.knowledge + 0.12 && options.includes('park')) return 'park'
 
-  if (preferred === 'farm' && canFarm) return 'farm'
-  if (preferred === 'ranch' && canRanch) return 'ranch'
-  if (alt === 'farm' && canFarm) return 'farm'
-  if (alt === 'ranch' && canRanch) return 'ranch'
-  return null
+  return options[entity.id % options.length]
 }
 
-export function recordTransformHistory(entity: CircleEntity, kind: 'farm' | 'ranch'): void {
+export function recordTransformHistory(entity: CircleEntity, kind: TransformKind): void {
   entity.transformHistory.push(kind)
   if (entity.transformHistory.length > 12) {
     entity.transformHistory.splice(0, entity.transformHistory.length - 12)
@@ -96,70 +125,35 @@ export function recordTransformHistory(entity: CircleEntity, kind: 'farm' | 'ran
 }
 
 export function schedulePhaseLabel(entity: CircleEntity): string {
+  const juvenile = !isAdultEntity(entity)
   switch (entity.aiSchedulePhase) {
     case 'work':
-      return '工作日·化身'
+      return '工作日·工作'
+    case 'learn':
+      return '未成年·学习'
     case 'sleep':
-      return '工作日·睡眠'
+      return juvenile ? '未成年·休息' : '工作日·睡眠'
     case 'forage':
-      return '工作日·觅食'
+      return juvenile ? '未成年·觅食' : '工作日·觅食'
+    case 'play':
+      return '周末·娱乐'
     case 'weekend':
-      return '周末·休息'
+      return '周末·娱乐'
   }
 }
 
-function pickRestAnchor(entity: CircleEntity, entities: CircleEntity[]): void {
-  let bestX = entity.x
-  let bestY = entity.y
-  let bestScore = -Infinity
-  const samples = 10
-  for (let i = 0; i < samples; i++) {
-    const angle = (Math.PI * 2 * i) / samples + entity.id * 0.7
-    const dist = 180 + (entity.id % 4) * 40
-    const x = entity.x + Math.cos(angle) * dist
-    const y = entity.y + Math.sin(angle) * dist
-    const cx = Math.max(80, Math.min(WORLD_WIDTH - 80, x))
-    const cy = Math.max(80, Math.min(WORLD_HEIGHT - 80, y))
-    let score = 0
-    for (const other of entities) {
-      if (other.id === entity.id || !isActive(other)) continue
-      const d = Math.hypot(other.x - cx, other.y - cy)
-      score += Math.min(d, 400)
-    }
-    if (score > bestScore) {
-      bestScore = score
-      bestX = cx
-      bestY = cy
-    }
-  }
-  entity.aiAnchorX = bestX
-  entity.aiAnchorY = bestY
-  entity.aiAnchorTimer = 5 + (entity.id % 3) * 2
+function pickRestAnchor(entity: CircleEntity): void {
+  const angle = (entity.id * 1.17) % (Math.PI * 2)
+  const dist = 120 + (entity.id % 3) * 30
+  entity.aiAnchorX = Math.max(80, Math.min(WORLD_WIDTH - 80, entity.x + Math.cos(angle) * dist))
+  entity.aiAnchorY = Math.max(80, Math.min(WORLD_HEIGHT - 80, entity.y + Math.sin(angle) * dist))
+  entity.aiAnchorTimer = 6 + (entity.id % 4)
 }
 
-function applySeparation(entity: CircleEntity, entities: CircleEntity[], dt: number): void {
-  let sx = 0
-  let sy = 0
-  const myR = avatarEntityRadius(entity)
-  for (const other of entities) {
-    if (other.id === entity.id || !isActive(other)) continue
-    if (other.avatarRole === 'farm' || other.avatarRole === 'ranch') continue
-    const dx = entity.x - other.x
-    const dy = entity.y - other.y
-    const dist = Math.hypot(dx, dy)
-    const minDist = myR + avatarEntityRadius(other) + NPC_SEPARATION_GAP
-    if (dist > 0 && dist < minDist) {
-      const push = (minDist - dist) / minDist
-      sx += (dx / dist) * push
-      sy += (dy / dist) * push
-    }
-  }
-  if (sx === 0 && sy === 0) return
-  const len = Math.hypot(sx, sy)
-  const speed = speedForMass(entity.mass) * 0.85
-  entity.x += (sx / len) * speed * dt
-  entity.y += (sy / len) * speed * dt
-  clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+function pelletKindForPhase(phase: NpcSchedulePhase): PelletKind | 'any' {
+  if (phase === 'learn') return 'knowledge'
+  if (phase === 'play') return 'joy'
+  return 'food'
 }
 
 function moveToward(
@@ -173,23 +167,27 @@ function moveToward(
   const dy = targetY - entity.y
   const dist = Math.hypot(dx, dy)
   if (dist <= NPC_ARRIVE_DIST) return
+  if (dist < NPC_JITTER_DIST) return
   const speed = speedForMass(entity.mass) * speedMult
   entity.x += (dx / dist) * speed * dt
   entity.y += (dy / dist) * speed * dt
-  clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+  clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
 }
 
-function pickForagePellet(
+function pickPelletTarget(
   entity: CircleEntity,
   entities: CircleEntity[],
   grid: PelletGrid,
+  kind: PelletKind | 'any',
 ): { x: number; y: number; id: number } | null {
   if (entity.aiPelletTargetTimer > 0 && entity.aiPelletTargetId > 0) {
     const cached = grid.getById(entity.aiPelletTargetId)
-    if (cached) return { x: cached.x, y: cached.y, id: cached.id }
+    if (cached && (kind === 'any' || cached.kind === kind)) {
+      return { x: cached.x, y: cached.y, id: cached.id }
+    }
   }
 
-  const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 8)
+  const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 10, kind === 'any' ? undefined : kind)
   if (candidates.length === 0) return null
 
   let best = candidates[0]
@@ -219,11 +217,11 @@ function scorePelletTarget(
   let crowd = 0
   for (const other of entities) {
     if (other.id === entity.id || !isActive(other) || other.isPlayer) continue
-    if (other.aiPelletTargetId === pelletId) crowd += 2
+    if (other.aiPelletTargetId === pelletId) crowd += 1.5
     const d = Math.hypot(other.x - px, other.y - py)
-    if (d < 160) crowd += (160 - d) / 40
+    if (d < 120) crowd += (120 - d) / 60
   }
-  return -dist - crowd * 35 + (entity.id % 7) * 3
+  return -dist - crowd * 20 + (entity.id % 7) * 2
 }
 
 export function tickNpcTargetTimers(entity: CircleEntity, dt: number): void {
@@ -242,29 +240,46 @@ export function updateNpcIntent(
   tickNpcTargetTimers(entity, dt)
 
   const phase = entity.aiSchedulePhase
-  entity.aiSleeping = phase === 'sleep' || phase === 'weekend'
+  entity.aiSleeping = phase === 'sleep'
 
-  if (phase === 'sleep' || phase === 'weekend') {
-    if (entity.aiAnchorTimer <= 0) pickRestAnchor(entity, entities)
-    moveToward(entity, entity.aiAnchorX, entity.aiAnchorY, dt, phase === 'weekend' ? 0.35 : 0.15)
-    applySeparation(entity, entities, dt)
+  if (phase === 'sleep') {
+    if (entity.aiAnchorTimer <= 0) pickRestAnchor(entity)
+    moveToward(entity, entity.aiAnchorX, entity.aiAnchorY, dt, 0.12)
     return { targetX: entity.aiAnchorX, targetY: entity.aiAnchorY, moving: false, sleeping: true }
   }
 
-  if (phase === 'forage') {
-    const pellet = pickForagePellet(entity, entities, grid)
+  if (phase === 'play') {
+    const pellet = pickPelletTarget(entity, entities, grid, 'joy')
     if (pellet) {
-      moveToward(entity, pellet.x, pellet.y, dt, 0.95)
-      applySeparation(entity, entities, dt)
+      moveToward(entity, pellet.x, pellet.y, dt, 0.7)
       return { targetX: pellet.x, targetY: pellet.y, moving: true, sleeping: false }
     }
-    if (entity.aiAnchorTimer <= 0) pickRestAnchor(entity, entities)
-    moveToward(entity, entity.aiAnchorX, entity.aiAnchorY, dt, 0.5)
-    applySeparation(entity, entities, dt)
+    if (entity.aiAnchorTimer <= 0) pickRestAnchor(entity)
+    moveToward(entity, entity.aiAnchorX, entity.aiAnchorY, dt, 0.45)
     return { targetX: entity.aiAnchorX, targetY: entity.aiAnchorY, moving: true, sleeping: false }
   }
 
-  // work phase: movement handled by transform seek in avatar-system
-  applySeparation(entity, entities, dt)
+  if (phase === 'learn') {
+    const pellet = pickPelletTarget(entity, entities, grid, 'knowledge')
+    if (pellet) {
+      moveToward(entity, pellet.x, pellet.y, dt, 0.9)
+      return { targetX: pellet.x, targetY: pellet.y, moving: true, sleeping: false }
+    }
+  }
+
+  if (phase === 'forage' || phase === 'learn') {
+    const kind = pelletKindForPhase(phase)
+    const pellet = pickPelletTarget(entity, entities, grid, kind)
+    if (pellet) {
+      moveToward(entity, pellet.x, pellet.y, dt, 0.95)
+      return { targetX: pellet.x, targetY: pellet.y, moving: true, sleeping: false }
+    }
+    if (entity.aiAnchorTimer <= 0) pickRestAnchor(entity)
+    moveToward(entity, entity.aiAnchorX, entity.aiAnchorY, dt, 0.5)
+    return { targetX: entity.aiAnchorX, targetY: entity.aiAnchorY, moving: true, sleeping: false }
+  }
+
   return { targetX: entity.x, targetY: entity.y, moving: false, sleeping: false }
 }
+
+export { isAdultEntity }

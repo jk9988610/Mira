@@ -2,77 +2,75 @@ import { PLAYER_START_MASS } from './physics'
 
 export const FARM_BUILD_COST = PLAYER_START_MASS * 2.5
 export const RANCH_BUILD_COST = PLAYER_START_MASS * 4
+/** 达到此质量视为成年，可化身工作建筑 */
+export const ADULT_MASS_THRESHOLD = FARM_BUILD_COST
+export const SCHOOL_BUILD_COST = FARM_BUILD_COST
+export const PARK_BUILD_COST = FARM_BUILD_COST
 
-/** 饱食度高于此值时暂停摄取颗粒 */
+/** 知识/快乐达到此值可化身学校/乐园 */
+export const SCHOOL_UNLOCK_KNOWLEDGE = 0.55
+export const PARK_UNLOCK_JOY = 0.55
+
+/** 饱食度高于此值时暂停摄取食物颗粒 */
 export const SATIETY_ABSORB_PAUSE = 0.82
-/** 饱食度低于此值时恢复摄取 */
 export const SATIETY_ABSORB_RESUME = 0.72
-
-/** 静止时饱食度下降（每秒，0~1） */
 export const SATIETY_IDLE_DECAY = 0.018
-/** 移动时额外饱食度下降（每秒） */
 export const SATIETY_MOVE_DECAY = 0.006
-/** 睡眠时饱食度下降（每秒） */
 export const SATIETY_SLEEP_DECAY = 0.004
-/** 饱食度低于此值视为「经常挨饿」，影响寿命评估 */
 export const SATIETY_LOW_THRESHOLD = 0.28
-/** 饱食度为 0 时消耗质量（质量/秒） */
 export const SATIETY_STARVE_MASS_DRAIN = PLAYER_START_MASS * 0.004
-/** 每摄取相当于初始质量一份颗粒，饱食度上升量（直接摄取时的少量提升） */
 export const SATIETY_GAIN_PER_START_MASS = 0.08
-/** 消化摄入质量时，每单位质量恢复的饱食度 */
 export const SATIETY_PER_INTAKE_MASS = 0.35
-/** 饱食度高于此值时，单次摄取受摄入质量上限约束更明显 */
 export const SATIETY_ABSORB_BATCH_THRESHOLD = 0.68
 
-/** 健康值范围 */
+/** 知识/快乐代谢 */
+export const KNOWLEDGE_ABSORB_PAUSE = 0.85
+export const KNOWLEDGE_ABSORB_RESUME = 0.72
+export const JOY_ABSORB_PAUSE = 0.85
+export const JOY_ABSORB_RESUME = 0.72
+export const TRAIT_IDLE_DECAY = 0.01
+export const TRAIT_SLEEP_DECAY = 0.003
+export const TRAIT_PER_INTAKE = 0.4
+export const TRAIT_INTAKE_CAP = 0.55
+export const TRAIT_LOW_THRESHOLD = 0.25
+export const HEALTH_DECAY_LOW_TRAIT = 0.01
+
 export const HEALTH_MAX = 1
 export const HEALTH_MIN = 0.25
-/** 本体质量上限基数（×健康） */
 export const BODY_MASS_CAP_BASE = PLAYER_START_MASS * 10
-/** 摄入质量上限基数（×健康），亦是一次摄取的质量上限 */
 export const INTAKE_MASS_CAP_BASE = PLAYER_START_MASS * 2.2
-/** 消化基础速率（质量/秒，×健康） */
 export const DIGEST_BASE_RATE = PLAYER_START_MASS * 0.12
-/** 估算颗粒质量，用于计算高饱食下单次可吞颗粒数 */
+export const TRAIT_DIGEST_RATE = 0.22
 export const AVG_PELLET_MASS_ESTIMATE = PLAYER_START_MASS * 0.045
 
-/** 健康值自然恢复（每秒） */
 export const HEALTH_RECOVER_RATE = 0.012
-/** 饥竭时健康下降（每秒） */
 export const HEALTH_DECAY_STARVE = 0.04
-/** 长期低饱食时健康下降（每秒） */
 export const HEALTH_DECAY_LOW_SATIETY = 0.015
 
-/** 基础寿命（秒） */
 export const CIRCLE_LIFESPAN_SEC = 360
-/** 寿命评估间隔（秒） */
 export const LIFESPAN_EVAL_INTERVAL_SEC = 30
-/** 化身次数超过此值后开始降低寿命评估 */
 export const LIFESPAN_AVATAR_TRANS_THRESHOLD = 3
-/** 低质量持续超过此秒数后，寿命消耗翻倍 */
 export const LOW_MASS_PENALTY_SEC = 4
 
-/** 游戏内一天时长（秒） */
 export const DAY_DURATION_SEC = 24
-/** 工作日化身时段（秒） */
 export const DAY_WORK_SEC = 8
-/** 睡眠时段（秒） */
 export const DAY_SLEEP_SEC = 8
-/** 觅食时段（秒） */
 export const DAY_FORAGE_SEC = 8
-/** 每周工作日天数（其余为周末） */
 export const WEEKDAY_COUNT = 5
-/** 牧场时刻：连续农场化身上限，超过则下次选牧场 */
 export const RANCH_MOMENT_FARM_STREAK = 3
 
+/** 所有化身固定持续 8 秒 */
+export const AVATAR_TRANSFORM_DURATION_SEC = 8
 export const FARM_PELLET_INTERVAL_SEC = 1.6
 export const FARM_PELLET_RING_RADIUS = 130
-export const FARM_PELLET_COUNT = 26
+export const FARM_PELLET_COUNT = 12
 export const FARM_NEARBY_PELLET_CAP = 110
 export const FARM_PELLET_SENSE_RADIUS = FARM_PELLET_RING_RADIUS + 90
-export const FARM_PELLET_CYCLES_BEFORE_REVERT = 10
-export const RANCH_ALLY_INTERVAL_SEC = 24
+export const SCHOOL_PELLET_INTERVAL_SEC = 1.8
+export const SCHOOL_PELLET_COUNT = 8
+export const PARK_PELLET_INTERVAL_SEC = 1.8
+export const PARK_PELLET_COUNT = 8
+export const RANCH_ALLY_INTERVAL_SEC = 4
 export const RANCH_SPAWN_RING_RADIUS = 200
 export const RANCH_ALLIES_BEFORE_REVERT = 2
 export const AVATAR_INITIAL_PELLETS = 280
@@ -81,20 +79,28 @@ export const SPAWN_CLEARANCE = 48
 
 export const STARTER_OPTIMAL_MASS = RANCH_BUILD_COST
 
-/** 每个牧场最多同时存在的可移动圆数（玩家 + 后代） */
+/** 视觉缩放（L/R），不影响碰撞/质量逻辑 */
+export const VISUAL_SCALE_MIN = 0.55
+export const VISUAL_SCALE_MAX = 1.75
+export const VISUAL_SCALE_DEFAULT = 1
+export const VISUAL_SCALE_STEP = 0.06
+export const VISUAL_SCALE_SPEED = 1.8
+/** 固定显示半径基数 */
+export const AVATAR_BASE_RADIUS = 28
+
 export const ALLIES_PER_RANCH = 4
 export const AVATAR_TRANSFORM_COOLDOWN_SEC = 3
 export const AVATAR_MAX_PELLETS = 1400
 export const AVATAR_SEEK_CACHE_SEC = 0.4
 export const AVATAR_SEEK_FAIL_CACHE_SEC = 1.5
 
-/** AI 寻路/觅食缓存（秒） */
 export const NPC_TARGET_CACHE_SEC = 1.4
-/** 靠近目标小于此距离则不再移动，避免抖动 */
-export const NPC_ARRIVE_DIST = 32
-/** 与其他圆分离的最小间距 */
-export const NPC_SEPARATION_GAP = 52
+export const NPC_ARRIVE_DIST = 36
+/** 堆叠时抑制来回微移的阈值 */
+export const NPC_JITTER_DIST = 8
 
+/** @deprecated */
+export const FARM_PELLET_CYCLES_BEFORE_REVERT = 10
 /** @deprecated */
 export const AVATAR_FARM_MASS_THRESHOLD = FARM_BUILD_COST
 /** @deprecated */

@@ -4,6 +4,7 @@ import { requestAppFullscreen } from '../core/fullscreen'
 import {
   absorbPelletsForAvatar,
   applyFrozenMovement,
+  applyVisualScale,
   avatarEntityRadius,
   canBeginAvatarTransform,
   completeAvatarTransform,
@@ -16,7 +17,9 @@ import {
   tickMobileAvatarVitality,
   updateAlly,
   updateFarmStructures,
+  updateParkStructures,
   updateRanchStructures,
+  updateSchoolStructures,
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import { computeCamera } from '../game/camera'
@@ -25,7 +28,7 @@ import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PLAYER_START_MASS } from '../game/physics'
 import { PelletGrid } from '../game/pellet-grid'
-import { drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
+import { createTraitPellet, drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
 import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
@@ -96,6 +99,15 @@ export function createAvatarGameScene(
     })
     controlledId = entities[0].id
     pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 40)
+    for (let i = 0; i < 24; i++) {
+      pellets.push(
+        createTraitPellet(
+          80 + Math.random() * (WORLD_WIDTH - 160),
+          80 + Math.random() * (WORLD_HEIGHT - 160),
+          i % 2 === 0 ? 'knowledge' : 'joy',
+        ),
+      )
+    }
     pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0
@@ -144,11 +156,26 @@ export function createAvatarGameScene(
         sfx.absorbPellet()
       }
 
+      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'school')
+        entities = result.entities
+        sfx.absorbPellet()
+      }
+
+      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'park')
+        entities = result.entities
+        sfx.absorbPellet()
+      }
+
       if (player && !player.isFrozen) {
+        applyVisualScale(player, input.shrinkHeld, input.growHeld, dt)
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
       }
 
       pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
+      pellets = updateSchoolStructures(entities, pellets, dt)
+      pellets = updateParkStructures(entities, pellets, dt)
       pelletGrid.rebuild(pellets)
 
       entities = updateRanchStructures(entities, dt)
@@ -170,10 +197,16 @@ export function createAvatarGameScene(
       const movingIds = new Set<number>()
       for (const entity of entities) {
         if (!isActive(entity) || entity.isFrozen) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
-        } else if (isNpcMobile(entity) && !entity.aiSleeping && entity.aiSchedulePhase === 'forage') {
+        } else if (
+          isNpcMobile(entity) &&
+          !entity.aiSleeping &&
+          (entity.aiSchedulePhase === 'forage' ||
+            entity.aiSchedulePhase === 'learn' ||
+            entity.aiSchedulePhase === 'play')
+        ) {
           movingIds.add(entity.id)
         }
       }
@@ -220,7 +253,7 @@ export function createAvatarGameScene(
       drawPelletsInView(ctx, pellets, view)
       for (const entity of sorted) {
         if (!isInView(entity.x, entity.y, view, 80)) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') {
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
           const flash = entity.id === controlledId ? absorbFlash : 0
@@ -236,9 +269,16 @@ export function createAvatarGameScene(
         zoom: cam.zoom,
         farmHint: hints.farm,
         ranchHint: hints.ranch,
+        schoolHint: hints.school,
+        parkHint: hints.park,
         farms: tribe.farms,
         ranches: tribe.ranches,
+        schools: tribe.schools,
+        parks: tribe.parks,
         circles: tribe.circles,
+        knowledge: controlled?.knowledge ?? 0,
+        joy: controlled?.joy ?? 0,
+        scale: controlled?.visualScale ?? 1,
       })
     },
   }
