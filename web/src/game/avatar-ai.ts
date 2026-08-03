@@ -4,8 +4,8 @@ import {
   birthAnchorTarget,
   findMother,
   groupCohesionTarget,
-  hasNearbySeekingMate,
   juvenileMotherFollowTarget,
+  shouldFemaleWaitForSuitor,
 } from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
@@ -48,6 +48,7 @@ export function decideNpcTransformKind(
 ): TransformKind | null {
   if (isJuvenile(entity)) return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
+  if (shouldFemaleWaitForSuitor(entity, entities, now)) return null
   return pickWeightedTransformKind(
     entity,
     countStructures(entities),
@@ -191,6 +192,11 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
+  if (shouldFemaleWaitForSuitor(entity, entities, now)) {
+    entity.aiIntent = 'wait'
+    return { moving: false, sleeping: false }
+  }
+
   const seeking = isActivelySeekingMate(entity, now)
   const phase = currentSchedulePhase(entity, now, seeking)
 
@@ -206,11 +212,6 @@ export function updateNpcIntent(
     entity.aiIntent = phase
   } else if (entity.aiPelletTargetTimer <= 0.05) {
     entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
-  }
-
-  if (seeking && entity.gender === 'female' && hasNearbySeekingMate(entity, entities, now)) {
-    entity.aiIntent = 'wait'
-    return { moving: false, sleeping: false }
   }
 
   if (seeking && entity.gender === 'male') {

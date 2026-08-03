@@ -111,14 +111,31 @@ export function shouldMotherPrioritizeOffspring(
   return findNearbyJuvenileOffspring(mother, entities).length > 0
 }
 
-export function hasNearbySeekingMate(entity: CircleEntity, entities: CircleEntity[], now = 0): boolean {
-  if (!isActivelySeekingMate(entity, now)) return false
+export function hasNearbyApproachingSuitor(
+  female: CircleEntity,
+  entities: CircleEntity[],
+  now = 0,
+): boolean {
+  if (female.gender !== 'female' || !isActivelySeekingMate(female, now)) return false
   for (const other of entities) {
-    if (other.id === entity.id || !isActive(other) || other.isFrozen) continue
-    if (!isActivelySeekingMate(other, now)) continue
-    if (distanceTo(entity, other) <= MATE_WAIT_RADIUS) return true
+    if (other.id === female.id || !isActive(other) || other.isFrozen) continue
+    if (other.gender !== 'male' || !isActivelySeekingMate(other, now)) continue
+    if (distanceTo(female, other) <= MATE_WAIT_RADIUS) return true
   }
   return false
+}
+
+/** @deprecated 使用 hasNearbyApproachingSuitor */
+export function hasNearbySeekingMate(entity: CircleEntity, entities: CircleEntity[], now = 0): boolean {
+  return hasNearbyApproachingSuitor(entity, entities, now)
+}
+
+export function shouldFemaleWaitForSuitor(
+  female: CircleEntity,
+  entities: CircleEntity[],
+  now = 0,
+): boolean {
+  return hasNearbyApproachingSuitor(female, entities, now)
 }
 
 export function juvenileMotherFollowTarget(
