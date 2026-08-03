@@ -1,121 +1,123 @@
 import type { App } from '../core/app'
 import { sfx } from '../audio/synth'
 import { requestAppFullscreen } from '../core/fullscreen'
-import { randomSpawnPosition, spawnAiEntities, updateAi } from '../game/ai'
+import {
+  absorbPelletsForAvatar,
+  applyFrozenMovement,
+  avatarEntityRadius,
+  canBeginAvatarTransform,
+  completeAvatarTransform,
+  countTribeStructures,
+  getAvatarTransformHints,
+  getControlledEntity,
+  initOptimalAvatarState,
+  resetAvatarState,
+  tickAvatarTransformCooldowns,
+  tickMobileAvatarVitality,
+  updateAlly,
+  updateFarmStructures,
+  updateParkStructures,
+  updateSchoolStructures,
+} from '../game/avatar-system'
+import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
+import {
+  findSeekingPartner,
+  tickProductionCooldowns,
+  tryApproachForProduction,
+  updateProductionPairs,
+} from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
-import { absorbPelletsForEntity, resolveCircleCollisions } from '../game/collision'
-import {
-  createCircle,
-  drawCircleEntity,
-  entityRadius,
-  isActive,
-  type CircleEntity,
-} from '../game/entity'
-import { buildLeaderboardView } from '../game/leaderboard'
-import {
-  GAME_DURATION_SEC,
-  INVINCIBLE_SEC,
-  MATCH_START_COUNTDOWN_SEC,
-  RESPAWN_DELAY_SEC,
-} from '../game/match-config'
-import {
-  allHumansDead,
-  applyEntityImpulse,
-  applyHumanDeaths,
-  applyMovement,
-  getActiveHumans,
-  getHumanCameraFocus,
-  getHumanTotalMass,
-  resolveHumanMerges,
-  separateHumanClones,
-  soonestHumanRespawn,
-  trySplitHuman,
-  updateHumanGather,
-  updateHumanCenterPull,
-} from '../game/player-team'
-import { PLAYER_START_MASS } from '../game/physics'
+import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
+import { allyUpdateStride } from '../game/perf-config'
+import { removePelletsByIds } from '../game/pellet-util'
 import { PelletGrid } from '../game/pellet-grid'
-import { drawPelletsInView } from '../game/pellet'
-import { PLAYER_ROSTER } from '../game/roster'
+import { createTraitPellet, drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
+import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
-import { drawWorld, MATCH_STYLE } from '../game/world-draw'
-import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import {
-  clearScreen,
-  drawGameHud,
-  drawLeaderboardModal,
-  drawRespawnOverlay,
-  drawStartCountdown,
-} from '../ui/draw'
+import { drawWorld } from '../game/world-draw'
+import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
+import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
+import { computeTribeDemographics } from '../game/tribe-stats'
+
+type PauseBridge = { fn: (() => void) | null }
+
+function isNpcMobile(entity: CircleEntity): boolean {
+  return (
+    isActive(entity) &&
+    !entity.isFrozen &&
+    !entity.isPlayer &&
+    (entity.avatarRole === 'none' || entity.avatarRole === 'ally')
+  )
+}
+
+const STARTER_OFFSETS = [
+  { x: 0, y: 0 },
+  { x: 272, y: -152 },
+  { x: -248, y: 136 },
+  { x: 200, y: 176 },
+]
+
+const STARTER_GENDERS: Gender[] = ['male', 'male', 'female', 'female']
 
 export function createGameScene(
   app: App,
-  go: (scene: string) => void,
+  _go: (scene: string) => void,
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
-  gamePause: { fn: (() => void) | null },
+  gamePause: PauseBridge,
 ) {
-  const world = new GameWorld()
-  const pelletGrid = new PelletGrid()
-  let players: CircleEntity[] = []
-  let absorbFlash = 0
-  let timeRemaining = GAME_DURATION_SEC
-  let startCountdown = MATCH_START_COUNTDOWN_SEC
-  let matchStarted = false
-  let matchEnded = false
-  let showResults = false
+  let entities: CircleEntity[] = []
+  let pellets: Pellet[] = []
+  let controlledId = 0
   let elapsed = 0
-  let lastCountdownSecond = -1
-  let splitCooldown = 0
+  let absorbFlash = 0
+  let allyUpdateTick = 0
+  let prevSplitHeld = false
+  let prevGatherHeld = false
+  const pelletGrid = new PelletGrid()
+
+  const syncControlledId = () => {
+    const controlled = getControlledEntity(entities, controlledId)
+    if (controlled && controlled.id !== controlledId) controlledId = controlled.id
+    if (!controlled) {
+      const fallback = entities.find(
+        (e) => e.isPlayer && isActive(e) && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
+      )
+      if (fallback) controlledId = fallback.id
+    }
+  }
 
   const reset = () => {
-    const spawn = randomSpawnPosition([]) ?? { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 }
-    const player = createCircle(spawn.x, spawn.y, PLAYER_START_MASS, true, PLAYER_ROSTER)
-    players = [player, ...spawnAiEntities([player])]
-    absorbFlash = 0
-    timeRemaining = GAME_DURATION_SEC
-    startCountdown = MATCH_START_COUNTDOWN_SEC
-    matchStarted = false
-    matchEnded = false
-    showResults = false
+    resetAvatarState()
+    const cx = WORLD_WIDTH / 2
+    const cy = WORLD_HEIGHT / 2
+    const rosters = [PLAYER_ROSTER, AI_ROSTER[0], AI_ROSTER[9], AI_ROSTER[1]]
+    entities = STARTER_OFFSETS.map((offset, i) => {
+      const circle = createCircle(
+        cx + offset.x,
+        cy + offset.y,
+        STARTER_OPTIMAL_MASS,
+        i === 0,
+        rosters[i],
+        { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: 0 },
+      )
+      initOptimalAvatarState(circle, 0)
+      return circle
+    })
+    controlledId = entities[0].id
+    pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 20)
+    for (let i = 0; i < 48; i++) {
+      pellets.push(
+        createTraitPellet(
+          40 + Math.random() * (WORLD_WIDTH - 80),
+          40 + Math.random() * (WORLD_HEIGHT - 80),
+          i % 2 === 0 ? 'knowledge' : 'joy',
+        ),
+      )
+    }
+    pelletGrid.rebuild(pellets)
     elapsed = 0
-    lastCountdownSecond = -1
-    splitCooldown = 0
-    world.reset(player.x, player.y)
-    pelletGrid.rebuild(world.pellets)
-  }
-
-  const updateRespawns = (dt: number) => {
-    for (const entity of players) {
-      if (entity.invincibleTimer > 0) entity.invincibleTimer = Math.max(0, entity.invincibleTimer - dt)
-      if (entity.respawnTimer <= 0) continue
-      entity.respawnTimer -= dt
-      if (entity.respawnTimer > 0) continue
-      const pos = randomSpawnPosition(players.filter((p) => p.id !== entity.id))
-      entity.x = pos?.x ?? WORLD_WIDTH / 2
-      entity.y = pos?.y ?? WORLD_HEIGHT / 2
-      entity.mass = PLAYER_START_MASS
-      entity.invincibleTimer = INVINCIBLE_SEC
-      entity.respawnTimer = 0
-      if (entity.isPlayer) sfx.respawn()
-    }
-  }
-
-  const updateStartCountdown = (dt: number): boolean => {
-    if (matchStarted) return true
-
-    startCountdown -= dt
-    const sec = Math.ceil(Math.max(0, startCountdown))
-    if (sec !== lastCountdownSecond) {
-      if (sec > 0) sfx.countdownTick(sec)
-      lastCountdownSecond = sec
-    }
-
-    if (startCountdown <= 0) {
-      matchStarted = true
-      sfx.matchStart()
-    }
-    return false
+    absorbFlash = 0
   }
 
   return {
@@ -132,116 +134,115 @@ export function createGameScene(
     },
     update(dt: number) {
       elapsed += dt
-      splitCooldown = Math.max(0, splitCooldown - dt)
-
       if (isPaused()) return
 
       const input = app.input.snapshot()
-      if (input.pausePressed && !matchEnded) {
+      if (input.pausePressed) {
         showPause(true)
         return
       }
 
-      if (!updateStartCountdown(dt)) return
+      tickAvatarTransformCooldowns(entities, dt)
 
-      if (showResults) {
-        if (input.confirmPressed) go('menu')
-        return
+      const player = getControlledEntity(entities, controlledId)
+
+      const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
+      const gatherTrigger = input.gatherPressed || (input.gatherHeld && !prevGatherHeld)
+      prevSplitHeld = input.splitHeld
+      prevGatherHeld = input.gatherHeld
+
+      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'farm')
+        entities = result.entities
+        sfx.absorbPellet()
       }
 
-      if (matchEnded) return
-
-      timeRemaining -= dt
-      if (timeRemaining <= 0) {
-        timeRemaining = 0
-        matchEnded = true
-        showResults = true
-        sfx.matchEnd()
-        return
-      }
-
-      if (input.splitPressed && splitCooldown <= 0) {
-        const clone = trySplitHuman(players, input.moveX, input.moveY)
-        if (clone) {
-          players.push(clone)
-          splitCooldown = 0.35
-          sfx.absorbPellet()
+      if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
+        if (player.gender === 'male') {
+          const partner = findSeekingPartner(player, entities, elapsed)
+          if (partner) player.aiMateTargetId = partner.id
         }
       }
 
-      for (const human of getActiveHumans(players)) {
-        if (!input.gatherHeld) {
-          applyMovement(human, input.moveX, input.moveY, dt)
+      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'school')
+        entities = result.entities
+        sfx.absorbPellet()
+      }
+
+      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'park')
+        entities = result.entities
+        sfx.absorbPellet()
+      }
+
+      if (player && !player.isFrozen && player.productionStage === 'none') {
+        applyFrozenMovement(player, input.moveX, input.moveY, dt)
+        if (player.gender === 'male') tryApproachForProduction(player, entities, dt, elapsed)
+      }
+
+      tickProductionCooldowns(entities, dt)
+
+      pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
+      pellets = updateSchoolStructures(entities, pellets, dt)
+      pellets = updateParkStructures(entities, pellets, dt)
+      pelletGrid.rebuild(pellets)
+
+      entities = updateProductionPairs(entities, dt, elapsed)
+
+      allyUpdateTick++
+      const allyStride = allyUpdateStride(entities.length)
+      for (let i = 0; i < entities.length; i++) {
+        if (allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
+        const entity = entities[i]
+        if (!isNpcMobile(entity)) continue
+        const result = updateAlly(entity, entities, pellets, pelletGrid, dt * allyStride, elapsed)
+        pellets = result.pellets
+        entities = result.entities
+        if (result.absorbed.length > 0) absorbFlash = 0.15
+      }
+
+      pelletGrid.rebuild(pellets)
+
+      const movingIds = new Set<number>()
+      for (const entity of entities) {
+        if (!isActive(entity) || entity.isFrozen) continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
+        if (entity.id === player?.id) {
+          if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
+          if (entity.aiMateTargetId > 0) movingIds.add(entity.id)
+        } else if (isNpcMobile(entity) && entity.aiIntent !== 'sleep') {
+          movingIds.add(entity.id)
         }
-        applyEntityImpulse(human, dt)
+        if (entity.productionStage !== 'none') movingIds.add(entity.id)
       }
 
-      if (input.gatherHeld) {
-        updateHumanGather(getActiveHumans(players), players, dt)
-      }
+      entities = tickMobileAvatarVitality(entities, dt, movingIds)
+      syncControlledId()
 
-      separateHumanClones(players)
-      updateHumanCenterPull(players, dt)
-
-      pelletGrid.rebuild(world.pellets)
-
-      const removedPelletIds = new Set<number>()
-      for (const entity of players) {
-        if (!isActive(entity)) continue
-        const absorbed = absorbPelletsForEntity(entity, world.pellets, pelletGrid)
-        if (entity.isPlayer && absorbed.length > 0) {
+      const controlled = getControlledEntity(entities, controlledId)
+      if (controlled && isActive(controlled) && !controlled.isFrozen) {
+        const absorbed = absorbPelletsForAvatar(controlled, pellets, pelletGrid)
+        if (absorbed.length > 0) {
+          const absorbedIds = new Set(absorbed.map((p) => p.id))
+          pellets = removePelletsByIds(pellets, absorbedIds)
           absorbFlash = 0.18
           sfx.absorbPellet()
         }
-        for (const pellet of absorbed) removedPelletIds.add(pellet.id)
       }
 
-      for (const ai of players) {
-        if (ai.isPlayer) continue
-        const absorbed = updateAi(ai, players, world.pellets, dt, pelletGrid)
-        for (const pellet of absorbed) removedPelletIds.add(pellet.id)
-      }
-      world.removePellets(removedPelletIds)
-
-      const eatEvents = resolveCircleCollisions(players)
-      const eatenPlayerIds: number[] = []
-      for (const { winner, loser } of eatEvents) {
-        if (loser.isPlayer) {
-          eatenPlayerIds.push(loser.id)
-          sfx.eaten()
-        } else {
-          loser.respawnTimer = RESPAWN_DELAY_SEC
-          if (winner.isPlayer) sfx.eatCircle()
-        }
-      }
-      if (eatenPlayerIds.length > 0) {
-        players = applyHumanDeaths(players, eatenPlayerIds)
-      }
-
-      players = resolveHumanMerges(players)
-
-      updateRespawns(dt)
       absorbFlash = Math.max(0, absorbFlash - dt)
-
-      const focus = getHumanCameraFocus(players)
-      world.maintainPopulation(focus.x, focus.y)
-      pelletGrid.rebuild(world.pellets)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
 
-      const boardView = buildLeaderboardView(players)
-
-      if (showResults) {
-        drawLeaderboardModal(ctx, width, height, boardView)
-        return
-      }
-
-      const focus = getHumanCameraFocus(players)
-      const cam = computeCamera(focus.x, focus.y, focus.mass, width, height)
+      const controlled = getControlledEntity(entities, controlledId)
+      const focusX = controlled?.x ?? WORLD_WIDTH / 2
+      const focusY = controlled?.y ?? WORLD_HEIGHT / 2
+      const cam = computeCamera(focusX, focusY, STARTER_OPTIMAL_MASS, width, height)
       const view = computeViewBounds(cam.camX, cam.camY, cam.renderScale, width, height)
 
-      const sorted = [...players].sort((a, b) => b.mass - a.mass)
+      const sorted = [...entities].sort((a, b) => avatarEntityRadius(b) - avatarEntityRadius(a))
 
       ctx.save()
       ctx.translate(width / 2, height / 2)
@@ -253,30 +254,37 @@ export function createGameScene(
       ctx.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
       ctx.clip()
 
-      drawWorld(ctx, view, MATCH_STYLE)
-      drawPelletsInView(ctx, world.pellets, view)
+      drawWorld(ctx, view)
+      drawPelletsInView(ctx, pellets, view)
       for (const entity of sorted) {
-        if (!isInView(entity.x, entity.y, view, entityRadius(entity))) continue
-        drawCircleEntity(ctx, entity, entity.isPlayer ? absorbFlash : 0, elapsed)
+        if (!isInView(entity.x, entity.y, view, 80)) continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
+          drawAvatarStructure(ctx, entity, elapsed)
+        } else {
+          const flash = entity.id === controlledId ? absorbFlash : 0
+          drawAvatarCircle(ctx, entity, flash, elapsed)
+        }
       }
       ctx.restore()
       ctx.restore()
 
-      if (matchStarted) {
-        drawGameHud(ctx, width, height, {
-          timeRemaining,
-          playerMass: getHumanTotalMass(players),
-          zoom: cam.zoom,
-          cloneCount: getActiveHumans(players).length,
-          board: boardView,
-        })
-      }
-
-      if (!matchStarted) {
-        drawStartCountdown(ctx, width, height, startCountdown)
-      } else if (allHumansDead(players)) {
-        drawRespawnOverlay(ctx, width, height, soonestHumanRespawn(players))
-      }
+      const tribe = countTribeStructures(entities)
+      const demo = computeTribeDemographics(entities)
+      const hints = getAvatarTransformHints(controlled, entities)
+      drawAvatarHud(ctx, width, height, {
+        gameTimeSec: elapsed,
+        zoom: cam.zoom,
+        farmHint: hints.farmHint,
+        produceHint: hints.produceHint,
+        schoolHint: hints.schoolHint,
+        parkHint: hints.parkHint,
+        farm: tribe.farm,
+        school: tribe.school,
+        park: tribe.park,
+        producing: tribe.producing,
+        circles: tribe.circles,
+        demographics: demo,
+      })
     },
   }
 }

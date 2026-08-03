@@ -1,5 +1,4 @@
-import type { LeaderboardView } from '../game/leaderboard'
-import { SATIETY_CAP } from '../game/avatar-config'
+import { ADULT_MASS_THRESHOLD, SATIETY_CAP } from '../game/avatar-config'
 import { intentLabel } from '../game/avatar-ai'
 import { formatCitizenId } from '../game/citizen-id'
 import { formatDnaFingerprint } from '../game/dna'
@@ -13,6 +12,7 @@ import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
 import type { AvatarRole, CircleEntity } from '../game/entity'
+import { isJuvenile } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
 export function clearScreen(
@@ -115,210 +115,6 @@ export function drawBindingRow(
   ctx.fillText(listening ? '请按键…' : value, x + rowWidth - 16, y + 30)
 }
 
-export interface HudData {
-  timeRemaining: number
-  playerMass: number
-  zoom: number
-  cloneCount: number
-  board: LeaderboardView
-}
-
-export function drawHudMass(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  mass: number,
-  zoom = 1,
-): void {
-  const zoomText = zoom > 1.01 ? ` · ×${zoom.toFixed(1)}` : ''
-  const text = `质量 ${mass.toFixed(1)}${zoomText}`
-  ctx.textAlign = 'right'
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  const padding = 12
-  ctx.font = '600 18px system-ui, sans-serif'
-  const textWidth = ctx.measureText(text).width
-  roundRect(ctx, width - textWidth - padding * 2 - 16, 16, textWidth + padding * 2, 36, 8)
-  ctx.fill()
-  ctx.fillStyle = '#e8f0ff'
-  ctx.fillText(text, width - 24, 40)
-}
-
-export function formatMatchTime(seconds: number): string {
-  const total = Math.max(0, Math.ceil(seconds))
-  const mins = Math.floor(total / 60)
-  const secs = total % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
-
-export function drawGameHud(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  _height: number,
-  data: HudData,
-): void {
-  const timerText = `剩余 ${formatMatchTime(data.timeRemaining)}`
-  ctx.textAlign = 'left'
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
-  ctx.font = '600 20px system-ui, sans-serif'
-  const tw = ctx.measureText(timerText).width
-  roundRect(ctx, 16, 16, tw + 24, 36, 8)
-  ctx.fill()
-  ctx.fillStyle = data.timeRemaining <= 10 ? '#ff9f8a' : '#e8f0ff'
-  ctx.fillText(timerText, 28, 40)
-
-  drawHudMass(ctx, width, data.playerMass, data.zoom)
-
-  ctx.textAlign = 'left'
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  ctx.font = '13px system-ui, sans-serif'
-  const hint =
-    data.cloneCount > 1
-      ? `分身 ${data.cloneCount}/16 · Q分裂 E聚集 · 朝质量中心聚拢`
-      : `分身 ${data.cloneCount}/16 · Q分裂 E聚集`
-  roundRect(ctx, 16, 58, ctx.measureText(hint).width + 20, 28, 8)
-  ctx.fill()
-  ctx.fillStyle = '#8aa0c8'
-  ctx.fillText(hint, 26, 77)
-
-  const panelW = 168
-  const rowH = 22
-  const extraRow = data.board.playerInTop ? 0 : 1
-  const panelH = 20 + data.board.top.length * rowH + extraRow * (rowH + 6)
-  const px = width - panelW - 16
-  const py = 60
-
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.82)'
-  roundRect(ctx, px, py, panelW, panelH, 10)
-  ctx.fill()
-  ctx.fillStyle = '#8aa0c8'
-  ctx.font = '600 13px system-ui, sans-serif'
-  ctx.textAlign = 'left'
-  ctx.fillText('质量排名 TOP10', px + 12, py + 18)
-
-  data.board.top.forEach((row, i) => {
-    const y = py + 34 + i * rowH
-    ctx.fillStyle = row.isPlayer ? '#8fd3ff' : row.respawning ? '#6a7588' : '#d7e0f2'
-    ctx.font = row.isPlayer ? '600 13px system-ui, sans-serif' : '13px system-ui, sans-serif'
-    const suffix = row.respawning ? ' (复活)' : ''
-    ctx.fillText(`${row.rank}. ${row.name}${suffix}`, px + 12, y)
-    ctx.textAlign = 'right'
-    ctx.fillText(row.mass.toFixed(0), px + panelW - 12, y)
-    ctx.textAlign = 'left'
-  })
-
-  if (!data.board.playerInTop && data.board.playerRank) {
-    const y = py + 34 + data.board.top.length * rowH + 14
-    ctx.strokeStyle = 'rgba(88, 166, 255, 0.35)'
-    ctx.beginPath()
-    ctx.moveTo(px + 10, y - 10)
-    ctx.lineTo(px + panelW - 10, y - 10)
-    ctx.stroke()
-    ctx.fillStyle = '#8fd3ff'
-    ctx.font = '600 13px system-ui, sans-serif'
-    ctx.fillText(`你 · 第 ${data.board.playerRank} 名`, px + 12, y + 6)
-    ctx.textAlign = 'right'
-    ctx.fillText(data.board.playerMass.toFixed(0), px + panelW - 12, y + 6)
-    ctx.textAlign = 'left'
-  }
-}
-
-export function drawStartCountdown(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  secondsLeft: number,
-): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'
-  ctx.fillRect(0, 0, width, height)
-  ctx.textAlign = 'center'
-  ctx.fillStyle = '#e8f0ff'
-  ctx.font = 'bold 28px system-ui, sans-serif'
-  ctx.fillText('准备', width / 2, height * 0.38)
-  ctx.fillStyle = '#ffc44d'
-  ctx.font = 'bold 72px system-ui, sans-serif'
-  const label = secondsLeft > 0 ? String(Math.ceil(secondsLeft)) : '开始!'
-  ctx.fillText(label, width / 2, height * 0.5)
-  ctx.fillStyle = '#8aa0c8'
-  ctx.font = '16px system-ui, sans-serif'
-  ctx.fillText('对局即将开始', width / 2, height * 0.58)
-}
-
-export function drawRespawnOverlay(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  respawnTimer: number,
-): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'
-  ctx.fillRect(0, 0, width, height)
-  ctx.textAlign = 'center'
-  ctx.fillStyle = '#e8f0ff'
-  ctx.font = 'bold 36px system-ui, sans-serif'
-  ctx.fillText('被吞噬', width / 2, height * 0.44)
-  ctx.fillStyle = '#ffc44d'
-  ctx.font = '24px system-ui, sans-serif'
-  ctx.fillText(`${Math.ceil(respawnTimer)} 秒后复活`, width / 2, height * 0.52)
-}
-
-export function drawLeaderboardModal(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  board: LeaderboardView,
-): void {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.78)'
-  ctx.fillRect(0, 0, width, height)
-
-  drawTitle(ctx, width, '对局结束', '最终排行榜 TOP10')
-
-  const panelW = Math.min(420, width - 48)
-  const rowH = 36
-  const extra = board.playerInTop ? 0 : 1
-  const panelH = 48 + board.top.length * rowH + extra * rowH
-  const px = (width - panelW) / 2
-  const py = height * 0.26
-
-  ctx.fillStyle = 'rgba(14, 20, 32, 0.95)'
-  roundRect(ctx, px, py, panelW, panelH, 14)
-  ctx.fill()
-  ctx.strokeStyle = '#3d5578'
-  ctx.lineWidth = 2
-  ctx.stroke()
-
-  board.top.forEach((row, i) => {
-    const y = py + 40 + i * rowH
-    if (row.isPlayer) {
-      ctx.fillStyle = 'rgba(88, 166, 255, 0.12)'
-      roundRect(ctx, px + 8, y - 22, panelW - 16, rowH - 4, 8)
-      ctx.fill()
-    }
-    ctx.textAlign = 'left'
-    ctx.fillStyle = row.isPlayer ? '#8fd3ff' : '#d7e0f2'
-    ctx.font = row.isPlayer ? '600 18px system-ui, sans-serif' : '18px system-ui, sans-serif'
-    const medal = row.rank === 1 ? '🥇 ' : row.rank === 2 ? '🥈 ' : row.rank === 3 ? '🥉 ' : `${row.rank}. `
-    ctx.fillText(`${medal}${row.name}`, px + 20, y)
-    ctx.textAlign = 'right'
-    ctx.fillText(`质量 ${row.mass.toFixed(1)}`, px + panelW - 20, y)
-  })
-
-  if (!board.playerInTop && board.playerRank) {
-    const y = py + 40 + board.top.length * rowH
-    ctx.fillStyle = 'rgba(88, 166, 255, 0.12)'
-    roundRect(ctx, px + 8, y - 22, panelW - 16, rowH - 4, 8)
-    ctx.fill()
-    ctx.textAlign = 'left'
-    ctx.fillStyle = '#8fd3ff'
-    ctx.font = '600 18px system-ui, sans-serif'
-    ctx.fillText(`你 · 第 ${board.playerRank} 名`, px + 20, y)
-    ctx.textAlign = 'right'
-    ctx.fillText(`质量 ${board.playerMass.toFixed(1)}`, px + panelW - 20, y)
-  }
-
-  ctx.textAlign = 'center'
-  ctx.fillStyle = '#b8c2d6'
-  ctx.font = '18px system-ui, sans-serif'
-  ctx.fillText('按 A / Enter 确认', width / 2, py + panelH + 48)
-}
-
 export function drawGamepadBanner(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -379,6 +175,13 @@ function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: 
   return null
 }
 
+function formatAgeLine(entity: CircleEntity, ageSec: number): string {
+  if (isJuvenile(entity)) {
+    return `年龄 ${ageSec}s · 未成年（${Math.round(ADULT_MASS_THRESHOLD)}质量成年）`
+  }
+  return `年龄 ${ageSec}s · 成年`
+}
+
 export function drawAvatarEntityStats(
   ctx: CanvasRenderingContext2D,
   entity: CircleEntity,
@@ -391,7 +194,7 @@ export function drawAvatarEntityStats(
     `身份证 ${formatCitizenId(entity)}`,
     `DNA ${formatDnaFingerprint(entity.dnaFingerprint)}`,
     `${entity.name} · ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`,
-    `年龄 ${ageSec}s · 出生 ${formatGameTime(entity.birthGameTimeSec)}`,
+    `${formatAgeLine(entity, ageSec)} · 出生 ${formatGameTime(entity.birthGameTimeSec)}`,
     `出生地 (${Math.round(entity.birthX)}, ${Math.round(entity.birthY)})`,
     `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,

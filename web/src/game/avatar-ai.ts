@@ -92,7 +92,7 @@ export function intentLabel(
               : schedulePhaseLabel(phase)
 
   if (isJuvenile(entity)) {
-    return `未成年·${base}`
+    return base
   }
 
   if (seeking && entity.gender === 'female' && entity.aiIntent === 'wait') {
