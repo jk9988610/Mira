@@ -19,7 +19,7 @@ import {
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
-import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
+import { AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
   findSeekingPartner,
   tickProductionCooldowns,
@@ -31,7 +31,7 @@ import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from 
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PelletGrid } from '../game/pellet-grid'
-import { createTraitPellet, drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
+import { drawPelletsInView, spawnBalancedPellets, type Pellet } from '../game/pellet'
 import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
@@ -124,16 +124,7 @@ export function createGameScene(
       return circle
     })
     controlledId = entities[0].id
-    pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 20)
-    for (let i = 0; i < 48; i++) {
-      pellets.push(
-        createTraitPellet(
-          40 + Math.random() * (WORLD_WIDTH - 80),
-          40 + Math.random() * (WORLD_HEIGHT - 80),
-          i % 2 === 0 ? 'knowledge' : 'joy',
-        ),
-      )
-    }
+    pellets = spawnBalancedPellets(AVATAR_INITIAL_PELLETS_PER_KIND, WORLD_WIDTH, WORLD_HEIGHT)
     pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0

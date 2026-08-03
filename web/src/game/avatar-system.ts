@@ -6,7 +6,7 @@ import {
   tickAvatarMetabolism,
   tickAvatarTransformLifespan,
 } from './avatar-vitality'
-import { canAbsorbPellet, createPellet, createTraitPellet, type Pellet } from './pellet'
+import { canAbsorbPellet, clampPelletPosition, createPellet, createTraitPellet, type Pellet } from './pellet'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isAdult, isJuvenile } from './entity'
 import {
@@ -450,7 +450,11 @@ export function spawnPelletsAroundFarm(farm: CircleEntity): Pellet[] {
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count + Math.random() * 0.25
     const r = ringRadius + Math.random() * ringRadius * 0.28
-    spawned.push(createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r))
+    const pellet = createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r)
+    const pos = clampPelletPosition(pellet.x, pellet.y, pellet.radius, WORLD_WIDTH, WORLD_HEIGHT)
+    pellet.x = pos.x
+    pellet.y = pos.y
+    spawned.push(pellet)
   }
   return spawned
 }
@@ -466,7 +470,11 @@ function spawnTraitPelletsAround(
   for (let i = 0; i < amount; i++) {
     const angle = (Math.PI * 2 * i) / amount + Math.random() * 0.3
     const r = ringRadius + Math.random() * ringRadius * 0.25
-    spawned.push(createTraitPellet(structure.x + Math.cos(angle) * r, structure.y + Math.sin(angle) * r, kind))
+    const pellet = createTraitPellet(structure.x + Math.cos(angle) * r, structure.y + Math.sin(angle) * r, kind)
+    const pos = clampPelletPosition(pellet.x, pellet.y, pellet.radius, WORLD_WIDTH, WORLD_HEIGHT)
+    pellet.x = pos.x
+    pellet.y = pos.y
+    spawned.push(pellet)
   }
   return spawned
 }
