@@ -20,7 +20,7 @@ function main() {
   let bindings = loadBindings()
   const input = new InputManager(bindings)
   const app = new App(input)
-  const virtualControls = new VirtualControls(input, () => gamePause.fn?.())
+  const virtualControls = new VirtualControls(input)
 
   let paused = false
   let pauseOverlay: ReturnType<typeof createPauseScene> | null = null

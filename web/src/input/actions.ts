@@ -10,8 +10,6 @@ export type Action =
   | 'PAUSE'
   | 'SPLIT'
   | 'GATHER'
-  | 'SHRINK'
-  | 'GROW'
   | 'SCHOOL'
   | 'PARK'
 
@@ -25,8 +23,6 @@ export const ALL_ACTIONS: Action[] = [
   'PAUSE',
   'SPLIT',
   'GATHER',
-  'SHRINK',
-  'GROW',
   'SCHOOL',
   'PARK',
 ]
@@ -41,8 +37,6 @@ export const ACTION_LABELS: Record<Action, string> = {
   PAUSE: '暂停',
   SPLIT: '分身',
   GATHER: '聚集',
-  SHRINK: '缩小',
-  GROW: '放大',
   SCHOOL: '学校',
   PARK: '乐园',
 }
@@ -52,7 +46,6 @@ export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
 export interface Binding {
   source: BindingSource
   code: string
-  /** 摇杆轴方向，仅 gamepad-axis 使用 */
   axisSign?: 1 | -1
 }
 
@@ -68,8 +61,6 @@ export const DEFAULT_BINDINGS: BindingMap = {
   PAUSE: { source: 'keyboard', code: 'KeyP' },
   SPLIT: { source: 'keyboard', code: 'KeyQ' },
   GATHER: { source: 'keyboard', code: 'KeyE' },
-  SHRINK: { source: 'keyboard', code: 'KeyL' },
-  GROW: { source: 'keyboard', code: 'KeyR' },
   SCHOOL: { source: 'keyboard', code: 'KeyZ' },
   PARK: { source: 'keyboard', code: 'KeyX' },
 }
@@ -81,12 +72,11 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   MOVE_RIGHT: { source: 'gamepad-button', code: '15' },
   CONFIRM: { source: 'gamepad-button', code: '0' },
   BACK: { source: 'gamepad-button', code: '1' },
-  PAUSE: { source: 'gamepad-button', code: '9' },
   SPLIT: { source: 'gamepad-button', code: '2' },
   GATHER: { source: 'gamepad-button', code: '3' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v6'
+const STORAGE_KEY = 'mira_bindings_v7'
 
 function defaultBindingsForDevice(): BindingMap {
   if (isTouchDevice()) {
@@ -136,8 +126,6 @@ const KEYBOARD_LABELS: Record<string, string> = {
   KeyP: 'P',
   KeyQ: 'Q',
   KeyE: 'E',
-  KeyL: 'L',
-  KeyR: 'R',
   KeyZ: 'Z',
   KeyX: 'X',
 }
@@ -150,7 +138,6 @@ const GAMEPAD_BUTTON_LABELS: Record<string, string> = {
   '4': 'LB',
   '5': 'RB',
   '8': 'Select',
-  '9': 'Start',
   '12': 'D-Pad 上',
   '13': 'D-Pad 下',
   '14': 'D-Pad 左',

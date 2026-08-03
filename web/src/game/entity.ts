@@ -1,4 +1,4 @@
-import { massToRadius } from './physics'
+import { massToRadius, PLAYER_START_MASS } from './physics'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
 
 export interface CircleEntity {
@@ -11,7 +11,7 @@ export interface CircleEntity {
   bodyMass: number
   /** 摄入质量（待消化，不计入单独显示） */
   intakeMass: number
-  /** 健康状态 0~1，影响质量上限与消化速率 */
+  /** 健康数值 */
   health: number
   isPlayer: boolean
   colorLight: string
@@ -35,25 +35,21 @@ export interface CircleEntity {
   /** 化身剩余时间（秒），固定 8s */
   avatarTransformTimer: number
   builderName: string
-  /** 视觉缩放，L/R 控制，不影响质量 */
+  /** 视觉缩放（固定，不再由按键调节） */
   visualScale: number
-  /** 知识水平 0~1 */
+  /** 知识数值 */
   knowledge: number
   /** 待消化知识 */
   knowledgeIntake: number
-  /** 快乐水平 0~1 */
+  /** 快乐数值 */
   joy: number
   /** 待消化快乐 */
   joyIntake: number
-  /** 知识摄取暂停 */
-  knowledgeAbsorbPaused: boolean
-  /** 快乐摄取暂停 */
-  joyAbsorbPaused: boolean
   /** 化身模式：剩余寿命（秒） */
   lifespanSec: number
-  /** 化身模式：饱食度 0~1，降至 0 时开始消耗质量 */
+  /** 饱食数值 */
   satiety: number
-  /** 化身模式：饱食度过高时暂停摄取颗粒 */
+  /** 食物摄取暂停 */
   absorptionPaused: boolean
   /** 化身模式：农场/牧场已产出轮次 */
   structureProduceCount: number
@@ -79,6 +75,8 @@ export interface CircleEntity {
   dayNumber: number
   /** AI 当前日程阶段 */
   aiSchedulePhase: 'work' | 'learn' | 'sleep' | 'forage' | 'play' | 'weekend'
+  /** AI 日程：常规 or 休闲 */
+  aiDayMode: 'routine' | 'leisure'
   /** AI 是否处于睡眠代谢 */
   aiSleeping: boolean
   /** 缓存觅食目标颗粒 id */
@@ -110,7 +108,7 @@ export function createCircle(
     mass,
     bodyMass: mass,
     intakeMass: 0,
-    health: 1,
+    health: PLAYER_START_MASS * 4,
     isPlayer,
     colorLight: roster.colorLight,
     colorDark: roster.colorDark,
@@ -131,14 +129,12 @@ export function createCircle(
     avatarTransformTimer: 0,
     builderName: roster.name,
     visualScale: 1,
-    knowledge: 0.35,
+    knowledge: PLAYER_START_MASS * 0.6,
     knowledgeIntake: 0,
-    joy: 0.35,
+    joy: PLAYER_START_MASS * 0.6,
     joyIntake: 0,
-    knowledgeAbsorbPaused: false,
-    joyAbsorbPaused: false,
     lifespanSec: 0,
-    satiety: 1,
+    satiety: PLAYER_START_MASS * 1.8,
     absorptionPaused: false,
     structureProduceCount: 0,
     lowMassSec: 0,
@@ -152,6 +148,7 @@ export function createCircle(
     dayTimeSec: 0,
     dayNumber: 0,
     aiSchedulePhase: 'forage',
+    aiDayMode: 'routine',
     aiSleeping: false,
     aiPelletTargetId: 0,
     aiPelletTargetTimer: 0,

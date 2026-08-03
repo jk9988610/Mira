@@ -4,7 +4,6 @@ import { requestAppFullscreen } from '../core/fullscreen'
 import {
   absorbPelletsForAvatar,
   applyFrozenMovement,
-  applyVisualScale,
   avatarEntityRadius,
   canBeginAvatarTransform,
   completeAvatarTransform,
@@ -169,7 +168,6 @@ export function createAvatarGameScene(
       }
 
       if (player && !player.isFrozen) {
-        applyVisualScale(player, input.shrinkHeld, input.growHeld, dt)
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
       }
 
@@ -276,9 +274,6 @@ export function createAvatarGameScene(
         schools: tribe.schools,
         parks: tribe.parks,
         circles: tribe.circles,
-        knowledge: controlled?.knowledge ?? 0,
-        joy: controlled?.joy ?? 0,
-        scale: controlled?.visualScale ?? 1,
       })
     },
   }

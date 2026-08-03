@@ -1,22 +1,17 @@
 import {
-  ADULT_MASS_THRESHOLD,
-  JOY_ABSORB_PAUSE,
-  JOY_ABSORB_RESUME,
-  KNOWLEDGE_ABSORB_PAUSE,
-  KNOWLEDGE_ABSORB_RESUME,
+  HEALTH_CAP,
+  JOY_CAP,
+  KNOWLEDGE_CAP,
   TRAIT_DIGEST_RATE,
   TRAIT_INTAKE_CAP,
-  TRAIT_PER_INTAKE,
 } from './avatar-config'
 import type { CircleEntity } from './entity'
 import type { PelletKind } from './pellet'
 
 export function workEfficiency(entity: CircleEntity): number {
-  return 0.55 + entity.knowledge * 0.25 + entity.joy * 0.2
-}
-
-export function isAdultEntity(entity: CircleEntity): boolean {
-  return entity.mass >= ADULT_MASS_THRESHOLD
+  const k = entity.knowledge / KNOWLEDGE_CAP
+  const j = entity.joy / JOY_CAP
+  return 0.55 + k * 0.25 + j * 0.2
 }
 
 export function remainingKnowledgeIntakeRoom(entity: CircleEntity): number {
@@ -27,25 +22,12 @@ export function remainingJoyIntakeRoom(entity: CircleEntity): number {
   return Math.max(0, TRAIT_INTAKE_CAP - entity.joyIntake)
 }
 
-export function updateTraitAbsorption(entity: CircleEntity): void {
-  if (entity.isFrozen) return
-  if (entity.knowledge >= KNOWLEDGE_ABSORB_PAUSE || remainingKnowledgeIntakeRoom(entity) <= 0) {
-    entity.knowledgeAbsorbPaused = true
-  } else if (entity.knowledge <= KNOWLEDGE_ABSORB_RESUME) {
-    entity.knowledgeAbsorbPaused = false
-  }
-  if (entity.joy >= JOY_ABSORB_PAUSE || remainingJoyIntakeRoom(entity) <= 0) {
-    entity.joyAbsorbPaused = true
-  } else if (entity.joy <= JOY_ABSORB_RESUME) {
-    entity.joyAbsorbPaused = false
-  }
-}
-
 export function canAbsorbPelletKind(entity: CircleEntity, kind: PelletKind): boolean {
   if (kind === 'food') return true
-  updateTraitAbsorption(entity)
-  if (kind === 'knowledge') return !entity.knowledgeAbsorbPaused && remainingKnowledgeIntakeRoom(entity) > 0
-  return !entity.joyAbsorbPaused && remainingJoyIntakeRoom(entity) > 0
+  if (kind === 'knowledge') {
+    return entity.knowledge < KNOWLEDGE_CAP * 0.92 && remainingKnowledgeIntakeRoom(entity) > 0
+  }
+  return entity.joy < JOY_CAP * 0.92 && remainingJoyIntakeRoom(entity) > 0
 }
 
 export function addTraitIntake(entity: CircleEntity, kind: 'knowledge' | 'joy', amount: number): number {
@@ -58,28 +40,28 @@ export function addTraitIntake(entity: CircleEntity, kind: 'knowledge' | 'joy', 
 }
 
 export function tickTraitDigestion(entity: CircleEntity, dt: number): void {
-  const rate = TRAIT_DIGEST_RATE * entity.health * dt
+  const healthFactor = Math.max(0.35, entity.health / HEALTH_CAP)
+  const rate = TRAIT_DIGEST_RATE * healthFactor * dt
 
-  if (entity.knowledgeIntake > 0 && entity.knowledge < 1) {
-    const deficit = 1 - entity.knowledge
-    const need = deficit / TRAIT_PER_INTAKE
-    const used = Math.min(rate, entity.knowledgeIntake, need)
+  if (entity.knowledgeIntake > 0 && entity.knowledge < KNOWLEDGE_CAP) {
+    const room = KNOWLEDGE_CAP - entity.knowledge
+    const used = Math.min(rate, entity.knowledgeIntake, room)
     entity.knowledgeIntake -= used
-    entity.knowledge = Math.min(1, entity.knowledge + used * TRAIT_PER_INTAKE)
+    entity.knowledge += used
   }
 
-  if (entity.joyIntake > 0 && entity.joy < 1) {
-    const deficit = 1 - entity.joy
-    const need = deficit / TRAIT_PER_INTAKE
-    const used = Math.min(rate, entity.joyIntake, need)
+  if (entity.joyIntake > 0 && entity.joy < JOY_CAP) {
+    const room = JOY_CAP - entity.joy
+    const used = Math.min(rate, entity.joyIntake, room)
     entity.joyIntake -= used
-    entity.joy = Math.min(1, entity.joy + used * TRAIT_PER_INTAKE)
+    entity.joy += used
   }
 }
 
-export function traitLabel(value: number): string {
-  if (value >= 0.8) return '充沛'
-  if (value >= 0.55) return '良好'
-  if (value >= 0.25) return '一般'
+export function traitLabel(value: number, cap: number): string {
+  const ratio = value / cap
+  if (ratio >= 0.8) return '充沛'
+  if (ratio >= 0.55) return '良好'
+  if (ratio >= 0.25) return '一般'
   return '匮乏'
 }

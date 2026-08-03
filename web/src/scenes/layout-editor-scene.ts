@@ -69,7 +69,7 @@ export function createLayoutEditorScene(
       ctx.textAlign = 'center'
       ctx.fillStyle = '#8aa0c8'
       ctx.font = '14px system-ui, sans-serif'
-      ctx.fillText('拖动摇杆、按键与 Start · 松手后吸附到网格', width / 2, height * 0.18)
+      ctx.fillText('拖动摇杆与按键 · 松手后吸附到网格', width / 2, height * 0.18)
 
       const selected = virtualControls.getSelectedPart()
       const layout = virtualControls.getLayout()

@@ -2,36 +2,53 @@ import {
   DAY_DURATION_SEC,
   DAY_SLEEP_SEC,
   DAY_WORK_SEC,
-  FARM_BUILD_COST,
+  HEALTH_CAP,
+  JOY_CAP,
   NPC_ARRIVE_DIST,
   NPC_JITTER_DIST,
   NPC_TARGET_CACHE_SEC,
-  PARK_BUILD_COST,
-  PARK_UNLOCK_JOY,
-  RANCH_BUILD_COST,
-  RANCH_MOMENT_FARM_STREAK,
-  SCHOOL_BUILD_COST,
-  SCHOOL_UNLOCK_KNOWLEDGE,
-  WEEKDAY_COUNT,
+  TRANSFORM_REPEAT_PENALTY,
 } from './avatar-config'
-import { isAdultEntity } from './avatar-traits'
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive } from './entity'
 import type { PelletGrid } from './pellet-grid'
 import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
+import { PLAYER_START_MASS } from './physics'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type NpcSchedulePhase = 'work' | 'learn' | 'sleep' | 'forage' | 'play' | 'weekend'
 
-export function isWeekend(dayNumber: number): boolean {
-  return dayNumber % 7 >= WEEKDAY_COUNT
+const TRANSFORM_KINDS: TransformKind[] = ['farm', 'ranch', 'school', 'park']
+
+function hash01(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453
+  return x - Math.floor(x)
 }
 
-export function getDayPhase(entity: CircleEntity): 'work' | 'learn' | 'sleep' | 'forage' {
+export function rollDayMode(entity: CircleEntity): 'routine' | 'leisure' {
+  const joyFactor = entity.joy / JOY_CAP
+  const healthFactor = entity.health / HEALTH_CAP
+  const leisureChance = Math.min(0.78, Math.max(0.12, 0.22 + joyFactor * 0.42 + (1 - healthFactor) * 0.18))
+  const roll = hash01(entity.id * 17.3 + entity.dayNumber * 3.1)
+  return roll < leisureChance ? 'leisure' : 'routine'
+}
+
+function rollActivePhase(entity: CircleEntity): 'work' | 'learn' | 'play' {
+  if (entity.aiDayMode === 'leisure') return 'play'
+  const massFactor = Math.min(1.2, entity.mass / (PLAYER_START_MASS * 2.5))
+  const workChance = Math.min(0.72, 0.28 + massFactor * 0.28)
+  const learnChance = Math.min(0.55, 0.22 + (1 - massFactor) * 0.3)
+  const roll = hash01(entity.id * 5.7 + entity.dayNumber * 11.9 + entity.dayTimeSec)
+  if (roll < workChance) return 'work'
+  if (roll < workChance + learnChance) return 'learn'
+  return 'play'
+}
+
+export function getDayPhase(entity: CircleEntity): NpcSchedulePhase {
   const t = ((entity.dayTimeSec % DAY_DURATION_SEC) + DAY_DURATION_SEC) % DAY_DURATION_SEC
-  if (t < DAY_WORK_SEC) return isAdultEntity(entity) ? 'work' : 'learn'
+  if (t < DAY_WORK_SEC) return rollActivePhase(entity)
   if (t < DAY_WORK_SEC + DAY_SLEEP_SEC) return 'sleep'
   return 'forage'
 }
@@ -39,6 +56,7 @@ export function getDayPhase(entity: CircleEntity): 'work' | 'learn' | 'sleep' | 
 export function initNpcSchedule(entity: CircleEntity, dayOffsetSec = 0): void {
   entity.dayTimeSec = dayOffsetSec % DAY_DURATION_SEC
   entity.dayNumber = 0
+  entity.aiDayMode = rollDayMode(entity)
   entity.transformHistory = []
   entity.aiPelletTargetId = 0
   entity.aiPelletTargetTimer = 0
@@ -50,71 +68,44 @@ export function initNpcSchedule(entity: CircleEntity, dayOffsetSec = 0): void {
 }
 
 function resolveNpcSchedulePhase(entity: CircleEntity): NpcSchedulePhase {
-  if (isWeekend(entity.dayNumber)) return 'play'
   return getDayPhase(entity)
 }
 
 export function tickNpcDayClock(entity: CircleEntity, dt: number): void {
+  const prevDay = entity.dayNumber
   entity.dayTimeSec += dt
   while (entity.dayTimeSec >= DAY_DURATION_SEC) {
     entity.dayTimeSec -= DAY_DURATION_SEC
     entity.dayNumber++
   }
+  if (entity.dayNumber !== prevDay) {
+    entity.aiDayMode = rollDayMode(entity)
+  }
   entity.aiSchedulePhase = resolveNpcSchedulePhase(entity)
 }
 
-function canTransformKind(entity: CircleEntity, kind: TransformKind): boolean {
-  if (!isAdultEntity(entity)) return false
-  if (entity.mass < buildCost(kind)) return false
-  if (kind === 'school' && entity.knowledge < SCHOOL_UNLOCK_KNOWLEDGE) return false
-  if (kind === 'park' && entity.joy < PARK_UNLOCK_JOY) return false
-  return true
-}
-
-function buildCost(kind: TransformKind): number {
-  switch (kind) {
-    case 'farm':
-      return FARM_BUILD_COST
-    case 'ranch':
-      return RANCH_BUILD_COST
-    case 'school':
-      return SCHOOL_BUILD_COST
-    case 'park':
-      return PARK_BUILD_COST
+export function pickWeightedTransformKind(entity: CircleEntity): TransformKind {
+  const last = entity.transformHistory[entity.transformHistory.length - 1]
+  const weights = TRANSFORM_KINDS.map((kind) => {
+    let w = 1
+    if (kind === last) w *= TRANSFORM_REPEAT_PENALTY
+    return w
+  })
+  const total = weights.reduce((a, b) => a + b, 0)
+  let roll = hash01(entity.id * 2.17 + entity.dayNumber * 7.3 + entity.transformHistory.length * 1.9) * total
+  for (let i = 0; i < TRANSFORM_KINDS.length; i++) {
+    roll -= weights[i]
+    if (roll <= 0) return TRANSFORM_KINDS[i]
   }
+  return TRANSFORM_KINDS[TRANSFORM_KINDS.length - 1]
 }
 
-/** 根据知识/快乐与工作经历决定化身 */
-export function decideNpcTransformKind(
-  entity: CircleEntity,
-  _entities: CircleEntity[],
-): TransformKind | null {
+export function decideNpcTransformKind(entity: CircleEntity, _entities: CircleEntity[]): TransformKind | null {
   if (entity.avatarTransformCooldown > 0) return null
   if (entity.aiSchedulePhase !== 'work') return null
-  if (!isAdultEntity(entity)) return null
-
-  const history = entity.transformHistory
-  const last = history[history.length - 1]
-  const recentFarms =
-    history.length >= RANCH_MOMENT_FARM_STREAK &&
-    history.slice(-RANCH_MOMENT_FARM_STREAK).every((k) => k === 'farm')
-
-  const options: TransformKind[] = []
-  if (entity.knowledge >= SCHOOL_UNLOCK_KNOWLEDGE && canTransformKind(entity, 'school')) options.push('school')
-  if (entity.joy >= PARK_UNLOCK_JOY && canTransformKind(entity, 'park')) options.push('park')
-  if (canTransformKind(entity, 'farm')) options.push('farm')
-  if (canTransformKind(entity, 'ranch')) options.push('ranch')
-  if (options.length === 0) return null
-
-  if (recentFarms && options.includes('ranch')) return 'ranch'
-  if (last === 'ranch' && options.includes('farm')) return 'farm'
-  if (last === 'farm' && options.includes('ranch')) return 'ranch'
-  if (entity.knowledge >= 0.7 && options.includes('school')) return 'school'
-  if (entity.joy >= 0.7 && options.includes('park')) return 'park'
-  if (entity.knowledge > entity.joy + 0.12 && options.includes('school')) return 'school'
-  if (entity.joy > entity.knowledge + 0.12 && options.includes('park')) return 'park'
-
-  return options[entity.id % options.length]
+  const tryChance = 0.55 + (entity.health / HEALTH_CAP) * 0.2
+  if (hash01(entity.id + entity.dayTimeSec * 13) > tryChance) return null
+  return pickWeightedTransformKind(entity)
 }
 
 export function recordTransformHistory(entity: CircleEntity, kind: TransformKind): void {
@@ -125,20 +116,20 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
 }
 
 export function schedulePhaseLabel(entity: CircleEntity): string {
-  const juvenile = !isAdultEntity(entity)
+  const dayTag = entity.aiDayMode === 'leisure' ? '休闲日' : '常规日'
   switch (entity.aiSchedulePhase) {
     case 'work':
-      return '工作日·工作'
+      return `${dayTag}·工作`
     case 'learn':
-      return '未成年·学习'
+      return `${dayTag}·学习`
     case 'sleep':
-      return juvenile ? '未成年·休息' : '工作日·睡眠'
+      return `${dayTag}·休息`
     case 'forage':
-      return juvenile ? '未成年·觅食' : '工作日·觅食'
+      return `${dayTag}·觅食`
     case 'play':
-      return '周末·娱乐'
+      return `${dayTag}·娱乐`
     case 'weekend':
-      return '周末·娱乐'
+      return `${dayTag}·娱乐`
   }
 }
 
@@ -186,10 +177,8 @@ function pickPelletTarget(
       return { x: cached.x, y: cached.y, id: cached.id }
     }
   }
-
   const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 10, kind === 'any' ? undefined : kind)
   if (candidates.length === 0) return null
-
   let best = candidates[0]
   let bestScore = scorePelletTarget(entity, entities, best.x, best.y, best.id)
   for (let i = 1; i < candidates.length; i++) {
@@ -200,7 +189,6 @@ function pickPelletTarget(
       best = p
     }
   }
-
   entity.aiPelletTargetId = best.id
   entity.aiPelletTargetTimer = NPC_TARGET_CACHE_SEC
   return { x: best.x, y: best.y, id: best.id }
@@ -238,7 +226,6 @@ export function updateNpcIntent(
 ): { targetX: number; targetY: number; moving: boolean; sleeping: boolean } {
   tickNpcDayClock(entity, dt)
   tickNpcTargetTimers(entity, dt)
-
   const phase = entity.aiSchedulePhase
   entity.aiSleeping = phase === 'sleep'
 
@@ -281,5 +268,3 @@ export function updateNpcIntent(
 
   return { targetX: entity.x, targetY: entity.y, moving: false, sleeping: false }
 }
-
-export { isAdultEntity }

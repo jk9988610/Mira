@@ -4,16 +4,12 @@ export type VirtualControlId =
   | 'btnB'
   | 'btnX'
   | 'btnY'
-  | 'btnStart'
   | 'btnLb'
   | 'btnRb'
 
 export interface VirtualControlPosition {
-  /** 屏幕宽度比例（控件中心点） */
   x: number
-  /** 屏幕高度比例（控件中心点） */
   y: number
-  /** 游戏中显示透明度 0~1，默认 1 */
   opacity?: number
 }
 
@@ -25,7 +21,6 @@ export const VIRTUAL_CONTROL_LABELS: Record<VirtualControlId, string> = {
   btnB: 'B',
   btnX: 'X',
   btnY: 'Y',
-  btnStart: 'Start',
   btnLb: 'LB',
   btnRb: 'RB',
 }
@@ -36,12 +31,10 @@ export const VIRTUAL_CONTROL_IDS: VirtualControlId[] = [
   'btnB',
   'btnX',
   'btnY',
-  'btnStart',
   'btnLb',
   'btnRb',
 ]
 
-/** 默认布局：左摇杆，右下 ABXY 十字对齐，Start 顶部居中 */
 const ABXY = { cx: 0.86, cy: 0.74, gap: 0.1 }
 
 export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
@@ -50,7 +43,6 @@ export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
   btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy, opacity: 1 },
   btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy, opacity: 1 },
   btnA: { x: ABXY.cx, y: ABXY.cy + ABXY.gap, opacity: 1 },
-  btnStart: { x: 0.5, y: 0.08, opacity: 1 },
   btnLb: { x: 0.12, y: 0.08, opacity: 1 },
   btnRb: { x: 0.88, y: 0.08, opacity: 1 },
 }

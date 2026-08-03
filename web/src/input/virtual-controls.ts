@@ -27,10 +27,7 @@ export class VirtualControls {
   private dragPart: VirtualControlId | null = null
   private selectedPart: VirtualControlId | null = null
 
-  constructor(
-    private readonly input: InputManager,
-    private readonly onPause?: () => void,
-  ) {
+  constructor(private readonly input: InputManager) {
     this.layout = loadVirtualLayout()
     this.root = document.createElement('div')
     this.root.id = 'virtual-controls'
@@ -48,7 +45,6 @@ export class VirtualControls {
       <button type="button" class="vc-part vc-btn vc-btn-x" data-part="btnX" data-btn="2">X</button>
       <button type="button" class="vc-part vc-btn vc-btn-b" data-part="btnB" data-btn="1">B</button>
       <button type="button" class="vc-part vc-btn vc-btn-a" data-part="btnA" data-btn="0">A</button>
-      <button type="button" class="vc-part vc-btn vc-btn-start" data-part="btnStart" data-btn="9">▣</button>
     `
     document.body.appendChild(this.root)
     this.gridOverlay = this.root.querySelector('.vc-grid-overlay')!
@@ -204,12 +200,6 @@ export class VirtualControls {
     this.input.setVirtualStick(0, 0)
   }
 
-  private triggerPause(): void {
-    this.input.setVirtualButton('9', true)
-    this.onPause?.()
-    window.setTimeout(() => this.input.setVirtualButton('9', false), 0)
-  }
-
   private bindButtons(): void {
     const buttons = this.root.querySelectorAll<HTMLElement>('[data-btn]')
     for (const btn of buttons) {
@@ -218,7 +208,7 @@ export class VirtualControls {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, true)
         btn.classList.add('vc-btn--pressed')
-        if (code === '9') this.triggerPause()
+        if (code === '9') return
       }
       const release = () => {
         if (this.layoutEditMode) return

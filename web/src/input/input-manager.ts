@@ -23,8 +23,6 @@ export interface InputSnapshot {
   splitHeld: boolean
   gatherHeld: boolean
   gatherPressed: boolean
-  shrinkHeld: boolean
-  growHeld: boolean
   schoolPressed: boolean
   parkPressed: boolean
   upPressed: boolean
@@ -197,8 +195,6 @@ export class InputManager {
       splitHeld: this.isActionHeld('SPLIT'),
       gatherHeld: this.isActionHeld('GATHER'),
       gatherPressed: this.wasActionPressed('GATHER'),
-      shrinkHeld: this.isActionHeld('SHRINK'),
-      growHeld: this.isActionHeld('GROW'),
       schoolPressed: this.wasActionPressed('SCHOOL'),
       parkPressed: this.wasActionPressed('PARK'),
       upPressed,
