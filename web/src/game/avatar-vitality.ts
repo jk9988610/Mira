@@ -71,9 +71,9 @@ export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 
 
 function inStructureOrProduction(entity: CircleEntity): boolean {
   return (
-    entity.avatarRole === 'work' ||
-    entity.avatarRole === 'learn' ||
-    entity.avatarRole === 'play' ||
+    entity.avatarRole === 'farm' ||
+    entity.avatarRole === 'school' ||
+    entity.avatarRole === 'park' ||
     entity.productionStage !== 'none'
   )
 }
@@ -196,7 +196,7 @@ function tickLifespan(entity: CircleEntity, dt: number, isMoving: boolean): void
 
 export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving: boolean): void {
   if (!isActive(entity) || entity.isFrozen) return
-  if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') return
+  if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') return
 
   tickDigestion(entity, dt)
   tickTraitDigestion(entity, dt)
@@ -222,7 +222,7 @@ export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving:
 
 export function tickAvatarTransformLifespan(entity: CircleEntity, dt: number): void {
   if (!isActive(entity)) return
-  if (entity.avatarRole !== 'work' && entity.avatarRole !== 'learn' && entity.avatarRole !== 'play') return
+  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'school' && entity.avatarRole !== 'park') return
   entity.lifespanEvalTimer -= dt
   if (entity.lifespanEvalTimer <= 0) {
     entity.lifespanEvalTimer = LIFESPAN_EVAL_INTERVAL_SEC

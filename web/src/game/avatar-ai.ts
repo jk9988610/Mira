@@ -9,15 +9,29 @@ import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
+function countStructures(entities: CircleEntity[]): { farm: number; school: number; park: number } {
+  let farm = 0
+  let school = 0
+  let park = 0
+  for (const e of entities) {
+    if (e.avatarRole === 'farm') farm++
+    if (e.avatarRole === 'school') school++
+    if (e.avatarRole === 'park') park++
+  }
+  return { farm, school, park }
+}
+
 export function decideNpcTransformKind(
   entity: CircleEntity,
-  _entities: CircleEntity[],
+  entities: CircleEntity[],
   now = 0,
 ): TransformKind | null {
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
-  const need = pickWeightedNeed(entity, entity.id * 0.83 + now * 0.19)
-  if (need === 'eat' || need === 'mate') return null
-  return pickWeightedTransformKind(entity, entity.id * 2.11 + now * 0.23 + entity.transformHistory.length)
+  return pickWeightedTransformKind(
+    entity,
+    countStructures(entities),
+    entity.id * 2.11 + now * 0.23 + entity.transformHistory.length,
+  )
 }
 
 export function recordTransformHistory(entity: CircleEntity, kind: TransformKind): void {
@@ -30,16 +44,15 @@ export function intentLabel(entity: CircleEntity): string {
   if (entity.productionStage === 'pregnant') return entity.gender === 'female' ? '生产·怀孕' : '生产·陪护'
   const map: Record<NeedKind | 'idle', string> = {
     eat: '觅食',
-    learn: '学习',
-    play: '娱乐',
+    learn: '吸收知识',
+    play: '吸收快乐',
     mate: '生产',
-    work: '上班',
     idle: '闲逛',
   }
   return map[entity.aiIntent] ?? '闲逛'
 }
 
-function pelletKindForNeed(need: NeedKind): PelletKind | 'any' {
+function pelletKindForNeed(need: NeedKind): PelletKind {
   if (need === 'learn') return 'knowledge'
   if (need === 'play') return 'joy'
   return 'food'
@@ -60,13 +73,13 @@ function moveToward(entity: CircleEntity, tx: number, ty: number, dt: number, mu
 function pickPelletTarget(
   entity: CircleEntity,
   grid: PelletGrid,
-  kind: PelletKind | 'any',
+  kind: PelletKind,
 ): { x: number; y: number; id: number } | null {
   if (entity.aiPelletTargetTimer > 0 && entity.aiPelletTargetId > 0) {
     const cached = grid.getById(entity.aiPelletTargetId)
-    if (cached && (kind === 'any' || cached.kind === kind)) return { x: cached.x, y: cached.y, id: cached.id }
+    if (cached && cached.kind === kind) return { x: cached.x, y: cached.y, id: cached.id }
   }
-  const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 10, kind === 'any' ? undefined : kind)
+  const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 10, kind)
   if (candidates.length === 0) return null
   entity.aiPelletTargetId = candidates[0].id
   entity.aiPelletTargetTimer = NPC_TARGET_CACHE_SEC
@@ -93,11 +106,10 @@ export function updateNpcIntent(
   }
 
   if (entity.aiPelletTargetTimer <= 0.05) {
-    const need = pickWeightedNeed(
+    entity.aiIntent = pickWeightedNeed(
       entity,
       entity.id * 1.31 + Math.floor(now * 0.4) + entity.transformHistory.length * 1.7,
     )
-    entity.aiIntent = need === 'work' ? 'work' : need
   }
 
   const need = entity.aiIntent
@@ -123,10 +135,6 @@ export function updateNpcIntent(
       moveToward(entity, pellet.x, pellet.y, dt, 0.95)
       return { moving: true, sleeping: false }
     }
-  }
-
-  if (activeNeed === 'work') {
-    return { moving: false, sleeping: false }
   }
 
   return { moving: false, sleeping: false }

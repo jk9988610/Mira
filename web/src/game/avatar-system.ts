@@ -62,29 +62,29 @@ export function getControlledEntity(
 
 function structureLabel(kind: TransformKind, builderName: string): string {
   switch (kind) {
-    case 'work':
-      return `${builderName}的上班`
-    case 'learn':
-      return `${builderName}的学习`
-    case 'play':
-      return `${builderName}的娱乐`
+    case 'farm':
+      return `${builderName}的农场`
+    case 'school':
+      return `${builderName}的校园`
+    case 'park':
+      return `${builderName}的乐园`
   }
 }
 
 function isStructureRole(role: CircleEntity['avatarRole']): boolean {
-  return role === 'work' || role === 'learn' || role === 'play'
+  return role === 'farm' || role === 'school' || role === 'park'
 }
 
-export function countWorkStructures(entities: CircleEntity[]): number {
-  return entities.filter((e) => e.avatarRole === 'work').length
+export function countFarmStructures(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'farm').length
 }
 
-export function countLearnStructures(entities: CircleEntity[]): number {
-  return entities.filter((e) => e.avatarRole === 'learn').length
+export function countSchoolStructures(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'school').length
 }
 
-export function countPlayStructures(entities: CircleEntity[]): number {
-  return entities.filter((e) => e.avatarRole === 'play').length
+export function countParkStructures(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'park').length
 }
 
 /** 可移动的圆：玩家与后代（不含上班/生产建筑） */
@@ -92,7 +92,7 @@ export function countMobileCircles(entities: CircleEntity[]): number {
   let count = 0
   for (const e of entities) {
     if (!isActive(e) || e.isFrozen) continue
-    if (e.avatarRole === 'work' || e.avatarRole === 'learn' || e.avatarRole === 'play') continue
+    if (e.avatarRole === 'farm' || e.avatarRole === 'school' || e.avatarRole === 'park') continue
     count++
   }
   return count
@@ -353,15 +353,15 @@ export function completeAvatarTransform(
 
   entity.builderName = entity.name
     .replace(/·后$/, '')
-    .replace(/的(上班|生产|学习|娱乐)$/, '')
+    .replace(/的(农场|牧场|校园|乐园)$/, '')
   entity.avatarRole = kind
   entity.isFrozen = true
   entity.name = structureLabel(kind, entity.builderName)
   entity.avatarTransformTimer = AVATAR_TRANSFORM_DURATION_SEC
   entity.pelletSpawnTimer =
-    kind === 'work'
+    kind === 'farm'
       ? WORK_PELLET_INTERVAL_SEC
-      : kind === 'learn'
+      : kind === 'school'
         ? LEARN_PELLET_INTERVAL_SEC
         : PLAY_PELLET_INTERVAL_SEC
   entity.pendingAvatarKind = 'none'
@@ -369,9 +369,9 @@ export function completeAvatarTransform(
   entity.invincibleTimer = 0
   entity.structureProduceCount = 0
   entity.avatarTransformCount++
-  if (kind === 'work') entity.countWorkTransforms++
-  if (kind === 'learn') entity.countLearnTransforms++
-  if (kind === 'play') entity.countPlayTransforms++
+  if (kind === 'farm') entity.countFarmTransforms++
+  if (kind === 'school') entity.countSchoolTransforms++
+  if (kind === 'park') entity.countParkTransforms++
   entity.absorptionPaused = false
   recordTransformHistory(entity, kind)
 
@@ -480,7 +480,7 @@ function tickStructureTimer(entity: CircleEntity, dt: number): boolean {
   return false
 }
 
-export function updateWorkStructures(
+export function updateFarmStructures(
   entities: CircleEntity[],
   pellets: Pellet[],
   grid: PelletGrid,
@@ -489,7 +489,7 @@ export function updateWorkStructures(
   if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
 
   for (const entity of entities) {
-    if (entity.avatarRole !== 'work' || !entity.isFrozen) continue
+    if (entity.avatarRole !== 'farm' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
@@ -502,14 +502,14 @@ export function updateWorkStructures(
   return trimPellets(pellets)
 }
 
-export function updateLearnStructures(
+export function updateSchoolStructures(
   entities: CircleEntity[],
   pellets: Pellet[],
   dt: number,
 ): Pellet[] {
   if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
   for (const entity of entities) {
-    if (entity.avatarRole !== 'learn' || !entity.isFrozen) continue
+    if (entity.avatarRole !== 'school' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
@@ -519,14 +519,14 @@ export function updateLearnStructures(
   return trimPellets(pellets)
 }
 
-export function updatePlayStructures(
+export function updateParkStructures(
   entities: CircleEntity[],
   pellets: Pellet[],
   dt: number,
 ): Pellet[] {
   if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
   for (const entity of entities) {
-    if (entity.avatarRole !== 'play' || !entity.isFrozen) continue
+    if (entity.avatarRole !== 'park' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
@@ -636,46 +636,46 @@ function transformHint(
 }
 
 export interface AvatarTransformHints {
-  workHint: string
+  farmHint: string
   produceHint: string
-  learnHint: string
-  playHint: string
-  canWork: boolean
+  schoolHint: string
+  parkHint: string
+  canFarm: boolean
   canMate: boolean
-  canLearn: boolean
-  canPlay: boolean
-  workCount: number
-  learnCount: number
-  playCount: number
+  canSchool: boolean
+  canPark: boolean
+  farmCount: number
+  schoolCount: number
+  parkCount: number
 }
 
 export function getAvatarTransformHints(
   entity: CircleEntity | null,
   entities: CircleEntity[],
 ): AvatarTransformHints {
-  const workCount = countWorkStructures(entities)
-  const learnCount = countLearnStructures(entities)
-  const playCount = countPlayStructures(entities)
+  const farmCount = countFarmStructures(entities)
+  const schoolCount = countSchoolStructures(entities)
+  const parkCount = countParkStructures(entities)
 
   if (!entity) {
     return {
-      workHint: 'Q 上班',
+      farmHint: 'Q 农场',
       produceHint: 'E 生产',
-      learnHint: 'Z 学习',
-      playHint: 'X 娱乐',
-      canWork: false,
+      schoolHint: 'Z 校园',
+      parkHint: 'X 乐园',
+      canFarm: false,
       canMate: false,
-      canLearn: false,
-      canPlay: false,
-      workCount,
-      learnCount,
-      playCount,
+      canSchool: false,
+      canPark: false,
+      farmCount,
+      schoolCount,
+      parkCount,
     }
   }
 
-  const canWork = canBeginAvatarTransform(entity, 'work', entities)
-  const canLearn = canBeginAvatarTransform(entity, 'learn', entities)
-  const canPlay = canBeginAvatarTransform(entity, 'play', entities)
+  const canFarm = canBeginAvatarTransform(entity, 'farm', entities)
+  const canSchool = canBeginAvatarTransform(entity, 'school', entities)
+  const canPark = canBeginAvatarTransform(entity, 'park', entities)
   const canMate =
     entity.productionStage === 'none' &&
     !entity.isFrozen &&
@@ -683,56 +683,56 @@ export function getAvatarTransformHints(
 
   if (isStructureRole(entity.avatarRole)) {
     return {
-      workHint: entity.avatarRole === 'work' ? 'Q 化身上班中' : 'Q 化身中',
+      farmHint: entity.avatarRole === 'farm' ? 'Q 化身农场中' : 'Q 化身中',
       produceHint: entity.productionStage !== 'none' ? 'E 生产中' : 'E 生产',
-      learnHint: entity.avatarRole === 'learn' ? 'Z 化身学习中' : 'Z 化身中',
-      playHint: entity.avatarRole === 'play' ? 'X 化身娱乐中' : 'X 化身中',
-      canWork,
+      schoolHint: entity.avatarRole === 'school' ? 'Z 化身校园中' : 'Z 化身中',
+      parkHint: entity.avatarRole === 'park' ? 'X 化身乐园中' : 'X 化身中',
+      canFarm,
       canMate,
-      canLearn,
-      canPlay,
-      workCount,
-      learnCount,
-      playCount,
+      canSchool,
+      canPark,
+      farmCount,
+      schoolCount,
+      parkCount,
     }
   }
 
   return {
-    workHint: transformHint(entity, entities, 'work', 'Q', '上班'),
+    farmHint: transformHint(entity, entities, 'farm', 'Q', '农场'),
     produceHint:
       entity.productionStage !== 'none'
         ? 'E 生产中'
         : canMate
           ? 'E 生产'
           : 'E 生产(需成年异性)',
-    learnHint: transformHint(entity, entities, 'learn', 'Z', '学习'),
-    playHint: transformHint(entity, entities, 'play', 'X', '娱乐'),
-    canWork,
+    schoolHint: transformHint(entity, entities, 'school', 'Z', '校园'),
+    parkHint: transformHint(entity, entities, 'park', 'X', '乐园'),
+    canFarm,
     canMate,
-    canLearn,
-    canPlay,
-    workCount,
-    learnCount,
-    playCount,
+    canSchool,
+    canPark,
+    farmCount,
+    schoolCount,
+    parkCount,
   }
 }
 
 export function countTribeStructures(entities: CircleEntity[]): {
-  work: number
-  learn: number
-  play: number
+  farm: number
+  school: number
+  park: number
   producing: number
   circles: number
 } {
-  let work = 0
-  let learn = 0
-  let play = 0
+  let farm = 0
+  let school = 0
+  let park = 0
   let producing = 0
   for (const e of entities) {
-    if (e.avatarRole === 'work') work++
-    if (e.avatarRole === 'learn') learn++
-    if (e.avatarRole === 'play') play++
+    if (e.avatarRole === 'farm') farm++
+    if (e.avatarRole === 'school') school++
+    if (e.avatarRole === 'park') park++
     if (e.productionStage !== 'none') producing++
   }
-  return { work, learn, play, producing, circles: countMobileCircles(entities) }
+  return { farm, school, park, producing, circles: countMobileCircles(entities) }
 }

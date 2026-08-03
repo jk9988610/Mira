@@ -14,9 +14,9 @@ export interface TribeDemographics {
   juvenileMale: number
   juvenileFemale: number
   families: FamilyOffspringStat[]
-  work: number
-  learn: number
-  play: number
+  farm: number
+  school: number
+  park: number
   producing: number
   circles: number
 }
@@ -27,17 +27,17 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
   let adultFemale = 0
   let juvenileMale = 0
   let juvenileFemale = 0
-  let work = 0
-  let learn = 0
-  let play = 0
+  let farm = 0
+  let school = 0
+  let park = 0
   let producing = 0
   let circles = 0
 
   for (const e of entities) {
     if (!isActive(e)) continue
-    if (e.avatarRole === 'work') work++
-    if (e.avatarRole === 'learn') learn++
-    if (e.avatarRole === 'play') play++
+    if (e.avatarRole === 'farm') farm++
+    if (e.avatarRole === 'school') school++
+    if (e.avatarRole === 'park') park++
     if (e.productionStage !== 'none') producing++
     if (e.avatarRole === 'none' || e.avatarRole === 'ally') {
       circles++
@@ -71,9 +71,9 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
     juvenileMale,
     juvenileFemale,
     families,
-    work,
-    learn,
-    play,
+    farm,
+    school,
+    park,
     producing,
     circles,
   }
