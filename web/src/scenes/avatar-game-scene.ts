@@ -21,8 +21,9 @@ import {
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
-  beginProductionPair,
-  tryPairProduction,
+  findSeekingPartner,
+  tickProductionCooldowns,
+  tryApproachForProduction,
   updateProductionPairs,
 } from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
@@ -48,43 +49,6 @@ function isNpcMobile(entity: CircleEntity): boolean {
     !entity.isPlayer &&
     (entity.avatarRole === 'none' || entity.avatarRole === 'ally')
   )
-}
-
-function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
-  const dist = Math.hypot(a.x - b.x, a.y - b.y)
-  return dist < avatarEntityRadius(a) + avatarEntityRadius(b) - 4
-}
-
-function updatePlayerMateSeek(player: CircleEntity, entities: CircleEntity[], dt: number): void {
-  if (!isAdult(player) || player.productionStage !== 'none' || player.isFrozen) return
-
-  let mate =
-    (player.aiMateTargetId > 0
-      ? entities.find((e) => e.id === player.aiMateTargetId && isActive(e))
-      : null) ?? tryPairProduction(player, entities)
-
-  if (!mate) {
-    player.aiMateTargetId = 0
-    return
-  }
-
-  player.aiMateTargetId = mate.id
-  const male = player.gender === 'male' ? player : mate
-  const female = player.gender === 'female' ? player : mate
-
-  if (circlesTouch(male, female)) {
-    beginProductionPair(male, female)
-    player.aiMateTargetId = 0
-    return
-  }
-
-  const dx = mate.x - player.x
-  const dy = mate.y - player.y
-  const dist = Math.hypot(dx, dy)
-  if (dist <= 1) return
-  const speed = 180
-  player.x += (dx / dist) * speed * dt
-  player.y += (dy / dist) * speed * dt
 }
 
 const STARTER_OFFSETS = [
@@ -195,8 +159,10 @@ export function createAvatarGameScene(
       }
 
       if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
-        const mate = tryPairProduction(player, entities)
-        if (mate) player.aiMateTargetId = mate.id
+        if (player.gender === 'male') {
+          const partner = findSeekingPartner(player, entities)
+          if (partner) player.aiMateTargetId = partner.id
+        }
       }
 
       if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
@@ -211,10 +177,12 @@ export function createAvatarGameScene(
         sfx.absorbPellet()
       }
 
-      if (player && !player.isFrozen) {
+      if (player && !player.isFrozen && player.productionStage === 'none') {
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
-        if (player.aiMateTargetId > 0) updatePlayerMateSeek(player, entities, dt)
+        if (player.gender === 'male') tryApproachForProduction(player, entities, dt)
       }
+
+      tickProductionCooldowns(entities, dt)
 
       pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
       pellets = updateSchoolStructures(entities, pellets, dt)
@@ -244,7 +212,7 @@ export function createAvatarGameScene(
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
           if (entity.aiMateTargetId > 0) movingIds.add(entity.id)
-        } else if (isNpcMobile(entity) && entity.aiIntent !== 'idle') {
+        } else if (isNpcMobile(entity) && entity.aiIntent !== 'sleep') {
           movingIds.add(entity.id)
         }
         if (entity.productionStage !== 'none') movingIds.add(entity.id)
