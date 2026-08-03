@@ -21,7 +21,10 @@ export interface TribeDemographics {
   circles: number
 }
 
-export function computeTribeDemographics(entities: CircleEntity[]): TribeDemographics {
+export function computeTribeDemographics(
+  entities: CircleEntity[],
+  gameTimeSec = 0,
+): TribeDemographics {
   const familyMap = new Map<number, { founderName: string; offspringCount: number }>()
   let adultMale = 0
   let adultFemale = 0
@@ -41,10 +44,10 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
     if (e.avatarRole === 'park') park++
     if (e.productionStage !== 'none') producing++
     if (e.avatarRole === 'none' || e.avatarRole === 'ally') {
-      if (isAdult(e)) {
+      if (isAdult(e, gameTimeSec)) {
         if (e.gender === 'male') adultMale++
         else adultFemale++
-      } else if (isJuvenile(e)) {
+      } else if (isJuvenile(e, gameTimeSec)) {
         if (e.gender === 'male') juvenileMale++
         else juvenileFemale++
       }

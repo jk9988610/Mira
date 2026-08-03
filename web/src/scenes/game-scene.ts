@@ -19,7 +19,7 @@ import {
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
-import { AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
+import { ADULT_AGE_SEC, AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
   isPursuingMate,
   syncMateTargets,
@@ -119,9 +119,9 @@ export function createGameScene(
         STARTER_OPTIMAL_MASS,
         i === 0,
         roster,
-        { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: 0 },
+        { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: -ADULT_AGE_SEC },
       )
-      initOptimalAvatarState(circle, 0)
+      initOptimalAvatarState(circle, -ADULT_AGE_SEC)
       return circle
     })
     controlledId = entities[0].id
@@ -162,23 +162,23 @@ export function createGameScene(
       prevSplitHeld = input.splitHeld
       prevGatherHeld = input.gatherHeld
 
-      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
+      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'farm')
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
+      if (gatherTrigger && player && isAdult(player, elapsed) && player.productionStage === 'none' && !player.isFrozen) {
         player.mateSeekUrge = Math.min(1, player.mateSeekUrge + 0.35)
       }
 
-      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
+      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'school')
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities)) {
+      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'park')
         entities = result.entities
         sfx.absorbPellet()
@@ -279,8 +279,8 @@ export function createGameScene(
       ctx.restore()
 
       const tribe = countTribeStructures(entities)
-      const demo = computeTribeDemographics(entities)
-      const hints = getAvatarTransformHints(controlled, entities)
+      const demo = computeTribeDemographics(entities, elapsed)
+      const hints = getAvatarTransformHints(controlled, entities, elapsed)
       drawAvatarHud(ctx, width, height, {
         gameTimeSec: elapsed,
         zoom: cam.zoom,
