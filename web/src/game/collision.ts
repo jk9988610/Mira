@@ -1,5 +1,6 @@
 import type { CircleEntity } from './entity'
 import { entityRadius, isActive, isInvincible } from './entity'
+import type { PelletGrid } from './pellet-grid'
 import { canSwallowCircle } from './player-team'
 import { addMass } from './physics'
 import type { Pellet } from './pellet'
@@ -13,16 +14,22 @@ export interface EatEvent {
 export function absorbPelletsForEntity(
   entity: CircleEntity,
   pellets: Pellet[],
+  grid?: PelletGrid,
 ): Pellet[] {
   if (!isActive(entity)) return []
 
   const radius = entityRadius(entity)
   const absorbed: Pellet[] = []
-
-  for (const pellet of pellets) {
-    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) continue
+  const collect = (pellet: Pellet) => {
+    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
     entity.mass = addMass(entity.mass, pellet.mass)
     absorbed.push(pellet)
+  }
+
+  if (grid) {
+    grid.forEachInRadius(entity.x, entity.y, radius, collect)
+  } else {
+    for (const pellet of pellets) collect(pellet)
   }
 
   return absorbed

@@ -4,6 +4,7 @@ import { absorbPelletsForEntity } from './collision'
 import { AI_COUNT } from './match-config'
 import { speedForMass } from './movement'
 import { canSwallowCircle, getHumanTotalMass, getLargestHuman } from './player-team'
+import type { PelletGrid } from './pellet-grid'
 import type { Pellet } from './pellet'
 import { massToRadius, PLAYER_START_MASS } from './physics'
 import { AI_ROSTER } from './roster'
@@ -54,6 +55,7 @@ export function updateAi(
   allPlayers: CircleEntity[],
   pellets: Pellet[],
   dt: number,
+  grid?: PelletGrid,
 ): Pellet[] {
   if (!isActive(ai)) return []
 
@@ -94,7 +96,7 @@ export function updateAi(
     }
   }
 
-  const pellet = findBestPellet(ai, pellets, vision)
+  const pellet = findBestPellet(ai, pellets, vision, grid)
   const wall = wallAvoidance(ai)
 
   if (threats.length > 0) {
@@ -133,20 +135,30 @@ export function updateAi(
   }
 
   clampEntityToWorld(ai, WORLD_WIDTH, WORLD_HEIGHT)
-  return absorbPelletsForEntity(ai, pellets)
+  return absorbPelletsForEntity(ai, pellets, grid)
 }
 
-function findBestPellet(ai: CircleEntity, pellets: Pellet[], vision: number): Pellet | null {
+function findBestPellet(
+  ai: CircleEntity,
+  pellets: Pellet[],
+  vision: number,
+  grid?: PelletGrid,
+): Pellet | null {
   let best: Pellet | null = null
   let bestScore = -Infinity
-  for (const pellet of pellets) {
+  const consider = (pellet: Pellet) => {
     const dist = Math.hypot(pellet.x - ai.x, pellet.y - ai.y)
-    if (dist > vision) continue
+    if (dist > vision) return
     const score = pellet.mass / (dist + 20)
     if (score > bestScore) {
       bestScore = score
       best = pellet
     }
+  }
+  if (grid) {
+    grid.forEachInRadius(ai.x, ai.y, vision, consider)
+  } else {
+    for (const pellet of pellets) consider(pellet)
   }
   return best
 }

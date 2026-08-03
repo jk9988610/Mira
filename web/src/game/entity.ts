@@ -1,4 +1,5 @@
 import { massToRadius } from './physics'
+import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
 
 export interface CircleEntity {
   id: number
@@ -102,6 +103,18 @@ export function drawCircleEntity(
     ctx.arc(x, y, r + 8 * flash, 0, Math.PI * 2)
     ctx.fillStyle = `rgba(143, 211, 255, ${0.35 * flash / 0.18})`
     ctx.fill()
+  }
+
+  if (r < ENTITY_SIMPLE_DRAW_RADIUS) {
+    ctx.fillStyle = colorLight
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = strokeColor
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    ctx.restore()
+    return
   }
 
   const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)

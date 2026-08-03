@@ -7,6 +7,7 @@ import { absorbPelletsForEntity, resolveCircleCollisions } from '../game/collisi
 import {
   createCircle,
   drawCircleEntity,
+  entityRadius,
   isActive,
   type CircleEntity,
 } from '../game/entity'
@@ -33,8 +34,11 @@ import {
   updateHumanCenterPull,
 } from '../game/player-team'
 import { PLAYER_START_MASS } from '../game/physics'
-import { drawPellet } from '../game/pellet'
+import { PelletGrid } from '../game/pellet-grid'
+import { drawPelletsInView } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
+import { computeViewBounds, isInView } from '../game/viewport'
+import { drawWorld, MATCH_STYLE } from '../game/world-draw'
 import { GameWorld, WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import {
   clearScreen,
@@ -51,6 +55,7 @@ export function createGameScene(
   isPaused: () => boolean,
 ) {
   const world = new GameWorld()
+  const pelletGrid = new PelletGrid()
   let players: CircleEntity[] = []
   let absorbFlash = 0
   let timeRemaining = GAME_DURATION_SEC
@@ -76,6 +81,7 @@ export function createGameScene(
     lastCountdownSecond = -1
     splitCooldown = 0
     world.reset(player.x, player.y)
+    pelletGrid.rebuild(world.pellets)
   }
 
   const updateRespawns = (dt: number) => {
@@ -174,10 +180,12 @@ export function createGameScene(
       separateHumanClones(players)
       updateHumanCenterPull(players, dt)
 
+      pelletGrid.rebuild(world.pellets)
+
       const removedPelletIds = new Set<number>()
       for (const entity of players) {
         if (!isActive(entity)) continue
-        const absorbed = absorbPelletsForEntity(entity, world.pellets)
+        const absorbed = absorbPelletsForEntity(entity, world.pellets, pelletGrid)
         if (entity.isPlayer && absorbed.length > 0) {
           absorbFlash = 0.18
           sfx.absorbPellet()
@@ -185,11 +193,12 @@ export function createGameScene(
         for (const pellet of absorbed) removedPelletIds.add(pellet.id)
       }
 
-      for (const ai of players.filter((e) => !e.isPlayer)) {
-        const absorbed = updateAi(ai, players, world.pellets, dt)
+      for (const ai of players) {
+        if (ai.isPlayer) continue
+        const absorbed = updateAi(ai, players, world.pellets, dt, pelletGrid)
         for (const pellet of absorbed) removedPelletIds.add(pellet.id)
       }
-      for (const id of removedPelletIds) world.removePellet(id)
+      world.removePellets(removedPelletIds)
 
       const eatEvents = resolveCircleCollisions(players)
       const eatenPlayerIds: number[] = []
@@ -213,6 +222,7 @@ export function createGameScene(
 
       const focus = getHumanCameraFocus(players)
       world.maintainPopulation(focus.x, focus.y)
+      pelletGrid.rebuild(world.pellets)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
@@ -226,6 +236,7 @@ export function createGameScene(
 
       const focus = getHumanCameraFocus(players)
       const cam = computeCamera(focus.x, focus.y, focus.mass, width, height)
+      const view = computeViewBounds(cam.camX, cam.camY, cam.renderScale, width, height)
 
       const sorted = [...players].sort((a, b) => b.mass - a.mass)
 
@@ -239,9 +250,10 @@ export function createGameScene(
       ctx.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
       ctx.clip()
 
-      drawWorld(ctx)
-      for (const pellet of world.pellets) drawPellet(ctx, pellet)
+      drawWorld(ctx, view, MATCH_STYLE)
+      drawPelletsInView(ctx, world.pellets, view)
       for (const entity of sorted) {
+        if (!isInView(entity.x, entity.y, view, entityRadius(entity))) continue
         drawCircleEntity(ctx, entity, entity.isPlayer ? absorbFlash : 0, elapsed)
       }
       ctx.restore()
@@ -263,29 +275,5 @@ export function createGameScene(
         drawRespawnOverlay(ctx, width, height, soonestHumanRespawn(players))
       }
     },
-  }
-}
-
-function drawWorld(ctx: CanvasRenderingContext2D) {
-  ctx.fillStyle = '#101826'
-  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
-  ctx.strokeStyle = '#3d5578'
-  ctx.lineWidth = 6
-  ctx.strokeRect(3, 3, WORLD_WIDTH - 6, WORLD_HEIGHT - 6)
-
-  ctx.strokeStyle = 'rgba(70, 96, 132, 0.22)'
-  ctx.lineWidth = 1
-  const grid = 100
-  for (let x = grid; x < WORLD_WIDTH; x += grid) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, WORLD_HEIGHT)
-    ctx.stroke()
-  }
-  for (let y = grid; y < WORLD_HEIGHT; y += grid) {
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(WORLD_WIDTH, y)
-    ctx.stroke()
   }
 }
