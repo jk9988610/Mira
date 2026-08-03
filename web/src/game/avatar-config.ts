@@ -59,7 +59,7 @@ export const LEARN_PELLET_COUNT = 8
 export const PLAY_PELLET_INTERVAL_SEC = 1.8
 export const PLAY_PELLET_COUNT = 8
 export const PRODUCTION_DURATION_SEC = 8
-export const PRODUCTION_COOLDOWN_SEC = 36
+export const PRODUCTION_COOLDOWN_SEC = 36 // 仅雌性生产后冷却
 export const ADULT_MASS_THRESHOLD = PLAYER_START_MASS * 2.5
 /** 每种颗粒（食物/知识/快乐）的初始数量 */
 export const AVATAR_INITIAL_PELLETS_PER_KIND = 18
