@@ -117,6 +117,7 @@ export function pickWeightedTransformKind(
   gameTimeSec: number,
   entities: CircleEntity[] = [],
 ): TransformKind | null {
+  if (isJuvenile(entity)) return null
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
   if (!canConsiderTransform(entity, gameTimeSec, seeking)) return null
 

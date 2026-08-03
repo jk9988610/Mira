@@ -55,9 +55,28 @@ const STARTER_OFFSETS = [
   { x: 272, y: -152 },
   { x: -248, y: 136 },
   { x: 200, y: 176 },
+  { x: -420, y: -240 },
+  { x: 440, y: -200 },
+  { x: -380, y: 260 },
+  { x: 400, y: 300 },
+  { x: -140, y: -340 },
+  { x: 180, y: 360 },
 ]
 
-const STARTER_GENDERS: Gender[] = ['male', 'male', 'female', 'female']
+const STARTER_GENDERS: Gender[] = [
+  'male',
+  'male',
+  'female',
+  'female',
+  'male',
+  'female',
+  'male',
+  'female',
+  'male',
+  'female',
+]
+
+const STARTER_ROSTER_INDICES = [0, 9, 1, 2, 3, 4, 5, 6, 7]
 
 export function createGameScene(
   app: App,
@@ -91,14 +110,14 @@ export function createGameScene(
     resetAvatarState()
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
-    const rosters = [PLAYER_ROSTER, AI_ROSTER[0], AI_ROSTER[9], AI_ROSTER[1]]
     entities = STARTER_OFFSETS.map((offset, i) => {
+      const roster = i === 0 ? PLAYER_ROSTER : AI_ROSTER[STARTER_ROSTER_INDICES[i - 1]]
       const circle = createCircle(
         cx + offset.x,
         cy + offset.y,
         STARTER_OPTIMAL_MASS,
         i === 0,
-        rosters[i],
+        roster,
         { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: 0 },
       )
       initOptimalAvatarState(circle, 0)

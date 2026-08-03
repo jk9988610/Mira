@@ -22,7 +22,7 @@ export interface TribeDemographics {
 }
 
 export function computeTribeDemographics(entities: CircleEntity[]): TribeDemographics {
-  const familyMap = new Map<number, { name: string; count: number }>()
+  const familyMap = new Map<number, { founderName: string; offspringCount: number }>()
   let adultMale = 0
   let adultFemale = 0
   let juvenileMale = 0
@@ -49,20 +49,38 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
         else juvenileFemale++
       }
     }
-    if (e.motherId > 0) {
-      const fam = e.familyId || e.motherId
-      const mother = entities.find((m) => m.id === e.motherId)
-      const familyName = mother?.name ?? `家族${fam}`
-      const prev = familyMap.get(fam)
-      familyMap.set(fam, { name: familyName, count: (prev?.count ?? 0) + 1 })
+
+    if (e.motherId === 0) {
+      const familyId = e.familyId || e.id
+      if (!familyMap.has(familyId)) {
+        const founderName = e.builderName || e.name
+        familyMap.set(familyId, { founderName, offspringCount: 0 })
+      }
     }
+  }
+
+  for (const e of entities) {
+    if (!isActive(e)) continue
+    if (e.motherId <= 0) continue
+    const familyId = e.familyId || e.motherId
+    const founder = entities.find((f) => f.id === familyId)
+    const founderName = founder?.builderName || founder?.name || `家族${familyId}`
+    const prev = familyMap.get(familyId)
+    familyMap.set(familyId, {
+      founderName: prev?.founderName ?? founderName,
+      offspringCount: (prev?.offspringCount ?? 0) + 1,
+    })
   }
 
   const families: FamilyOffspringStat[] = []
   for (const [familyId, data] of familyMap) {
-    families.push({ familyId, familyName: data.name, offspringCount: data.count })
+    families.push({
+      familyId,
+      familyName: `${data.founderName}的家族`,
+      offspringCount: data.offspringCount,
+    })
   }
-  families.sort((a, b) => b.offspringCount - a.offspringCount)
+  families.sort((a, b) => b.offspringCount - a.offspringCount || a.familyName.localeCompare(b.familyName))
 
   return {
     total: circles,
