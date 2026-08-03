@@ -85,6 +85,8 @@ function spawnChild(
       fatherId: father.id,
       familyId: mother.familyId || mother.id,
       birthGameTimeSec,
+      paternalDna: father.dnaFingerprint,
+      maternalDna: mother.dnaFingerprint,
     },
   )
   child.avatarRole = 'ally'

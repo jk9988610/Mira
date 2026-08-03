@@ -1,4 +1,5 @@
 import { ADULT_MASS_THRESHOLD } from './avatar-config'
+import { initEntityDna } from './dna'
 import { syncEntityGeo } from './geo'
 import { massToRadius, PLAYER_START_MASS } from './physics'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
@@ -15,6 +16,8 @@ export interface CircleInitOptions {
   fatherId?: number
   familyId?: number
   birthGameTimeSec?: number
+  paternalDna?: number
+  maternalDna?: number
 }
 
 export interface CircleEntity {
@@ -35,6 +38,9 @@ export interface CircleEntity {
   fatherId: number
   familyId: number
   birthGameTimeSec: number
+  dnaFingerprint: number
+  paternalDna: number
+  maternalDna: number
   childrenCount: number
   colorLight: string
   colorDark: string
@@ -79,7 +85,7 @@ export interface CircleEntity {
   productionTimer: number
   productionCooldown: number
   productionPartnerId: number
-  aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander'
+  aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander' | 'wait'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
   aiAnchorX: number
@@ -125,6 +131,9 @@ export function createCircle(
     fatherId: options.fatherId ?? 0,
     familyId: options.familyId ?? 0,
     birthGameTimeSec: options.birthGameTimeSec ?? 0,
+    dnaFingerprint: 0,
+    paternalDna: options.paternalDna ?? 0,
+    maternalDna: options.maternalDna ?? 0,
     childrenCount: 0,
     colorLight: roster.colorLight,
     colorDark: roster.colorDark,
@@ -179,6 +188,7 @@ export function createCircle(
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id
+  initEntityDna(entity, options.paternalDna ?? 0, options.maternalDna ?? 0)
   return entity
 }
 

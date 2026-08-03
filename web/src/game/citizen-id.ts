@@ -1,12 +1,21 @@
 import type { CircleEntity } from './entity'
 
-/** 纯数字身份证：世代(2)+出生秒(8)+序号(6)+性别(1)+纬度(4)+经度(4) */
+/** 10 位身份证：出生秒(4)+毫秒(1)+序号(3)+性别(1)+校验(1) */
 export function formatCitizenId(entity: CircleEntity): string {
-  const gen = entity.generation.toString().padStart(2, '0')
-  const birth = Math.floor(entity.birthGameTimeSec).toString().padStart(8, '0')
-  const seq = entity.id.toString().padStart(6, '0')
+  const birthSec = Math.floor(entity.birthGameTimeSec)
+  const birthMs = Math.floor((entity.birthGameTimeSec - birthSec) * 10) % 10
+  const secPart = (birthSec % 10000).toString().padStart(4, '0')
+  const seqPart = (entity.id % 1000).toString().padStart(3, '0')
   const gender = entity.gender === 'male' ? '1' : '2'
-  const lat = Math.floor(entity.lat * 100).toString().padStart(4, '0')
-  const lng = Math.floor(entity.lng * 100).toString().padStart(4, '0')
-  return `${gen}${birth}${seq}${gender}${lat}${lng}`
+  const body = `${secPart}${birthMs}${seqPart}${gender}`
+  const checksum = checksumDigit(body)
+  return `${body}${checksum}`
+}
+
+function checksumDigit(digits: string): string {
+  let sum = 0
+  for (let i = 0; i < digits.length; i++) {
+    sum += Number.parseInt(digits[i], 10) * ((i % 2) + 1)
+  }
+  return (sum % 10).toString()
 }
