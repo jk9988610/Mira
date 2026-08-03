@@ -3,21 +3,21 @@ import { PLAYER_START_MASS } from './physics'
 export const FARM_BUILD_COST = PLAYER_START_MASS * 2.5
 export const RANCH_BUILD_COST = PLAYER_START_MASS * 4
 
-/** 质量达到约牧场化身门槛 1.15 倍时暂停摄取颗粒 */
-export const ABSORPTION_PAUSE_MASS = RANCH_BUILD_COST * 1.15
-/** 质量回落到此值以下时恢复摄取 */
-export const ABSORPTION_RESUME_MASS = RANCH_BUILD_COST * 1.05
+/** 饱食度高于此值时暂停摄取颗粒 */
+export const SATIETY_ABSORB_PAUSE = 0.82
+/** 饱食度低于此值时恢复摄取 */
+export const SATIETY_ABSORB_RESUME = 0.72
 
-/** 静止时饥饿增长（每秒，0~1） */
-export const HUNGER_IDLE_RATE = 0.018
-/** 移动时额外饥饿增长（每秒） */
-export const HUNGER_MOVE_RATE = 0.006
-/** 饥饿超过此值视为「经常挨饿」，影响寿命评估 */
-export const HUNGER_WARN_THRESHOLD = 0.72
-/** 饥饿满值时消耗质量（质量/秒） */
-export const HUNGER_STARVE_MASS_DRAIN = PLAYER_START_MASS * 0.004
-/** 每摄取相当于初始质量一份颗粒，饥饿下降量 */
-export const HUNGER_RELIEF_PER_START_MASS = 0.28
+/** 静止时饱食度下降（每秒，0~1） */
+export const SATIETY_IDLE_DECAY = 0.018
+/** 移动时额外饱食度下降（每秒） */
+export const SATIETY_MOVE_DECAY = 0.006
+/** 饱食度低于此值视为「经常挨饿」，影响寿命评估 */
+export const SATIETY_LOW_THRESHOLD = 0.28
+/** 饱食度为 0 时消耗质量（质量/秒） */
+export const SATIETY_STARVE_MASS_DRAIN = PLAYER_START_MASS * 0.004
+/** 每摄取相当于初始质量一份颗粒，饱食度上升量 */
+export const SATIETY_GAIN_PER_START_MASS = 0.28
 
 /** 基础寿命（秒） */
 export const CIRCLE_LIFESPAN_SEC = 360

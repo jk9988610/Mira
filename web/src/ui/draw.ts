@@ -1,5 +1,5 @@
 import type { LeaderboardView } from '../game/leaderboard'
-import type { CircleEntity } from '../game/entity'
+import type { AvatarRole, CircleEntity } from '../game/entity'
 import { avatarEntityRadius } from '../game/avatar-radius'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
@@ -344,17 +344,51 @@ export function drawGamepadBanner(
 }
 
 export interface AvatarHudData {
-  mass: number
   zoom: number
   farmHint: string
   ranchHint: string
   farms: number
   ranches: number
   circles: number
-  lifespanSec?: number
-  hunger?: number
-  absorptionPaused?: boolean
-  avatarState?: string
+}
+
+function avatarRoleStatus(role: AvatarRole, isFrozen: boolean): string | null {
+  if (isFrozen && role === 'farm') return '化身·农场'
+  if (isFrozen && role === 'ranch') return '化身·牧场'
+  if (role === 'ally') return '后代'
+  return null
+}
+
+export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: CircleEntity): void {
+  const r = avatarEntityRadius(entity)
+  const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen)
+  const lines = [
+    `质量 ${Math.round(entity.mass)}`,
+    `饱食 ${Math.round(entity.satiety * 100)}%`,
+    `寿命 ${Math.ceil(entity.lifespanSec)}s`,
+  ]
+  if (roleStatus) lines.push(roleStatus)
+
+  const lineHeight = 12
+  const boxWidth = 92
+  const boxHeight = lines.length * lineHeight + 8
+  const x = entity.x - boxWidth / 2
+  const y = entity.y + r + 10
+
+  ctx.save()
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+  roundRect(ctx, x, y, boxWidth, boxHeight, 6)
+  ctx.fill()
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'top'
+  ctx.font = '11px system-ui, sans-serif'
+  lines.forEach((line, index) => {
+    const isRole = index === lines.length - 1 && roleStatus !== null
+    ctx.fillStyle = isRole ? '#8fd3ff' : '#b8c4dc'
+    ctx.fillText(line, entity.x, y + 4 + index * lineHeight)
+  })
+  ctx.restore()
 }
 
 export function drawAvatarCircle(
@@ -383,6 +417,7 @@ export function drawAvatarCircle(
     ctx.strokeStyle = strokeColor
     ctx.lineWidth = 1.5
     ctx.stroke()
+    drawAvatarEntityStats(ctx, entity)
     ctx.restore()
     return
   }
@@ -406,32 +441,15 @@ export function drawAvatarCircle(
     ctx.fillText(name, x, y)
   }
 
+  drawAvatarEntityStats(ctx, entity)
   ctx.restore()
 }
 
 export function drawAvatarHud(
   ctx: CanvasRenderingContext2D,
-  width: number,
+  _width: number,
   data: AvatarHudData,
 ): void {
-  drawHudMass(ctx, width, data.mass, data.zoom)
-
-  if (data.lifespanSec !== undefined) {
-    ctx.textAlign = 'right'
-    ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
-    const lifeText = `寿命 ${Math.ceil(data.lifespanSec)}s`
-    const hungerText =
-      data.hunger !== undefined ? ` · 饥饿 ${Math.round(data.hunger * 100)}%` : ''
-    const absorbText = data.absorptionPaused ? ' · 饱食' : ''
-    const avatarText = data.avatarState ? ` · ${data.avatarState}` : ''
-    const status = lifeText + hungerText + absorbText + avatarText
-    ctx.font = '12px system-ui, sans-serif'
-    roundRect(ctx, width - ctx.measureText(status).width - 36, 16, ctx.measureText(status).width + 20, 24, 8)
-    ctx.fill()
-    ctx.fillStyle = data.avatarState ? '#8fd3ff' : data.absorptionPaused ? '#ffb74d' : '#8aa0c8'
-    ctx.fillText(status, width - 26, 32)
-  }
-
   const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 圆 ${data.circles}`
   const hint = `${data.farmHint} · ${data.ranchHint}`
 
@@ -485,6 +503,7 @@ export function drawAvatarStructure(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(name, x, y)
+  drawAvatarEntityStats(ctx, entity)
   ctx.restore()
 }
 

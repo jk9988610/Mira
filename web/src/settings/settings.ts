@@ -1,8 +1,8 @@
 import type { VirtualControlsLayout } from '../input/virtual-controls-layout'
-import { DEFAULT_VIRTUAL_LAYOUT } from '../input/virtual-controls-layout'
+import { DEFAULT_VIRTUAL_LAYOUT, normalizeVirtualLayout } from '../input/virtual-controls-layout'
 
 const VOLUME_KEY = 'mira_volume_v1'
-const LAYOUT_KEY = 'mira_virtual_layout_v2'
+const LAYOUT_KEY = 'mira_virtual_layout_v3'
 
 export function loadVolume(): number {
   try {
@@ -23,14 +23,17 @@ export function saveVolume(volume: number): void {
 export function loadVirtualLayout(): VirtualControlsLayout {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
-    if (!raw) return { ...DEFAULT_VIRTUAL_LAYOUT }
-    const parsed = JSON.parse(raw) as Partial<VirtualControlsLayout>
-    return { ...DEFAULT_VIRTUAL_LAYOUT, ...parsed }
+    if (!raw) {
+      const legacy = localStorage.getItem('mira_virtual_layout_v2')
+      if (legacy) return normalizeVirtualLayout(JSON.parse(legacy) as Partial<VirtualControlsLayout>)
+      return { ...DEFAULT_VIRTUAL_LAYOUT }
+    }
+    return normalizeVirtualLayout(JSON.parse(raw) as Partial<VirtualControlsLayout>)
   } catch {
     return { ...DEFAULT_VIRTUAL_LAYOUT }
   }
 }
 
 export function saveVirtualLayout(layout: VirtualControlsLayout): void {
-  localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify(normalizeVirtualLayout(layout)))
 }

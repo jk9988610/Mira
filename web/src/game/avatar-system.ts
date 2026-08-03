@@ -6,7 +6,7 @@ import {
   onAvatarPelletAbsorbed,
   tickAvatarMetabolism,
   tickAvatarTransformLifespan,
-  updateAbsorptionPause,
+  updateSatietyAbsorption,
 } from './avatar-vitality'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
 import { addMassLogarithmic, PLAYER_START_MASS } from './physics'
@@ -559,7 +559,7 @@ export function tickMobileAvatarVitality(
   return next
 }
 
-export { hungerLabel, initOptimalAvatarState } from './avatar-vitality'
+export { initOptimalAvatarState, satietyLabel } from './avatar-vitality'
 
 export function getAvatarTransformHints(
   entity: CircleEntity | null,
@@ -576,7 +576,7 @@ export function getAvatarTransformHints(
     return { farm: 'Q 化身中', ranch: 'E 化身牧场中' }
   }
 
-  updateAbsorptionPause(entity)
+  updateSatietyAbsorption(entity)
 
   if (entity.avatarTransformCooldown > 0) {
     const sec = Math.ceil(entity.avatarTransformCooldown)
@@ -588,10 +588,10 @@ export function getAvatarTransformHints(
   const ranchMassOk = entity.mass >= RANCH_BUILD_COST
   const farmPlaceOk = farmMassOk && farmQuotaOk && canPlaceAvatarTransform(entity, 'farm', entities)
   const ranchPlaceOk = ranchMassOk && canPlaceAvatarTransform(entity, 'ranch', entities)
-  const saturated = entity.absorptionPaused
+  const satiated = entity.absorptionPaused
 
   let farm = 'Q 农场(未就绪)'
-  if (saturated) farm = 'Q 农场(饱食中)'
+  if (satiated) farm = 'Q 农场(饱食中)'
   else if (farmMassOk && farmQuotaOk && farmPlaceOk) farm = 'Q 化身农场'
   else if (farmMassOk && !farmQuotaOk) farm = 'Q 农场(需先化身牧场)'
   else if (farmMassOk && farmQuotaOk) farm = 'Q 农场(位置被占)'
