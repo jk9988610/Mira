@@ -1,4 +1,10 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
+import { avatarEntityRadius } from './avatar-radius'
+import {
+  findMother,
+  hasNearbySeekingMate,
+  juvenileMotherFollowTarget,
+} from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
@@ -43,6 +49,7 @@ export function decideNpcTransformKind(
     countStructures(entities),
     entity.id * 2.11 + now * 0.23 + entity.transformHistory.length,
     now,
+    entities,
   )
 }
 
@@ -51,10 +58,17 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
   if (entity.transformHistory.length > 12) entity.transformHistory.splice(0, entity.transformHistory.length - 12)
 }
 
-export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
+export function intentLabel(
+  entity: CircleEntity,
+  gameTimeSec = 0,
+): string {
   if (entity.productionStage === 'active') return '生产'
   if (entity.productionCooldown > 0) {
     return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
+  }
+
+  if (entity.aiIntent === 'wait' && isSeekingMate(entity)) {
+    return '等待·求偶'
   }
 
   const phase = currentSchedulePhase(entity, gameTimeSec)
@@ -75,6 +89,10 @@ export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
     return `未成年·${base}`
   }
 
+  if (isSeekingMate(entity) && entity.gender === 'female' && entity.aiIntent === 'wait') {
+    return '等待·求偶'
+  }
+
   if (isSeekingMate(entity)) return `求偶·${base}`
   return base
 }
@@ -85,11 +103,18 @@ function pelletKindForNeed(need: NeedKind): PelletKind {
   return 'food'
 }
 
-function moveToward(entity: CircleEntity, tx: number, ty: number, dt: number, mult = 1): void {
+function moveToward(
+  entity: CircleEntity,
+  tx: number,
+  ty: number,
+  dt: number,
+  mult = 1,
+  arriveDist = NPC_ARRIVE_DIST,
+): void {
   const dx = tx - entity.x
   const dy = ty - entity.y
   const dist = Math.hypot(dx, dy)
-  if (dist <= NPC_ARRIVE_DIST || dist < NPC_JITTER_DIST) return
+  if (dist <= arriveDist || dist < NPC_JITTER_DIST) return
   const speed = speedForMass(entity.mass) * mult
   entity.x += (dx / dist) * speed * dt
   entity.y += (dy / dist) * speed * dt
@@ -97,7 +122,18 @@ function moveToward(entity: CircleEntity, tx: number, ty: number, dt: number, mu
   syncEntityGeo(entity)
 }
 
-function wander(entity: CircleEntity, dt: number): void {
+function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = []): void {
+  if (isJuvenile(entity)) {
+    const mother = findMother(entity, entities)
+    if (mother) {
+      const follow = juvenileMotherFollowTarget(entity, mother)
+      if (follow) {
+        moveToward(entity, follow.x, follow.y, dt, 0.78, avatarEntityRadius(entity) * 0.55)
+        return
+      }
+    }
+  }
+
   entity.wanderTimer -= dt
   if (entity.wanderTimer <= 0) {
     entity.wanderAngle += (Math.random() - 0.5) * 1.2
@@ -148,11 +184,16 @@ export function updateNpcIntent(
 
   if (phase === 'wander') {
     entity.aiIntent = 'wander'
-    wander(entity, dt)
+    wander(entity, dt, entities)
   } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
     entity.aiIntent = phase
   } else if (entity.aiPelletTargetTimer <= 0.05) {
     entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
+  }
+
+  if (isSeekingMate(entity) && entity.gender === 'female' && hasNearbySeekingMate(entity, entities)) {
+    entity.aiIntent = 'wait'
+    return { moving: false, sleeping: false }
   }
 
   if (isSeekingMate(entity) && entity.gender === 'male') {
@@ -166,10 +207,11 @@ export function updateNpcIntent(
   if (activeNeed === 'eat' || activeNeed === 'learn' || activeNeed === 'play') {
     const pellet = pickPelletTarget(entity, grid, pelletKindForNeed(activeNeed))
     if (pellet) {
-      moveToward(entity, pellet.x, pellet.y, dt, 0.92)
+      const absorbArrive = Math.max(8, avatarEntityRadius(entity) * 0.42)
+      moveToward(entity, pellet.x, pellet.y, dt, 0.92, absorbArrive)
       return { moving: true, sleeping: false }
     }
-    if (phase === 'wander') wander(entity, dt * 0.5)
+    if (phase === 'wander') wander(entity, dt * 0.5, entities)
     return { moving: phase === 'wander', sleeping: false }
   }
 

@@ -2,6 +2,7 @@ import type { LeaderboardView } from '../game/leaderboard'
 import { SATIETY_CAP } from '../game/avatar-config'
 import { intentLabel } from '../game/avatar-ai'
 import { formatCitizenId } from '../game/citizen-id'
+import { formatDnaFingerprint } from '../game/dna'
 import { massLabel, satietyEvalLabel } from '../game/avatar-needs'
 import { happinessEvalLabel, knowledgeEvalLabel } from '../game/avatar-vitality'
 import { getAvatarTransformCountdownSec } from '../game/avatar-system'
@@ -385,11 +386,12 @@ export function drawAvatarEntityStats(
 ): void {
   const r = avatarEntityRadius(entity)
   const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen, entity.productionStage)
-  const survivalSec = Math.max(0, gameTimeSec - entity.birthGameTimeSec)
+  const ageSec = Math.max(0, Math.floor(gameTimeSec - entity.birthGameTimeSec))
   const lines = [
     `身份证 ${formatCitizenId(entity)}`,
+    `DNA ${formatDnaFingerprint(entity.dnaFingerprint)}`,
     `${entity.name} · ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`,
-    `出生 ${formatGameTime(entity.birthGameTimeSec)} · 存活 ${formatGameTime(survivalSec)}`,
+    `年龄 ${ageSec}s · 出生 ${formatGameTime(entity.birthGameTimeSec)}`,
     `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,
     `饱食 ${Math.round(entity.satiety)}/${Math.round(SATIETY_CAP)} (${satietyEvalLabel(entity)})`,
