@@ -64,6 +64,9 @@ export class InputManager {
       this.keysDown.clear()
       this.buttonsDown.clear()
       this.axisState.clear()
+      this.virtualButtonsDown.clear()
+      this.virtualStickX = 0
+      this.virtualStickY = 0
     })
     installGamepadListeners(() => this.notifyStatus())
   }
@@ -103,8 +106,7 @@ export class InputManager {
 
   beginFrame(): void {
     this.prevKeysDown = new Set(this.keysDown)
-    this.prevButtonsDown = new Set([...this.buttonsDown, ...this.virtualButtonsDown])
-    this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
+    this.prevButtonsDown = new Set(this.buttonsDown)
     this.prevAxisState = new Map(this.axisState)
     this.buttonsDown.clear()
     this.axisState.clear()
@@ -142,6 +144,7 @@ export class InputManager {
 
     for (const code of this.virtualButtonsDown) this.buttonsDown.add(code)
 
+    this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
     this.notifyStatus()
   }
 
