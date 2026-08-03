@@ -29,13 +29,15 @@ export const VIRTUAL_CONTROL_LABELS: Record<VirtualControlId, string> = {
 }
 
 /** 默认布局：左摇杆，右下 ABXY 十字对齐，Start 顶部居中 */
+const ABXY = { cx: 0.86, cy: 0.74, gap: 0.1 }
+
 export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
-  joystick: { x: 0.14, y: 0.84 },
-  btnY: { x: 0.88, y: 0.6 },
-  btnX: { x: 0.76, y: 0.72 },
-  btnB: { x: 0.96, y: 0.72 },
-  btnA: { x: 0.88, y: 0.84 },
-  btnStart: { x: 0.5, y: 0.07 },
-  btnLb: { x: 0.12, y: 0.07 },
-  btnRb: { x: 0.88, y: 0.07 },
+  joystick: { x: 0.15, y: 0.84 },
+  btnY: { x: ABXY.cx, y: ABXY.cy - ABXY.gap },
+  btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy },
+  btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy },
+  btnA: { x: ABXY.cx, y: ABXY.cy + ABXY.gap },
+  btnStart: { x: 0.5, y: 0.08 },
+  btnLb: { x: 0.12, y: 0.08 },
+  btnRb: { x: 0.88, y: 0.08 },
 }

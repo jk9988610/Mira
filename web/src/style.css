@@ -43,6 +43,21 @@ body {
   cursor: grabbing;
 }
 
+.vc-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background-image:
+    linear-gradient(to right, rgba(100, 140, 200, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(100, 140, 200, 0.12) 1px, transparent 1px);
+  background-size: 5% 5%;
+}
+
+.vc-grid-overlay--visible {
+  opacity: 1;
+}
+
 .vc-part {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -70,7 +85,8 @@ body {
   top: 50%;
   width: 64px;
   height: 64px;
-  margin: -32px 0 0 -32px;
+  margin: 0;
+  transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #6a9fd8, #2d4f7a);
   border: 2px solid rgba(160, 200, 255, 0.5);
@@ -95,13 +111,12 @@ body {
   height: 52px;
   border-radius: 50%;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
-  transform: translate(-50%, -50%);
 }
 
 .vc-btn--pressed,
 .vc-shoulder.vc-btn--pressed {
-  transform: translate(-50%, -50%) scale(0.92);
   filter: brightness(1.25);
+  opacity: 0.92;
 }
 
 .vc-btn-a {

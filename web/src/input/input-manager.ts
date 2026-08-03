@@ -50,6 +50,7 @@ export class InputManager {
   private virtualStickY = 0
   private virtualButtonsDown = new Set<string>()
   private prevVirtualButtonsDown = new Set<string>()
+  private virtualPressPulse = new Set<string>()
 
   constructor(bindings: Record<Action, Binding>) {
     this.bindings = bindings
@@ -81,8 +82,16 @@ export class InputManager {
   }
 
   setVirtualButton(code: string, pressed: boolean): void {
+    const wasDown = this.virtualButtonsDown.has(code)
+    if (pressed && !wasDown) this.virtualPressPulse.add(code)
     if (pressed) this.virtualButtonsDown.add(code)
     else this.virtualButtonsDown.delete(code)
+  }
+
+  /** 在 update/render 之后调用，保存本帧虚拟按键状态供下帧边沿检测 */
+  endFrame(): void {
+    this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
+    this.virtualPressPulse.clear()
   }
 
   getBindings(): Record<Action, Binding> {
@@ -144,7 +153,6 @@ export class InputManager {
 
     for (const code of this.virtualButtonsDown) this.buttonsDown.add(code)
 
-    this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
     this.notifyStatus()
   }
 
@@ -204,6 +212,7 @@ export class InputManager {
       return this.keysDown.has(binding.code) && !this.prevKeysDown.has(binding.code)
     }
     if (binding.source === 'gamepad-button') {
+      if (this.virtualPressPulse.has(binding.code)) return true
       const held = this.buttonsDown.has(binding.code) || this.virtualButtonsDown.has(binding.code)
       const prev =
         this.prevButtonsDown.has(binding.code) || this.prevVirtualButtonsDown.has(binding.code)
@@ -224,6 +233,7 @@ export class InputManager {
   private isStandardPressed(action: Action): boolean {
     const codes = STANDARD_GAMEPAD_ACTIONS[action as keyof typeof STANDARD_GAMEPAD_ACTIONS]
     if (!codes) return false
+    if (codes.some((code) => this.virtualPressPulse.has(code))) return true
     if (codes.some((code) => this.virtualButtonsDown.has(code) && !this.prevVirtualButtonsDown.has(code))) {
       return true
     }

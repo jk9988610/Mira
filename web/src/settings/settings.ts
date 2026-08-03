@@ -2,7 +2,7 @@ import type { VirtualControlsLayout } from '../input/virtual-controls-layout'
 import { DEFAULT_VIRTUAL_LAYOUT } from '../input/virtual-controls-layout'
 
 const VOLUME_KEY = 'mira_volume_v1'
-const LAYOUT_KEY = 'mira_virtual_layout_v1'
+const LAYOUT_KEY = 'mira_virtual_layout_v2'
 
 export function loadVolume(): number {
   try {
