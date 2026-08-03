@@ -9,11 +9,6 @@ import {
   TRANSFORM_REPEAT_PENALTY,
   TRANSFORM_SKIP_CHANCE,
 } from './avatar-config'
-import {
-  findNearbyJuvenileOffspring,
-  offspringCareTransformKind,
-  shouldMotherPrioritizeOffspring,
-} from './family'
 import { currentSchedulePhase, isTransformPhase } from './avatar-schedule'
 import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
@@ -115,19 +110,11 @@ export function pickWeightedTransformKind(
   structureCounts: { farm: number; school: number; park: number },
   seed: number,
   gameTimeSec: number,
-  entities: CircleEntity[] = [],
+  _entities: CircleEntity[] = [],
 ): TransformKind | null {
   if (isJuvenile(entity)) return null
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
   if (!canConsiderTransform(entity, gameTimeSec, seeking)) return null
-
-  const nearbyOffspring = findNearbyJuvenileOffspring(entity, entities)
-  if (nearbyOffspring.length > 0) {
-    if (shouldMotherPrioritizeOffspring(entity, entities, gameTimeSec)) {
-      return offspringCareTransformKind(nearbyOffspring)
-    }
-    return 'farm'
-  }
 
   if (seeking && hash01(seed + entity.id * 0.41) > 0.52) return null
 

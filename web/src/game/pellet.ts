@@ -1,3 +1,4 @@
+import { AVATAR_BASE_RADIUS } from './avatar-config'
 import { SURFACE_DENSITY, PELLET_MAX_RADIUS } from './physics'
 
 export type PelletKind = 'food' | 'knowledge' | 'joy'
@@ -64,20 +65,79 @@ export function createTraitPellet(x: number, y: number, kind: 'knowledge' | 'joy
   return createPellet(x, y, sides, radius, kind)
 }
 
+/** 颗粒中心距世界边缘的最小距离，保证实体能靠近并摄取 */
+export function pelletAbsorbInset(pelletRadius = PELLET_MAX_RADIUS): number {
+  return AVATAR_BASE_RADIUS + pelletRadius * 0.35 + 8
+}
+
+export function clampPelletPosition(
+  x: number,
+  y: number,
+  radius: number,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const inset = pelletAbsorbInset(radius)
+  return {
+    x: Math.max(inset, Math.min(width - inset, x)),
+    y: Math.max(inset, Math.min(height - inset, y)),
+  }
+}
+
+function placePelletInWorld(
+  pellet: Pellet,
+  width: number,
+  height: number,
+): Pellet {
+  const pos = clampPelletPosition(pellet.x, pellet.y, pellet.radius, width, height)
+  pellet.x = pos.x
+  pellet.y = pos.y
+  return pellet
+}
+
 export function spawnPellets(
   count: number,
   width: number,
   height: number,
-  margin = 24,
+  margin = pelletAbsorbInset(),
 ): Pellet[] {
   const pellets: Pellet[] = []
   for (let i = 0; i < count; i++) {
     pellets.push(
-      createPellet(
-        margin + Math.random() * (width - margin * 2),
-        margin + Math.random() * (height - margin * 2),
+      placePelletInWorld(
+        createPellet(
+          margin + Math.random() * (width - margin * 2),
+          margin + Math.random() * (height - margin * 2),
+        ),
+        width,
+        height,
       ),
     )
+  }
+  return pellets
+}
+
+/** 食物/知识/快乐各生成 perKind 个，总数 3×perKind */
+export function spawnBalancedPellets(
+  perKind: number,
+  width: number,
+  height: number,
+): Pellet[] {
+  const inset = pelletAbsorbInset()
+  const spanX = width - inset * 2
+  const spanY = height - inset * 2
+  const pellets: Pellet[] = []
+  const kinds: PelletKind[] = ['food', 'knowledge', 'joy']
+  for (const kind of kinds) {
+    for (let i = 0; i < perKind; i++) {
+      const x = inset + Math.random() * spanX
+      const y = inset + Math.random() * spanY
+      const pellet =
+        kind === 'food'
+          ? createPellet(x, y)
+          : createTraitPellet(x, y, kind)
+      pellets.push(placePelletInWorld(pellet, width, height))
+    }
   }
   return pellets
 }

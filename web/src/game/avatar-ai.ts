@@ -1,10 +1,7 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
 import { avatarEntityRadius } from './avatar-radius'
 import {
-  birthAnchorTarget,
-  findMother,
   groupCohesionTarget,
-  juvenileMotherFollowTarget,
   shouldFemaleWaitForSuitor,
 } from './family'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
@@ -129,26 +126,10 @@ function moveToward(
 }
 
 function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = [], seekingMate = false): void {
-  if (isJuvenile(entity)) {
-    const mother = findMother(entity, entities)
-    if (mother) {
-      const follow = juvenileMotherFollowTarget(entity, mother)
-      if (follow) {
-        moveToward(entity, follow.x, follow.y, dt, 0.78, avatarEntityRadius(entity) * 0.55)
-        return
-      }
-    }
-  } else {
-    const birth = birthAnchorTarget(entity, seekingMate)
-    if (birth) {
-      moveToward(entity, birth.x, birth.y, dt, 0.66, avatarEntityRadius(entity) * 0.6)
-      return
-    }
-    const group = groupCohesionTarget(entity, entities, seekingMate)
-    if (group) {
-      moveToward(entity, group.x, group.y, dt, 0.62, avatarEntityRadius(entity) * 0.65)
-      return
-    }
+  const group = groupCohesionTarget(entity, entities, seekingMate)
+  if (group) {
+    moveToward(entity, group.x, group.y, dt, 0.62, avatarEntityRadius(entity) * 0.65)
+    return
   }
 
   entity.wanderTimer -= dt
