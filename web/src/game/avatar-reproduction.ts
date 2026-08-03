@@ -167,7 +167,7 @@ export function canEngageProduction(entity: CircleEntity, gameTimeSec = 0): bool
 
 export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
   if (!canEngageProduction(entity, gameTimeSec) || entity.productionStage !== 'none') return false
-  if (entity.gender === 'male') return true
+  if (entity.pendingAvatarKind !== 'none') return false
   return entity.productionCooldown <= 0
 }
 
@@ -262,14 +262,15 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
     e.productionStage = 'none'
     e.productionTimer = 0
     e.productionPartnerId = 0
+    e.pendingAvatarKind = 'none'
   }
-  male.productionCooldown = 0
+  male.productionCooldown = PRODUCTION_COOLDOWN_SEC
   female.productionCooldown = PRODUCTION_COOLDOWN_SEC
 }
 
 export function tickProductionCooldowns(entities: CircleEntity[], dt: number): void {
   for (const e of entities) {
-    if (!isActive(e) || e.gender !== 'female' || e.productionCooldown <= 0) continue
+    if (!isActive(e) || e.productionCooldown <= 0) continue
     e.productionCooldown = Math.max(0, e.productionCooldown - dt)
   }
 }
