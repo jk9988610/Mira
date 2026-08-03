@@ -8,9 +8,9 @@ import {
   canBeginAvatarTransform,
   completeAvatarTransform,
   countTribeStructures,
-  createStarterStructure,
   getAvatarTransformHints,
   getControlledEntity,
+  initOptimalAvatarState,
   resetAvatarState,
   tickAvatarTransformCooldowns,
   tickMobileAvatarVitality,
@@ -18,12 +18,7 @@ import {
   updateFarmStructures,
   updateRanchStructures,
 } from '../game/avatar-system'
-import { initAvatarVitality } from '../game/avatar-vitality'
-import {
-  AVATAR_INITIAL_PELLETS,
-  STARTER_FARM_OFFSET,
-  STARTER_RANCH_OFFSET,
-} from '../game/avatar-config'
+import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, type CircleEntity } from '../game/entity'
 import { allyUpdateStride } from '../game/perf-config'
@@ -31,13 +26,20 @@ import { removePelletsByIds } from '../game/pellet-util'
 import { PLAYER_START_MASS } from '../game/physics'
 import { PelletGrid } from '../game/pellet-grid'
 import { drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
-import { PLAYER_ROSTER } from '../game/roster'
+import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
 
 type PauseBridge = { fn: (() => void) | null }
+
+const STARTER_OFFSETS = [
+  { x: 0, y: 0 },
+  { x: 220, y: -120 },
+  { x: -200, y: 100 },
+  { x: 160, y: 140 },
+]
 
 export function createAvatarGameScene(
   app: App,
@@ -61,7 +63,7 @@ export function createAvatarGameScene(
     if (controlled && controlled.id !== controlledId) controlledId = controlled.id
     if (!controlled) {
       const fallback = entities.find(
-        (e) => e.isPlayer && isActive(e) && !e.isFrozen && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
+        (e) => e.isPlayer && isActive(e) && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
       )
       if (fallback) controlledId = fallback.id
     }
@@ -69,24 +71,21 @@ export function createAvatarGameScene(
 
   const reset = () => {
     resetAvatarState()
-    const px = WORLD_WIDTH / 2
-    const py = WORLD_HEIGHT / 2
-    const player = createCircle(px, py, PLAYER_START_MASS, true, PLAYER_ROSTER)
-    initAvatarVitality(player)
-    controlledId = player.id
-    const starterFarm = createStarterStructure(
-      px + STARTER_FARM_OFFSET.x,
-      py + STARTER_FARM_OFFSET.y,
-      'farm',
-      '初始',
-    )
-    const starterRanch = createStarterStructure(
-      px + STARTER_RANCH_OFFSET.x,
-      py + STARTER_RANCH_OFFSET.y,
-      'ranch',
-      '初始',
-    )
-    entities = [player, starterFarm, starterRanch]
+    const cx = WORLD_WIDTH / 2
+    const cy = WORLD_HEIGHT / 2
+    const rosters = [PLAYER_ROSTER, AI_ROSTER[0], AI_ROSTER[1], AI_ROSTER[2]]
+    entities = STARTER_OFFSETS.map((offset, i) => {
+      const circle = createCircle(
+        cx + offset.x,
+        cy + offset.y,
+        STARTER_OPTIMAL_MASS,
+        i === 0,
+        rosters[i],
+      )
+      initOptimalAvatarState(circle)
+      return circle
+    })
+    controlledId = entities[0].id
     pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 40)
     pelletGrid.rebuild(pellets)
     elapsed = 0
@@ -119,8 +118,14 @@ export function createAvatarGameScene(
 
       const player = getControlledEntity(entities, controlledId)
       const movingIds = new Set<number>()
-      if (player && !player.isFrozen && (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1)) {
-        movingIds.add(player.id)
+      for (const entity of entities) {
+        if (!isActive(entity) || entity.isFrozen) continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') continue
+        if (entity.id === player?.id) {
+          if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
+        } else if (entity.avatarRole === 'ally') {
+          movingIds.add(entity.id)
+        }
       }
 
       const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
@@ -129,16 +134,14 @@ export function createAvatarGameScene(
       prevGatherHeld = input.gatherHeld
 
       if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'farm', controlledId)
+        const result = completeAvatarTransform(entities, player!, 'farm')
         entities = result.entities
-        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
       if (gatherTrigger && canBeginAvatarTransform(player, 'ranch', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'ranch', controlledId)
+        const result = completeAvatarTransform(entities, player!, 'ranch')
         entities = result.entities
-        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
@@ -219,6 +222,12 @@ export function createAvatarGameScene(
 
       const tribe = countTribeStructures(entities)
       const hints = getAvatarTransformHints(controlled, entities)
+      const avatarState =
+        controlled?.avatarRole === 'farm'
+          ? '化身农场中'
+          : controlled?.avatarRole === 'ranch'
+            ? '化身牧场中'
+            : undefined
       drawAvatarHud(ctx, width, {
         mass: focusMass,
         zoom: cam.zoom,
@@ -228,8 +237,9 @@ export function createAvatarGameScene(
         ranches: tribe.ranches,
         circles: tribe.circles,
         lifespanSec: controlled?.lifespanSec,
-        temperature: controlled?.temperature,
+        hunger: controlled?.hunger,
         absorptionPaused: controlled?.absorptionPaused,
+        avatarState,
       })
     },
   }
