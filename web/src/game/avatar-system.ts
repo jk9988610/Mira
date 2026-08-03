@@ -7,9 +7,8 @@ import {
   tickAvatarTransformLifespan,
 } from './avatar-vitality'
 import { canAbsorbPellet, createPellet, createTraitPellet, type Pellet } from './pellet'
-import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
-import { isActive, isAdult } from './entity'
+import { isActive, isAdult, isJuvenile } from './entity'
 import {
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
@@ -158,7 +157,7 @@ export function canBeginAvatarTransform(
   entities: CircleEntity[],
 ): boolean {
   if (!entity || !isActive(entity)) return false
-  if (!isAdult(entity)) return false
+  if (isJuvenile(entity)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (entity.avatarTransformCooldown > 0) return false
@@ -630,6 +629,7 @@ function transformHint(
   key: string,
   label: string,
 ): string {
+  if (isJuvenile(entity)) return `${key} 未成年禁化身`
   if (entity.avatarRole === kind) return `${key} 化身${label}中`
   if (entity.avatarTransformCooldown > 0) return `${key} 冷却(${Math.ceil(entity.avatarTransformCooldown)}s)`
   if (!canPlaceAvatarTransform(entity, kind, entities)) return `${key} ${label}(位置被占)`
@@ -678,9 +678,26 @@ export function getAvatarTransformHints(
   const canSchool = canBeginAvatarTransform(entity, 'school', entities)
   const canPark = canBeginAvatarTransform(entity, 'park', entities)
   const canMate =
+    !isJuvenile(entity) &&
     entity.productionStage === 'none' &&
     !entity.isFrozen &&
-    entity.mass >= PLAYER_START_MASS * 2.5
+    isAdult(entity)
+
+  if (isJuvenile(entity)) {
+    return {
+      farmHint: 'Q 未成年禁化身',
+      produceHint: 'E 未成年禁生产',
+      schoolHint: 'Z 未成年禁化身',
+      parkHint: 'X 未成年禁化身',
+      canFarm: false,
+      canMate: false,
+      canSchool: false,
+      canPark: false,
+      farmCount,
+      schoolCount,
+      parkCount,
+    }
+  }
 
   if (isStructureRole(entity.avatarRole)) {
     return {

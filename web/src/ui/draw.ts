@@ -326,8 +326,8 @@ export function drawAvatarHud(
   drawPanel(tribe)
   drawPanel(demoLine)
 
-  for (const fam of demo.families.slice(0, 3)) {
-    drawPanel(`${fam.familyName} 后代 ${fam.offspringCount}`)
+  for (const fam of demo.families) {
+    drawPanel(`${fam.familyName}，后代 ${fam.offspringCount}`)
   }
 }
 
