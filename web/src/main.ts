@@ -6,14 +6,12 @@ import { loadBindings, saveBindings } from './input/actions'
 import { InputManager } from './input/input-manager'
 import { VirtualControls } from './input/virtual-controls'
 import { createBindingsScene } from './scenes/bindings-scene'
-import { createAvatarGameScene } from './scenes/avatar-game-scene'
 import { createGameScene } from './scenes/game-scene'
 import { createLayoutEditorScene } from './scenes/layout-editor-scene'
-import { createModesScene } from './scenes/modes-scene'
 import { createMenuScene, createPauseScene } from './scenes/menu-scene'
 import { createSettingsScene } from './scenes/settings-scene'
 
-const GAME_SCENES = new Set(['game', 'avatar-game'])
+const GAME_SCENES = new Set(['game'])
 const gamePause = { fn: null as (() => void) | null }
 
 function main() {
@@ -27,7 +25,6 @@ function main() {
 
   const scenes = new SceneManager({
     menu: () => createMenuScene(app, (name) => scenes.switchTo(name)),
-    modes: () => createModesScene(app, (name) => scenes.switchTo(name)),
     settings: () => createSettingsScene(app, (name) => scenes.switchTo(name)),
     'layout-editor': () => createLayoutEditorScene(app, (name) => scenes.switchTo(name), virtualControls),
     bindings: () =>
@@ -42,26 +39,6 @@ function main() {
       ),
     game: () =>
       createGameScene(
-        app,
-        (name) => scenes.switchTo(name),
-        (visible) => {
-          paused = visible
-          if (visible) {
-            pauseOverlay = createPauseScene(app, (name) => scenes.switchTo(name), () => {
-              paused = false
-              pauseOverlay = null
-            })
-            pauseOverlay.enter()
-          } else {
-            pauseOverlay?.exit()
-            pauseOverlay = null
-          }
-        },
-        () => paused,
-        gamePause,
-      ),
-    'avatar-game': () =>
-      createAvatarGameScene(
         app,
         (name) => scenes.switchTo(name),
         (visible) => {
