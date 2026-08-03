@@ -9,7 +9,7 @@ import {
 import { canAbsorbPellet, createPellet, createTraitPellet, type Pellet } from './pellet'
 import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
-import { isActive } from './entity'
+import { isActive, isAdult } from './entity'
 import {
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
@@ -158,6 +158,7 @@ export function canBeginAvatarTransform(
   entities: CircleEntity[],
 ): boolean {
   if (!entity || !isActive(entity)) return false
+  if (!isAdult(entity)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (entity.avatarTransformCooldown > 0) return false

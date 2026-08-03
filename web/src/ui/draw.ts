@@ -370,8 +370,7 @@ export interface AvatarHudData {
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
-  if (productionStage === 'mating') return '生产·交配'
-  if (productionStage === 'pregnant') return '生产·怀孕陪护'
+  if (productionStage === 'active') return '生产'
   if (isFrozen && role === 'farm') return '化身·农场'
   if (isFrozen && role === 'school') return '化身·校园'
   if (isFrozen && role === 'park') return '化身·乐园'
@@ -405,7 +404,7 @@ export function drawAvatarEntityStats(
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
   if (roleStatus) lines.push(roleStatus)
   if (entity.avatarRole === 'none' || entity.avatarRole === 'ally') {
-    lines.push(`意图 ${intentLabel(entity)}`)
+    lines.push(`意图 ${intentLabel(entity, gameTimeSec)}`)
   }
 
   const lineHeight = 12

@@ -1,13 +1,22 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
-import { beginProductionPair, tryPairProduction } from './avatar-reproduction'
-import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
+import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
+import {
+  isSeekingMate,
+  tryApproachForProduction,
+} from './avatar-reproduction'
+import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
 import type { PelletGrid } from './pellet-grid'
 import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
+
+function hash01(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
 
 function countStructures(entities: CircleEntity[]): { farm: number; school: number; park: number } {
   let farm = 0
@@ -31,6 +40,7 @@ export function decideNpcTransformKind(
     entity,
     countStructures(entities),
     entity.id * 2.11 + now * 0.23 + entity.transformHistory.length,
+    now,
   )
 }
 
@@ -39,17 +49,28 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
   if (entity.transformHistory.length > 12) entity.transformHistory.splice(0, entity.transformHistory.length - 12)
 }
 
-export function intentLabel(entity: CircleEntity): string {
-  if (entity.productionStage === 'mating') return '生产·交配'
-  if (entity.productionStage === 'pregnant') return entity.gender === 'female' ? '生产·怀孕' : '生产·陪护'
-  const map: Record<NeedKind | 'idle', string> = {
-    eat: '觅食',
-    learn: '吸收知识',
-    play: '吸收快乐',
-    mate: '生产',
-    idle: '闲逛',
+export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
+  if (entity.productionStage === 'active') return '生产'
+  if (entity.productionCooldown > 0) {
+    return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
   }
-  return map[entity.aiIntent] ?? '闲逛'
+
+  const phase = currentSchedulePhase(entity, gameTimeSec)
+  const base =
+    phase === 'sleep'
+      ? '睡觉'
+      : phase === 'wander'
+        ? '闲逛'
+        : entity.aiIntent === 'eat'
+          ? '觅食'
+          : entity.aiIntent === 'learn'
+            ? '吸收知识'
+            : entity.aiIntent === 'play'
+              ? '吸收快乐'
+              : schedulePhaseLabel(phase)
+
+  if (isSeekingMate(entity)) return `求偶·${base}`
+  return base
 }
 
 function pelletKindForNeed(need: NeedKind): PelletKind {
@@ -70,6 +91,19 @@ function moveToward(entity: CircleEntity, tx: number, ty: number, dt: number, mu
   syncEntityGeo(entity)
 }
 
+function wander(entity: CircleEntity, dt: number): void {
+  entity.wanderTimer -= dt
+  if (entity.wanderTimer <= 0) {
+    entity.wanderAngle += (Math.random() - 0.5) * 1.2
+    entity.wanderTimer = 1.2 + Math.random() * 2
+  }
+  const speed = speedForMass(entity.mass) * 0.35
+  entity.x += Math.cos(entity.wanderAngle) * speed * dt
+  entity.y += Math.sin(entity.wanderAngle) * speed * dt
+  clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
+  syncEntityGeo(entity)
+}
+
 function pickPelletTarget(
   entity: CircleEntity,
   grid: PelletGrid,
@@ -86,11 +120,6 @@ function pickPelletTarget(
   return { x: candidates[0].x, y: candidates[0].y, id: candidates[0].id }
 }
 
-function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
-  const dist = Math.hypot(a.x - b.x, a.y - b.y)
-  return dist < avatarEntityRadius(a) + avatarEntityRadius(b)
-}
-
 export function updateNpcIntent(
   entity: CircleEntity,
   entities: CircleEntity[],
@@ -100,41 +129,46 @@ export function updateNpcIntent(
 ): { moving: boolean; sleeping: boolean } {
   entity.aiPelletTargetTimer = Math.max(0, entity.aiPelletTargetTimer - dt)
 
-  if (entity.productionStage !== 'none') {
-    entity.aiIntent = 'mate'
+  if (entity.productionStage === 'active') {
     return { moving: true, sleeping: false }
   }
 
-  if (entity.aiPelletTargetTimer <= 0.05) {
-    entity.aiIntent = pickWeightedNeed(
-      entity,
-      entity.id * 1.31 + Math.floor(now * 0.4) + entity.transformHistory.length * 1.7,
-    )
+  const phase = currentSchedulePhase(entity, now)
+
+  if (phase === 'sleep') {
+    entity.aiIntent = 'sleep'
+    return { moving: false, sleeping: true }
   }
 
-  const need = entity.aiIntent
+  if (phase === 'wander') {
+    entity.aiIntent = 'wander'
+    wander(entity, dt)
+  } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
+    entity.aiIntent = phase
+  } else if (entity.aiPelletTargetTimer <= 0.05) {
+    entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4))
+  }
 
-  if (need === 'mate') {
-    const mate = tryPairProduction(entity, entities)
-    if (mate) {
-      const male = entity.gender === 'male' ? entity : mate
-      const female = entity.gender === 'female' ? entity : mate
-      if (circlesTouch(entity, mate)) beginProductionPair(male, female)
-      else moveToward(entity, mate.x, mate.y, dt, 0.85)
+  if (isSeekingMate(entity) && entity.gender === 'male') {
+    const glance = phase === 'wander' || hash01(entity.id + now * 0.3) < 0.06
+    if (glance && tryApproachForProduction(entity, entities, dt)) {
       return { moving: true, sleeping: false }
     }
-    entity.aiIntent = 'eat'
   }
 
-  let activeNeed = entity.aiIntent
-  if (activeNeed === 'idle') activeNeed = 'eat'
-
+  const activeNeed = entity.aiIntent
   if (activeNeed === 'eat' || activeNeed === 'learn' || activeNeed === 'play') {
     const pellet = pickPelletTarget(entity, grid, pelletKindForNeed(activeNeed))
     if (pellet) {
-      moveToward(entity, pellet.x, pellet.y, dt, 0.95)
+      moveToward(entity, pellet.x, pellet.y, dt, 0.92)
       return { moving: true, sleeping: false }
     }
+    if (phase === 'wander') wander(entity, dt * 0.5)
+    return { moving: phase === 'wander', sleeping: false }
+  }
+
+  if (activeNeed === 'wander') {
+    return { moving: true, sleeping: false }
   }
 
   return { moving: false, sleeping: false }

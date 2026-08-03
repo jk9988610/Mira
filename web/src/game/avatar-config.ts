@@ -45,6 +45,9 @@ export const DAY_WORK_SEC = 8
 export const DAY_SLEEP_SEC = 8
 export const DAY_FORAGE_SEC = 8
 
+/** 每个圆的一日日程循环（秒） */
+export const SCHEDULE_DAY_SEC = 100
+
 export const AVATAR_TRANSFORM_DURATION_SEC = 8
 export const WORK_PELLET_INTERVAL_SEC = 1.6
 export const WORK_PELLET_RING_RADIUS = 130
@@ -55,12 +58,9 @@ export const LEARN_PELLET_INTERVAL_SEC = 1.8
 export const LEARN_PELLET_COUNT = 8
 export const PLAY_PELLET_INTERVAL_SEC = 1.8
 export const PLAY_PELLET_COUNT = 8
-export const MATING_OVERLAP_SEC = 3
-export const PREGNANCY_SEC = 8
-export const MATE_DRIVE_DECAY = 0.015
-export const MATE_DRIVE_GAIN_ON_BIRTH = 0.2
+export const PRODUCTION_DURATION_SEC = 8
+export const PRODUCTION_COOLDOWN_SEC = 36
 export const ADULT_MASS_THRESHOLD = PLAYER_START_MASS * 2.5
-export const PRODUCTION_ESCORT_MULT = 2.8
 export const AVATAR_INITIAL_PELLETS = 280
 export const AVATAR_SPAWN_OFFSET = 100
 export const SPAWN_CLEARANCE = 48

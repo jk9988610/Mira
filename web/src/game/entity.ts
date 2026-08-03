@@ -6,7 +6,7 @@ import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
 export type Gender = 'male' | 'female'
 export type AvatarRole = 'none' | 'farm' | 'school' | 'park' | 'ally'
 export type TransformKind = 'farm' | 'school' | 'park'
-export type ProductionStage = 'none' | 'mating' | 'pregnant'
+export type ProductionStage = 'none' | 'active'
 
 export interface CircleInitOptions {
   gender?: Gender
@@ -75,11 +75,11 @@ export interface CircleEntity {
   feedRegularity: number
   lifespanEvalTimer: number
   transformHistory: TransformKind[]
-  mateDrive: number
   productionStage: ProductionStage
   productionTimer: number
+  productionCooldown: number
   productionPartnerId: number
-  aiIntent: 'eat' | 'learn' | 'play' | 'mate' | 'idle'
+  aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
   aiAnchorX: number
@@ -165,11 +165,11 @@ export function createCircle(
     feedRegularity: 0.5,
     lifespanEvalTimer: 0,
     transformHistory: [],
-    mateDrive: 0.35 + (nextId % 5) * 0.08,
     productionStage: 'none',
     productionTimer: 0,
+    productionCooldown: 0,
     productionPartnerId: 0,
-    aiIntent: 'idle',
+    aiIntent: 'wander',
     aiPelletTargetId: 0,
     aiPelletTargetTimer: 0,
     aiAnchorX: x,

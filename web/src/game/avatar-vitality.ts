@@ -10,8 +10,6 @@ import {
   LIFESPAN_AVATAR_TRANS_THRESHOLD,
   LIFESPAN_EVAL_INTERVAL_SEC,
   LOW_MASS_PENALTY_SEC,
-  MATE_DRIVE_DECAY,
-  MATE_DRIVE_GAIN_ON_BIRTH,
   SATIETY_ABSORB_PAUSE_RATIO,
   SATIETY_ABSORB_RESUME_RATIO,
   SATIETY_CAP,
@@ -22,6 +20,8 @@ import {
   SATIETY_STARVE_MASS_DRAIN,
   TRAIT_IDLE_DECAY,
   TRAIT_LOW_THRESHOLD,
+  TRAIT_SLEEP_DECAY,
+  SATIETY_SLEEP_DECAY,
 } from './avatar-config'
 import {
   clampHealth,
@@ -56,7 +56,7 @@ export function initAvatarVitality(entity: CircleEntity, birthGameTimeSec = 0): 
   entity.visualScale = 1
   entity.avatarTransformTimer = 0
   entity.birthGameTimeSec = birthGameTimeSec
-  if (entity.mateDrive <= 0) entity.mateDrive = 0.35 + (entity.id % 5) * 0.08
+  entity.productionCooldown = 0
 }
 
 export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 0): void {
@@ -202,18 +202,17 @@ export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving:
   tickTraitDigestion(entity, dt)
 
   let decay = SATIETY_IDLE_DECAY * dt
-  if (isMoving) decay += SATIETY_MOVE_DECAY * dt
+  let traitDecay = TRAIT_IDLE_DECAY * dt
+  if (entity.aiIntent === 'sleep') {
+    decay = SATIETY_SLEEP_DECAY * dt
+    traitDecay = TRAIT_SLEEP_DECAY * dt
+  } else if (isMoving) {
+    decay += SATIETY_MOVE_DECAY * dt
+  }
   entity.satiety = Math.max(0, entity.satiety - decay)
 
-  const traitDecay = TRAIT_IDLE_DECAY * dt
   entity.knowledge = Math.max(0, entity.knowledge - traitDecay)
   entity.joy = Math.max(0, entity.joy - traitDecay)
-
-  if (entity.productionStage === 'none') {
-    entity.mateDrive = Math.min(1, entity.mateDrive + dt * 0.004)
-  } else {
-    entity.mateDrive = Math.max(0, entity.mateDrive - MATE_DRIVE_DECAY * dt)
-  }
 
   if (entity.satiety <= 0) drainBodyMass(entity, SATIETY_STARVE_MASS_DRAIN * dt)
   tickHealth(entity, dt)
@@ -242,8 +241,4 @@ export function satietyLabel(satiety: number): string {
   if (ratio > SATIETY_LOW_THRESHOLD / SATIETY_CAP) return '适宜'
   if (satiety > 0) return '饥饿'
   return '饥竭'
-}
-
-export function onOffspringBorn(entity: CircleEntity): void {
-  entity.mateDrive = Math.min(1, entity.mateDrive + MATE_DRIVE_GAIN_ON_BIRTH)
 }
