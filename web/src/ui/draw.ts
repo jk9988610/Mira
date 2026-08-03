@@ -1,4 +1,5 @@
 import type { LeaderboardView } from '../game/leaderboard'
+import { JOY_CAP, KNOWLEDGE_CAP } from '../game/avatar-config'
 import { getAvatarTransformCountdownSec, schedulePhaseLabel, traitLabel } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
@@ -356,9 +357,6 @@ export interface AvatarHudData {
   schools: number
   parks: number
   circles: number
-  knowledge: number
-  joy: number
-  scale: number
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean): string | null {
@@ -375,11 +373,10 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen)
   const lines = [
     `质量 ${Math.round(entity.mass)}`,
-    `缩放 ${Math.round(entity.visualScale * 100)}%`,
-    `饱食 ${Math.round(entity.satiety * 100)}%`,
-    `知识 ${Math.round(entity.knowledge * 100)}% ${traitLabel(entity.knowledge)}`,
-    `快乐 ${Math.round(entity.joy * 100)}% ${traitLabel(entity.joy)}`,
-    `健康 ${Math.round(entity.health * 100)}% ${healthLabel(entity.health)}`,
+    `饱食 ${Math.round(entity.satiety)}`,
+    `知识 ${Math.round(entity.knowledge)} ${traitLabel(entity.knowledge, KNOWLEDGE_CAP)}`,
+    `快乐 ${Math.round(entity.joy)} ${traitLabel(entity.joy, JOY_CAP)}`,
+    `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
     `化身 ${entity.avatarTransformCount}次`,
   ]
@@ -474,7 +471,6 @@ export function drawAvatarHud(
 ): void {
   const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 学校 ${data.schools} · 乐园 ${data.parks} · 圆 ${data.circles}`
   const hint = `${data.farmHint} · ${data.ranchHint} · ${data.schoolHint} · ${data.parkHint}`
-  const status = `知识 ${Math.round(data.knowledge * 100)}% · 快乐 ${Math.round(data.joy * 100)}% · 缩放 ${Math.round(data.scale * 100)}% · L/R 调节`
 
   ctx.textAlign = 'left'
   ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
@@ -485,18 +481,11 @@ export function drawAvatarHud(
   ctx.fillText(hint, 26, 35)
 
   ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  roundRect(ctx, 16, 50, ctx.measureText(status).width + 20, 24, 8)
-  ctx.fill()
-  ctx.fillStyle = '#9eb4d8'
-  ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(status, 26, 66)
-
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  roundRect(ctx, 16, 82, ctx.measureText(tribe).width + 20, 24, 8)
+  roundRect(ctx, 16, 50, ctx.measureText(tribe).width + 20, 24, 8)
   ctx.fill()
   ctx.fillStyle = '#7f8ca3'
   ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(tribe, 26, 98)
+  ctx.fillText(tribe, 26, 66)
 }
 
 export function drawAvatarStructure(

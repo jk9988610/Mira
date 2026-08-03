@@ -1,56 +1,40 @@
 import { avatarChildRadius, avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import {
-  canAvatarAbsorbPellets,
+  canAbsorbFoodPellets,
   initAvatarVitality,
   isAvatarLifeExpired,
   onAvatarPelletAbsorbed,
   tickAvatarMetabolism,
   tickAvatarTransformLifespan,
-  updateSatietyAbsorption,
 } from './avatar-vitality'
 import { canAbsorbPellet, createPellet, createTraitPellet, type Pellet } from './pellet'
 import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
 import { createCircle, isActive } from './entity'
 import {
-  ALLIES_PER_RANCH,
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
   AVATAR_MAX_PELLETS,
   AVATAR_TRANSFORM_DURATION_SEC,
   AVG_PELLET_MASS_ESTIMATE,
-  FARM_BUILD_COST,
   FARM_NEARBY_PELLET_CAP,
   FARM_PELLET_COUNT,
   FARM_PELLET_INTERVAL_SEC,
   FARM_PELLET_RING_RADIUS,
   FARM_PELLET_SENSE_RADIUS,
-  PARK_BUILD_COST,
   PARK_PELLET_COUNT,
   PARK_PELLET_INTERVAL_SEC,
-  PARK_UNLOCK_JOY,
   RANCH_ALLY_INTERVAL_SEC,
-  RANCH_BUILD_COST,
-  SCHOOL_BUILD_COST,
+  SATIETY_ABSORB_BATCH_RATIO,
+  SATIETY_CAP,
   SCHOOL_PELLET_COUNT,
   SCHOOL_PELLET_INTERVAL_SEC,
-  SCHOOL_UNLOCK_KNOWLEDGE,
-  SATIETY_ABSORB_BATCH_THRESHOLD,
   SPAWN_CLEARANCE,
-  VISUAL_SCALE_MAX,
-  VISUAL_SCALE_MIN,
-  VISUAL_SCALE_SPEED,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
-import {
-  addTraitIntake,
-  canAbsorbPelletKind,
-  isAdultEntity,
-  updateTraitAbsorption,
-  workEfficiency,
-} from './avatar-traits'
+import { addTraitIntake, canAbsorbPelletKind, workEfficiency } from './avatar-traits'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
 import { removePelletsByIds } from './pellet-util'
@@ -76,18 +60,6 @@ export function getControlledEntity(
   return entities.find((e) => e.isPlayer && isActive(e)) ?? null
 }
 
-function buildCost(kind: TransformKind): number {
-  switch (kind) {
-    case 'farm':
-      return FARM_BUILD_COST
-    case 'ranch':
-      return RANCH_BUILD_COST
-    case 'school':
-      return SCHOOL_BUILD_COST
-    case 'park':
-      return PARK_BUILD_COST
-  }
-}
 
 function structureLabel(kind: TransformKind, builderName: string): string {
   switch (kind) {
@@ -130,9 +102,9 @@ export function canBuildMoreFarms(_entities: CircleEntity[]): boolean {
   return true
 }
 
-/** 可移动圆数 < 牧场数×N → 牧场可产后代 */
-export function canRanchSpawnAlly(entities: CircleEntity[]): boolean {
-  return countMobileCircles(entities) < countRanches(entities) * ALLIES_PER_RANCH
+/** 牧场不再限制后代数量 */
+export function canRanchSpawnAlly(_entities: CircleEntity[]): boolean {
+  return true
 }
 
 export function tickAvatarTransformCooldowns(entities: CircleEntity[], dt: number): void {
@@ -181,18 +153,14 @@ export function canPlaceAvatarTransform(
 
 export function canBeginAvatarTransform(
   entity: CircleEntity | null,
-  kind: TransformKind,
+  _kind: TransformKind,
   entities: CircleEntity[],
 ): boolean {
   if (!entity || !isActive(entity)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
-  if (!isAdultEntity(entity)) return false
-  if (entity.mass < buildCost(kind)) return false
-  if (kind === 'school' && entity.knowledge < SCHOOL_UNLOCK_KNOWLEDGE) return false
-  if (kind === 'park' && entity.joy < PARK_UNLOCK_JOY) return false
   if (entity.avatarTransformCooldown > 0) return false
-  if (!canPlaceAvatarTransform(entity, kind, entities)) return false
+  if (!canPlaceAvatarTransform(entity, _kind, entities)) return false
   return true
 }
 
@@ -419,23 +387,24 @@ export function absorbPelletsForAvatar(
   pellets: Pellet[],
   grid?: PelletGrid,
 ): Pellet[] {
-  if (!canAvatarAbsorbPellets(entity)) return []
+  if (!isActive(entity) || entity.isFrozen || isStructureRole(entity.avatarRole)) return []
+
   const radius = avatarEntityRadius(entity)
   const absorbed: Pellet[] = []
-  const intakeRoom = remainingIntakeRoom(entity)
   let absorbedMass = 0
+  const intakeRoom = remainingIntakeRoom(entity)
 
-  const maxPellets =
-    entity.satiety >= SATIETY_ABSORB_BATCH_THRESHOLD
+  const maxFoodPellets =
+    entity.satiety >= SATIETY_CAP * SATIETY_ABSORB_BATCH_RATIO
       ? Math.max(1, Math.ceil(intakeRoom / AVG_PELLET_MASS_ESTIMATE))
       : Number.POSITIVE_INFINITY
 
   const collect = (pellet: Pellet) => {
-    if (absorbed.length >= maxPellets) return
-    if (!canAbsorbPelletKind(entity, pellet.kind)) return
     if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
 
     if (pellet.kind === 'food') {
+      if (!canAbsorbFoodPellets(entity)) return
+      if (absorbed.filter((p) => p.kind === 'food').length >= maxFoodPellets) return
       if (absorbedMass >= intakeRoom) return
       const gain = addIntakeMass(entity, pellet.mass)
       if (gain <= 0) return
@@ -445,10 +414,12 @@ export function absorbPelletsForAvatar(
       return
     }
 
-    const traitGain = addTraitIntake(entity, pellet.kind, pellet.mass / PLAYER_START_MASS * 0.12)
+    if (!canAbsorbPelletKind(entity, pellet.kind)) return
+    const traitGain = addTraitIntake(entity, pellet.kind, pellet.mass)
     if (traitGain <= 0) return
     absorbed.push(pellet)
   }
+
   if (grid) {
     grid.forEachInRadius(entity.x, entity.y, radius, collect)
   } else {
@@ -646,13 +617,6 @@ export function updateAlly(
   return { pellets, absorbed: [], entities }
 }
 
-export function applyVisualScale(entity: CircleEntity, shrink: boolean, grow: boolean, dt: number): void {
-  if (entity.isFrozen) return
-  if (shrink) entity.visualScale -= VISUAL_SCALE_SPEED * dt
-  if (grow) entity.visualScale += VISUAL_SCALE_SPEED * dt
-  entity.visualScale = Math.max(VISUAL_SCALE_MIN, Math.min(VISUAL_SCALE_MAX, entity.visualScale))
-}
-
 export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: number, dt: number): void {
   if (entity.isFrozen) return
   const len = Math.hypot(moveX, moveY)
@@ -703,17 +667,9 @@ function transformHint(
   label: string,
 ): string {
   if (entity.avatarRole === kind) return `${key} 化身${label}中`
-  if (!isAdultEntity(entity)) return `${key} ${label}(未成年)`
   if (entity.avatarTransformCooldown > 0) return `${key} 冷却(${Math.ceil(entity.avatarTransformCooldown)}s)`
-  if (kind === 'school' && entity.knowledge < SCHOOL_UNLOCK_KNOWLEDGE) {
-    return `${key} ${label}(知识不足)`
-  }
-  if (kind === 'park' && entity.joy < PARK_UNLOCK_JOY) return `${key} ${label}(快乐不足)`
-  const massOk = entity.mass >= buildCost(kind)
-  const placeOk = massOk && canPlaceAvatarTransform(entity, kind, entities)
-  if (massOk && placeOk) return `${key} 化身${label}`
-  if (massOk) return `${key} ${label}(位置被占)`
-  return `${key} ${label}(质量不足)`
+  if (!canPlaceAvatarTransform(entity, kind, entities)) return `${key} ${label}(位置被占)`
+  return `${key} 化身${label}`
 }
 
 export function getAvatarTransformHints(
@@ -722,10 +678,10 @@ export function getAvatarTransformHints(
 ): { farm: string; ranch: string; school: string; park: string } {
   if (!entity) {
     return {
-      farm: 'Q 农场(未就绪)',
-      ranch: 'E 牧场(未就绪)',
-      school: 'Z 学校(未就绪)',
-      park: 'X 乐园(未就绪)',
+      farm: 'Q 农场',
+      ranch: 'E 牧场',
+      school: 'Z 学校',
+      park: 'X 乐园',
     }
   }
 
@@ -736,13 +692,6 @@ export function getAvatarTransformHints(
       school: entity.avatarRole === 'school' ? 'Z 化身学校中' : 'Z 化身中',
       park: entity.avatarRole === 'park' ? 'X 化身乐园中' : 'X 化身中',
     }
-  }
-
-  updateSatietyAbsorption(entity)
-  updateTraitAbsorption(entity)
-
-  if (entity.absorptionPaused && entity.avatarTransformCooldown <= 0) {
-    // still show transform hints
   }
 
   return {
