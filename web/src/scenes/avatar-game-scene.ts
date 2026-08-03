@@ -318,7 +318,6 @@ export function createAvatarGameScene(
         producing: tribe.producing,
         circles: tribe.circles,
         demographics: demo,
-        focus: controlled,
       })
     },
   }

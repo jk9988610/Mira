@@ -6,6 +6,7 @@ import {
 } from './avatar-config'
 import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import { initAvatarVitality, onOffspringBorn } from './avatar-vitality'
+import { inheritPalette } from './color-genetics'
 import { syncEntityGeo } from './geo'
 import { offspringName } from './naming'
 import type { CircleEntity, Gender } from './entity'
@@ -68,13 +69,16 @@ function spawnChild(
   father: CircleEntity,
   birthGameTimeSec: number,
 ): CircleEntity[] {
-  const gender: Gender = mother.id % 2 === 0 ? 'male' : 'female'
+  const gender: Gender = Math.random() < 0.5 ? 'male' : 'female'
   const childName = offspringName(father.name, mother.name, gender)
+  const palette = inheritPalette(
+    { colorLight: father.colorLight, colorDark: father.colorDark, strokeColor: father.strokeColor },
+    { colorLight: mother.colorLight, colorDark: mother.colorDark, strokeColor: mother.strokeColor },
+    mother.id * 1000 + father.id + Math.floor(birthGameTimeSec),
+  )
   const roster = {
     name: childName,
-    colorLight: mother.colorLight,
-    colorDark: mother.colorDark,
-    strokeColor: mother.strokeColor,
+    ...palette,
   }
   const angle = Math.random() * Math.PI * 2
   const dist = avatarEntityRadius(mother) + 40

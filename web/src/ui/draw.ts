@@ -1,6 +1,7 @@
 import type { LeaderboardView } from '../game/leaderboard'
 import { SATIETY_CAP } from '../game/avatar-config'
 import { intentLabel } from '../game/avatar-ai'
+import { formatCitizenId } from '../game/citizen-id'
 import { massLabel, satietyEvalLabel } from '../game/avatar-needs'
 import { happinessEvalLabel, knowledgeEvalLabel } from '../game/avatar-vitality'
 import { getAvatarTransformCountdownSec } from '../game/avatar-system'
@@ -11,7 +12,6 @@ import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
 import type { AvatarRole, CircleEntity } from '../game/entity'
-import { isAdult } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
 export function clearScreen(
@@ -367,7 +367,6 @@ export interface AvatarHudData {
   producing: number
   circles: number
   demographics: TribeDemographics
-  focus: CircleEntity | null
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
@@ -380,10 +379,19 @@ function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: 
   return null
 }
 
-export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: CircleEntity): void {
+export function drawAvatarEntityStats(
+  ctx: CanvasRenderingContext2D,
+  entity: CircleEntity,
+  gameTimeSec: number,
+): void {
   const r = avatarEntityRadius(entity)
   const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen, entity.productionStage)
+  const survivalSec = Math.max(0, gameTimeSec - entity.birthGameTimeSec)
   const lines = [
+    `身份证 ${formatCitizenId(entity)}`,
+    `${entity.name} · ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`,
+    `出生 ${formatGameTime(entity.birthGameTimeSec)} · 存活 ${formatGameTime(survivalSec)}`,
+    `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,
     `饱食 ${Math.round(entity.satiety)}/${Math.round(SATIETY_CAP)} (${satietyEvalLabel(entity)})`,
     `知识 ${Math.round(entity.knowledge)} (${knowledgeEvalLabel(entity.knowledge)})`,
@@ -396,12 +404,12 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
   if (roleStatus) lines.push(roleStatus)
-  if (!entity.isPlayer && (entity.avatarRole === 'none' || entity.avatarRole === 'ally')) {
-    lines.push(intentLabel(entity))
+  if (entity.avatarRole === 'none' || entity.avatarRole === 'ally') {
+    lines.push(`意图 ${intentLabel(entity)}`)
   }
 
   const lineHeight = 12
-  const boxWidth = 138
+  const boxWidth = 168
   const boxHeight = lines.length * lineHeight + 8
   const x = entity.x - boxWidth / 2
   const y = entity.y + r + 10
@@ -415,9 +423,8 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   ctx.textBaseline = 'top'
   ctx.font = '11px system-ui, sans-serif'
   lines.forEach((line, index) => {
-    const isRole = roleStatus !== null && index === lines.length - 1
-    const isCountdown = countdown !== null && line.startsWith('结束化身')
-    ctx.fillStyle = isRole || isCountdown ? '#8fd3ff' : '#b8c4dc'
+    const isHighlight = index <= 3 || line.startsWith('意图') || line.startsWith('结束化身')
+    ctx.fillStyle = isHighlight ? '#8fd3ff' : '#b8c4dc'
     ctx.fillText(line, entity.x, y + 4 + index * lineHeight)
   })
   ctx.restore()
@@ -457,7 +464,7 @@ export function drawAvatarCircle(
     ctx.strokeStyle = strokeColor
     ctx.lineWidth = 1.5
     ctx.stroke()
-    drawAvatarEntityStats(ctx, entity)
+    drawAvatarEntityStats(ctx, entity, _time)
     ctx.restore()
     return
   }
@@ -481,14 +488,14 @@ export function drawAvatarCircle(
     ctx.fillText(name, x, y)
   }
 
-  drawAvatarEntityStats(ctx, entity)
+  drawAvatarEntityStats(ctx, entity, _time)
   ctx.restore()
 }
 
 export function drawAvatarHud(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  _height: number,
   data: AvatarHudData,
 ): void {
   const demo = data.demographics
@@ -517,39 +524,6 @@ export function drawAvatarHud(
   for (const fam of demo.families.slice(0, 3)) {
     drawPanel(`${fam.familyName} 后代 ${fam.offspringCount}`)
   }
-
-  if (data.focus) {
-    drawAvatarIdCard(ctx, width, height, data.focus)
-  }
-}
-
-function drawAvatarIdCard(ctx: CanvasRenderingContext2D, width: number, _height: number, entity: CircleEntity): void {
-  const panelW = 250
-  const panelH = 210
-  const px = width - panelW - 14
-  const py = 14
-
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.84)'
-  roundRect(ctx, px, py, panelW, panelH, 10)
-  ctx.fill()
-
-  ctx.textAlign = 'left'
-  ctx.fillStyle = '#e8f4ff'
-  ctx.font = '600 13px system-ui, sans-serif'
-  let y = py + 22
-  const line = (s: string) => {
-    ctx.fillText(s, px + 12, y)
-    y += 17
-  }
-
-  line('【身份证】')
-  line(`姓名 ${entity.name}`)
-  line(`性别 ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`)
-  line(`出生 ${formatGameTime(entity.birthGameTimeSec)}`)
-  line(`位置 ${formatLatLng(entity.lat, entity.lng)}`)
-  line(`阶段 ${isAdult(entity) ? '成年' : '未成年'}`)
-  line(`意图 ${intentLabel(entity)}`)
-  line(`后代 ${entity.childrenCount}`)
 }
 
 export function drawAvatarStructure(
@@ -591,7 +565,7 @@ export function drawAvatarStructure(
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(name, x, y)
-  drawAvatarEntityStats(ctx, entity)
+  drawAvatarEntityStats(ctx, entity, time)
   ctx.restore()
 }
 
