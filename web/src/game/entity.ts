@@ -7,6 +7,12 @@ export interface CircleEntity {
   x: number
   y: number
   mass: number
+  /** 本体质量（消化后的质量） */
+  bodyMass: number
+  /** 摄入质量（待消化，不计入单独显示） */
+  intakeMass: number
+  /** 健康状态 0~1，影响质量上限与消化速率 */
+  health: number
   isPlayer: boolean
   colorLight: string
   colorDark: string
@@ -68,6 +74,9 @@ export function createCircle(
     x,
     y,
     mass,
+    bodyMass: mass,
+    intakeMass: 0,
+    health: 1,
     isPlayer,
     colorLight: roster.colorLight,
     colorDark: roster.colorDark,
