@@ -4,10 +4,11 @@ import {
   initAvatarVitality,
   isAvatarLifeExpired,
   tickAvatarMetabolism,
+  tickAvatarTransformLifespan,
   updateAbsorptionPause,
 } from './avatar-vitality'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
-import { addMassLogarithmic, massToRadius, PLAYER_START_MASS } from './physics'
+import { addMassLogarithmic, PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
 import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
@@ -23,13 +24,13 @@ import {
   FARM_PELLET_INTERVAL_SEC,
   FARM_PELLET_RING_RADIUS,
   FARM_PELLET_SENSE_RADIUS,
-  FARM_STRUCTURE_MASS,
   FARMS_PER_RANCH,
   RANCH_ALLIES_BEFORE_REVERT,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
-  RANCH_STRUCTURE_MASS,
   SPAWN_CLEARANCE,
+  STARTER_FARM_MASS,
+  STARTER_RANCH_MASS,
 } from './avatar-config'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
@@ -54,18 +55,13 @@ export function getControlledEntity(
   entities: CircleEntity[],
   controlledId: number,
 ): CircleEntity | null {
-  const direct =
-    entities.find((e) => e.id === controlledId && e.isPlayer && isActive(e) && !e.isFrozen) ?? null
+  const direct = entities.find((e) => e.id === controlledId && e.isPlayer && isActive(e)) ?? null
   if (direct) return direct
-  return entities.find((e) => e.isPlayer && isActive(e) && !e.isFrozen) ?? null
+  return entities.find((e) => e.isPlayer && isActive(e)) ?? null
 }
 
 function buildCost(kind: 'farm' | 'ranch'): number {
   return kind === 'farm' ? FARM_BUILD_COST : RANCH_BUILD_COST
-}
-
-function structureMass(kind: 'farm' | 'ranch'): number {
-  return kind === 'farm' ? FARM_STRUCTURE_MASS : RANCH_STRUCTURE_MASS
 }
 
 function structureLabel(kind: 'farm' | 'ranch', builderName: string): string {
@@ -114,10 +110,6 @@ function trimPellets(pellets: Pellet[]): Pellet[] {
   return pellets.slice(pellets.length - AVATAR_MAX_PELLETS)
 }
 
-function structureRadius(kind: 'farm' | 'ranch'): number {
-  return massToRadius(structureMass(kind))
-}
-
 function isAvatarStructure(entity: CircleEntity): boolean {
   return entity.avatarRole === 'farm' || entity.avatarRole === 'ranch'
 }
@@ -142,10 +134,10 @@ export function wouldOverlapStructures(
 /** 化身后建筑与自身位置重叠检测（不再生成后代圆） */
 export function canPlaceAvatarTransform(
   entity: CircleEntity,
-  kind: 'farm' | 'ranch',
+  _kind: 'farm' | 'ranch',
   entities: CircleEntity[],
 ): boolean {
-  const structureR = structureRadius(kind)
+  const structureR = avatarEntityRadius(entity)
   return !wouldOverlapStructures(entity.x, entity.y, structureR, entities, entity.id)
 }
 
@@ -229,7 +221,7 @@ export function findNearestAvatarTransformSpot(
     return { x: cached.x, y: cached.y }
   }
 
-  const structureR = structureRadius(kind)
+  const structureR = avatarEntityRadius(entity)
 
   const isValidSpot = (x: number, y: number): boolean => {
     if (x < structureR || y < structureR || x > WORLD_WIDTH - structureR || y > WORLD_HEIGHT - structureR) {
@@ -303,7 +295,7 @@ function tryAllyTransform(
     return { entities, pellets, absorbed: [] }
   }
   const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
-  const result = completeAvatarTransform(entities, ally, kind, -1)
+  const result = completeAvatarTransform(entities, ally, kind)
   return { entities: result.entities, pellets: nextPellets, absorbed }
 }
 
@@ -341,47 +333,30 @@ function absorbAndFilterPellets(
 
 export interface TransformResult {
   entities: CircleEntity[]
-  newControlledId: number | null
 }
 
-function pickNextPlayerControl(entities: CircleEntity[], excludeId: number): number | null {
-  for (const e of entities) {
-    if (e.id === excludeId || !isActive(e) || e.isFrozen) continue
-    if (e.avatarRole !== 'none' && e.avatarRole !== 'ally') continue
-    e.isPlayer = true
-    return e.id
-  }
-  return null
-}
-
-export function revertStructureToCircle(entity: CircleEntity): void {
+/** 结束化身状态，恢复化身前的质量与体温 */
+export function endAvatarTransform(entity: CircleEntity): void {
   entity.avatarRole = 'none'
   entity.isFrozen = false
-  entity.isPlayer = false
-  entity.mass = PLAYER_START_MASS
   entity.name = entity.builderName || entity.name
   entity.pelletSpawnTimer = 0
   entity.allySpawnTimer = 0
   entity.structureProduceCount = 0
-  initAvatarVitality(entity)
 }
 
 export function completeAvatarTransform(
   entities: CircleEntity[],
   entity: CircleEntity,
   kind: 'farm' | 'ranch',
-  controlledId: number,
 ): TransformResult {
   if (!canBeginAvatarTransform(entity, kind, entities)) {
-    return { entities, newControlledId: null }
+    return { entities }
   }
 
-  const wasPlayer = entity.isPlayer && entity.id === controlledId
   entity.builderName = entity.name.replace(/·后$/, '').replace(/的(农场|牧场)$/, '')
-  entity.isPlayer = false
   entity.avatarRole = kind
   entity.isFrozen = true
-  entity.mass = structureMass(kind)
   entity.name = structureLabel(kind, entity.builderName)
   entity.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
   entity.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC : 0
@@ -391,10 +366,7 @@ export function completeAvatarTransform(
   entity.structureProduceCount = 0
   entity.absorptionPaused = false
 
-  return {
-    entities,
-    newControlledId: wasPlayer ? pickNextPlayerControl(entities, entity.id) : null,
-  }
+  return { entities }
 }
 
 export function createStarterStructure(
@@ -403,14 +375,16 @@ export function createStarterStructure(
   kind: 'farm' | 'ranch',
   builderName: string,
 ): CircleEntity {
-  const structure = createCircle(x, y, structureMass(kind), false, PLAYER_ROSTER)
+  const mass = kind === 'farm' ? STARTER_FARM_MASS : STARTER_RANCH_MASS
+  const structure = createCircle(x, y, mass, false, PLAYER_ROSTER)
   structure.avatarRole = kind
   structure.isFrozen = true
-  structure.mass = structureMass(kind)
+  structure.mass = mass
   structure.builderName = builderName
   structure.name = structureLabel(kind, builderName)
   structure.pelletSpawnTimer = kind === 'farm' ? FARM_PELLET_INTERVAL_SEC : 0
   structure.allySpawnTimer = kind === 'ranch' ? RANCH_ALLY_INTERVAL_SEC * 0.5 : 0
+  initAvatarVitality(structure)
   return structure
 }
 
@@ -435,15 +409,26 @@ export function absorbPelletsForAvatar(
   return absorbed
 }
 
+function farmPelletSenseRadius(farm: CircleEntity): number {
+  const baseR = avatarEntityRadius(farm)
+  return Math.max(FARM_PELLET_SENSE_RADIUS, baseR * 2.8)
+}
+
+function farmPelletRingRadius(farm: CircleEntity): number {
+  const baseR = avatarEntityRadius(farm)
+  return Math.max(FARM_PELLET_RING_RADIUS * 0.55, baseR * 2.1)
+}
+
 export function countPelletsNearFarm(farm: CircleEntity, grid: PelletGrid): number {
-  return grid.countInRadius(farm.x, farm.y, FARM_PELLET_SENSE_RADIUS)
+  return grid.countInRadius(farm.x, farm.y, farmPelletSenseRadius(farm))
 }
 
 export function spawnPelletsAroundFarm(farm: CircleEntity): Pellet[] {
+  const ringRadius = farmPelletRingRadius(farm)
   const spawned: Pellet[] = []
   for (let i = 0; i < FARM_PELLET_COUNT; i++) {
     const angle = (Math.PI * 2 * i) / FARM_PELLET_COUNT + Math.random() * 0.25
-    const r = FARM_PELLET_RING_RADIUS + Math.random() * 35
+    const r = ringRadius + Math.random() * ringRadius * 0.28
     spawned.push(createPellet(farm.x + Math.cos(angle) * r, farm.y + Math.sin(angle) * r))
   }
   return spawned
@@ -467,7 +452,7 @@ export function updateFarmStructures(
     pellets.push(...spawnPelletsAroundFarm(entity))
     entity.structureProduceCount++
     if (entity.structureProduceCount >= FARM_PELLET_CYCLES_BEFORE_REVERT) {
-      revertStructureToCircle(entity)
+      endAvatarTransform(entity)
     }
   }
   return trimPellets(pellets)
@@ -499,7 +484,7 @@ export function updateRanchStructures(entities: CircleEntity[], dt: number): Cir
     next = spawnRanchAlly(next, entity)
     entity.structureProduceCount++
     if (entity.structureProduceCount >= RANCH_ALLIES_BEFORE_REVERT) {
-      revertStructureToCircle(entity)
+      endAvatarTransform(entity)
     }
   }
   return next
@@ -566,7 +551,8 @@ export function tickMobileAvatarVitality(
   const next: CircleEntity[] = []
   for (const entity of entities) {
     if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') {
-      next.push(entity)
+      tickAvatarTransformLifespan(entity, dt)
+      if (!isAvatarLifeExpired(entity)) next.push(entity)
       continue
     }
     if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') {
@@ -591,6 +577,13 @@ export function getAvatarTransformHints(
 ): { farm: string; ranch: string } {
   if (!entity) {
     return { farm: 'Q 农场(未就绪)', ranch: 'E 牧场(未就绪)' }
+  }
+
+  if (entity.avatarRole === 'farm') {
+    return { farm: 'Q 化身农场中', ranch: 'E 化身中' }
+  }
+  if (entity.avatarRole === 'ranch') {
+    return { farm: 'Q 化身中', ranch: 'E 化身牧场中' }
   }
 
   updateAbsorptionPause(entity)

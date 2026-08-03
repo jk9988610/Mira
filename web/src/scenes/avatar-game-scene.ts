@@ -61,7 +61,7 @@ export function createAvatarGameScene(
     if (controlled && controlled.id !== controlledId) controlledId = controlled.id
     if (!controlled) {
       const fallback = entities.find(
-        (e) => e.isPlayer && isActive(e) && !e.isFrozen && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
+        (e) => e.isPlayer && isActive(e) && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
       )
       if (fallback) controlledId = fallback.id
     }
@@ -129,16 +129,14 @@ export function createAvatarGameScene(
       prevGatherHeld = input.gatherHeld
 
       if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'farm', controlledId)
+        const result = completeAvatarTransform(entities, player!, 'farm')
         entities = result.entities
-        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
       if (gatherTrigger && canBeginAvatarTransform(player, 'ranch', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'ranch', controlledId)
+        const result = completeAvatarTransform(entities, player!, 'ranch')
         entities = result.entities
-        if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
       }
 
@@ -219,6 +217,12 @@ export function createAvatarGameScene(
 
       const tribe = countTribeStructures(entities)
       const hints = getAvatarTransformHints(controlled, entities)
+      const avatarState =
+        controlled?.avatarRole === 'farm'
+          ? '化身农场中'
+          : controlled?.avatarRole === 'ranch'
+            ? '化身牧场中'
+            : undefined
       drawAvatarHud(ctx, width, {
         mass: focusMass,
         zoom: cam.zoom,
@@ -230,6 +234,7 @@ export function createAvatarGameScene(
         lifespanSec: controlled?.lifespanSec,
         temperature: controlled?.temperature,
         absorptionPaused: controlled?.absorptionPaused,
+        avatarState,
       })
     },
   }
