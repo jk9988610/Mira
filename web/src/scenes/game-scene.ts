@@ -21,6 +21,7 @@ import {
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
+  isPursuingMate,
   syncMateTargets,
   tickProductionCooldowns,
   updateMatePursuit,
@@ -28,7 +29,6 @@ import {
 } from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
-import { isPursuingMate } from '../game/avatar-reproduction'
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PelletGrid } from '../game/pellet-grid'
