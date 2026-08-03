@@ -36,6 +36,7 @@ export function decideNpcTransformKind(
   now = 0,
 ): TransformKind | null {
   if (isJuvenile(entity, now)) return null
+  if (entity.pendingAvatarKind !== 'none') return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
   if (isPursuingMate(entity, now)) return null
   return pickWeightedTransformKind(
@@ -57,6 +58,9 @@ export function intentLabel(
   gameTimeSec = 0,
 ): string {
   if (entity.productionStage === 'active') return '生产'
+  if (entity.pendingAvatarKind !== 'none') {
+    return entity.avatarTransformCooldown > 0 ? '等待·化身冷却' : '等待·化身'
+  }
   if (entity.productionCooldown > 0) {
     return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
   }

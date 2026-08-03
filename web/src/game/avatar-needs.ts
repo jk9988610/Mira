@@ -2,6 +2,7 @@ import {
   FARM_TRANSFORM_WEIGHT,
   JOY_CAP,
   KNOWLEDGE_CAP,
+  MALE_POST_PRODUCTION_FARM_MULT,
   PARK_TRANSFORM_WEIGHT,
   SATIETY_CAP,
   SATIETY_LOW_THRESHOLD,
@@ -12,7 +13,7 @@ import {
 import { currentSchedulePhase, isTransformPhase } from './avatar-schedule'
 import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity, TransformKind } from './entity'
-import { isAdult, isJuvenile } from './entity'
+import { isActive, isAdult, isJuvenile } from './entity'
 import { isActivelySeekingMate } from './avatar-reproduction'
 
 /** 移动圆通过吸收颗粒满足的个人需求，与化身产出无关 */
@@ -24,7 +25,7 @@ export interface NeedWeights {
   play: number
 }
 
-const EAT_NEED_MULT = 2.1
+const EAT_NEED_MULT = 1.15
 const LEARN_NEED_MULT = 0.1
 const PLAY_NEED_MULT = 0.08
 
@@ -104,19 +105,53 @@ const TRANSFORM_WEIGHT: Record<TransformKind, number> = {
   park: PARK_TRANSFORM_WEIGHT,
 }
 
+export function findJuvenileOffspring(
+  parent: CircleEntity,
+  entities: CircleEntity[],
+  gameTimeSec: number,
+): CircleEntity[] {
+  const out: CircleEntity[] = []
+  for (const e of entities) {
+    if (!isActive(e) || !isJuvenile(e, gameTimeSec)) continue
+    if (parent.gender === 'male' && e.fatherId === parent.id) out.push(e)
+    else if (parent.gender === 'female' && e.motherId === parent.id) out.push(e)
+  }
+  return out
+}
+
+export function offspringPlanTransformKind(offspring: CircleEntity[]): TransformKind {
+  let eat = 0
+  let learn = 0
+  let play = 0
+  for (const child of offspring) {
+    eat += needEat(child)
+    learn += needLearn(child)
+    play += needPlay(child)
+  }
+  if (offspring.length === 0) return 'farm'
+  if (eat >= learn && eat >= play) return 'farm'
+  if (learn >= play) return 'school'
+  return 'park'
+}
+
 /** 化身产出颗粒：饱腹时在觅食/闲逛时段进行，农场为主 */
 export function pickWeightedTransformKind(
   entity: CircleEntity,
   structureCounts: { farm: number; school: number; park: number },
   seed: number,
   gameTimeSec: number,
-  _entities: CircleEntity[] = [],
+  entities: CircleEntity[] = [],
 ): TransformKind | null {
-  if (isJuvenile(entity)) return null
+  if (isJuvenile(entity, gameTimeSec)) return null
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
   if (!canConsiderTransform(entity, gameTimeSec, seeking)) return null
 
   if (seeking && hash01(seed + entity.id * 0.41) > 0.52) return null
+
+  const offspring = findJuvenileOffspring(entity, entities, gameTimeSec)
+  if (offspring.length > 0 && hash01(seed + entity.id * 1.07) < 0.78) {
+    return offspringPlanTransformKind(offspring)
+  }
 
   const last = entity.transformHistory[entity.transformHistory.length - 1]
   const kinds: TransformKind[] = ['farm', 'school', 'park']
@@ -129,6 +164,9 @@ export function pickWeightedTransformKind(
     let base = TRANSFORM_WEIGHT[kind] * scarcity[kind]
     const penalty = kind === last ? TRANSFORM_REPEAT_PENALTY : 1
     if (seeking) base *= SEEKING_TRANSFORM_PENALTY
+    if (entity.gender === 'male' && entity.productionCooldown > 0 && kind === 'farm') {
+      base *= MALE_POST_PRODUCTION_FARM_MULT
+    }
     return base * penalty
   })
   const total = values.reduce((a, b) => a + b, 0)

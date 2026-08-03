@@ -555,6 +555,50 @@ export function updateParkStructures(
   return trimPellets(pellets)
 }
 
+function atTransformSpot(entity: CircleEntity, x: number, y: number): boolean {
+  const arrive = Math.max(10, avatarEntityRadius(entity) * 0.55)
+  return Math.hypot(x - entity.x, y - entity.y) <= arrive
+}
+
+function updatePendingAvatarTransform(
+  ally: CircleEntity,
+  entities: CircleEntity[],
+  pellets: Pellet[],
+  dt: number,
+  now: number,
+): { pellets: Pellet[]; absorbed: Pellet[]; entities: CircleEntity[] } | null {
+  if (ally.pendingAvatarKind === 'none') return null
+
+  const kind = ally.pendingAvatarKind
+  ally.aiIntent = ally.avatarTransformCooldown > 0 ? 'wait' : 'wander'
+
+  const spot = findNearestAvatarTransformSpot(ally, kind, entities, now)
+  if (!spot) {
+    ally.pendingAvatarKind = 'none'
+    return null
+  }
+
+  ally.aiAnchorX = spot.x
+  ally.aiAnchorY = spot.y
+
+  if (!atTransformSpot(ally, spot.x, spot.y)) {
+    moveEntityToward(ally, spot.x, spot.y, dt)
+    return { pellets, absorbed: [], entities }
+  }
+
+  if (ally.avatarTransformCooldown > 0) {
+    return { pellets, absorbed: [], entities }
+  }
+
+  if (!canBeginAvatarTransform(ally, kind, entities, now)) {
+    return { pellets, absorbed: [], entities }
+  }
+
+  const result = tryAllyTransform(ally, entities, pellets, kind)
+  ally.pendingAvatarKind = 'none'
+  return result
+}
+
 export function updateAlly(
   ally: CircleEntity,
   entities: CircleEntity[],
@@ -567,6 +611,9 @@ export function updateAlly(
     return { pellets, absorbed: [], entities }
   }
 
+  const pending = updatePendingAvatarTransform(ally, entities, pellets, dt, now)
+  if (pending) return pending
+
   const intent = updateNpcIntent(ally, entities, grid, dt, now)
 
   if (isPursuingMate(ally, now)) {
@@ -576,21 +623,18 @@ export function updateAlly(
   const transformKind = decideNpcTransformKind(ally, entities, now)
 
   if (transformKind) {
-    const immediate = tryAllyTransform(ally, entities, pellets, transformKind)
-    if (immediate.entities !== entities) {
-      return { pellets: immediate.pellets, absorbed: immediate.absorbed, entities: immediate.entities }
-    }
-
     const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)
     if (spot) {
-      moveEntityToward(ally, spot.x, spot.y, dt)
-      const { pellets: movedPellets, absorbed: movedAbsorbed } = absorbAndFilterPellets(ally, pellets, grid)
-      const afterMove = tryAllyTransform(ally, entities, movedPellets, transformKind)
-      return {
-        pellets: afterMove.pellets,
-        absorbed: [...movedAbsorbed, ...afterMove.absorbed],
-        entities: afterMove.entities,
+      ally.pendingAvatarKind = transformKind
+      ally.aiAnchorX = spot.x
+      ally.aiAnchorY = spot.y
+      if (!atTransformSpot(ally, spot.x, spot.y)) {
+        moveEntityToward(ally, spot.x, spot.y, dt)
+      } else if (ally.avatarTransformCooldown <= 0) {
+        const committed = updatePendingAvatarTransform(ally, entities, pellets, dt, now)
+        if (committed) return committed
       }
+      return { pellets, absorbed: [], entities }
     }
   }
 
