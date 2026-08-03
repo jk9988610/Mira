@@ -25,6 +25,7 @@ import {
 } from './avatar-config'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
+import { removePelletsByIds } from './pellet-util'
 import { AI_ROSTER, PLAYER_ROSTER } from './roster'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
@@ -336,7 +337,7 @@ function absorbAndFilterPellets(
   const absorbed = absorbPelletsForAvatar(entity, pellets, grid)
   if (absorbed.length === 0) return { pellets, absorbed }
   const absorbedIds = new Set(absorbed.map((p) => p.id))
-  return { pellets: pellets.filter((p) => !absorbedIds.has(p.id)), absorbed }
+  return { pellets: removePelletsByIds(pellets, absorbedIds), absorbed }
 }
 
 function rosterFromEntity(entity: CircleEntity) {

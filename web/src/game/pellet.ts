@@ -64,6 +64,20 @@ export function spawnPellets(
   return pellets
 }
 
+import type { ViewBounds } from './viewport'
+import { isInView } from './viewport'
+
+export function drawPelletsInView(
+  ctx: CanvasRenderingContext2D,
+  pellets: Pellet[],
+  bounds: ViewBounds,
+): void {
+  for (const pellet of pellets) {
+    if (!isInView(pellet.x, pellet.y, bounds, pellet.radius)) continue
+    drawPellet(ctx, pellet)
+  }
+}
+
 export function drawPellet(ctx: CanvasRenderingContext2D, pellet: Pellet): void {
   const { x, y, sides, radius, hue } = pellet
   ctx.beginPath()

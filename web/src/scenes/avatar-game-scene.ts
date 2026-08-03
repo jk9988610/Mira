@@ -24,10 +24,14 @@ import {
 } from '../game/avatar-config'
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, type CircleEntity } from '../game/entity'
+import { allyUpdateStride } from '../game/perf-config'
+import { removePelletsByIds } from '../game/pellet-util'
 import { PLAYER_START_MASS } from '../game/physics'
 import { PelletGrid } from '../game/pellet-grid'
-import { drawPellet, spawnPellets, type Pellet } from '../game/pellet'
+import { drawPelletsInView, spawnPellets, type Pellet } from '../game/pellet'
 import { PLAYER_ROSTER } from '../game/roster'
+import { computeViewBounds, isInView } from '../game/viewport'
+import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
 
@@ -70,6 +74,7 @@ export function createAvatarGameScene(
     )
     entities = [player, starterFarm, starterRanch]
     pellets = spawnPellets(AVATAR_INITIAL_PELLETS, WORLD_WIDTH, WORLD_HEIGHT, 40)
+    pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0
   }
@@ -95,7 +100,6 @@ export function createAvatarGameScene(
       }
 
       tickAvatarTransformCooldowns(entities, dt)
-      pelletGrid.rebuild(pellets)
 
       const player = getControlledEntity(entities, controlledId)
 
@@ -104,7 +108,6 @@ export function createAvatarGameScene(
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
-        pelletGrid.rebuild(pellets)
       }
 
       if (input.gatherPressed && canBeginAvatarTransform(player, 'ranch', entities)) {
@@ -112,7 +115,6 @@ export function createAvatarGameScene(
         entities = result.entities
         if (result.newControlledId !== null) controlledId = result.newControlledId
         sfx.absorbPellet()
-        pelletGrid.rebuild(pellets)
       }
 
       if (player && !player.isFrozen) {
@@ -120,10 +122,12 @@ export function createAvatarGameScene(
       }
 
       pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
+      pelletGrid.rebuild(pellets)
+
       entities = updateRanchStructures(entities, dt)
 
       allyUpdateTick++
-      const allyStride = entities.length > 120 ? 2 : 1
+      const allyStride = allyUpdateStride(entities.length)
       for (let i = 0; i < entities.length; i++) {
         if (allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const entity = entities[i]
@@ -143,7 +147,7 @@ export function createAvatarGameScene(
         const absorbed = absorbPelletsForAvatar(controlled, pellets, pelletGrid)
         if (absorbed.length > 0) {
           const absorbedIds = new Set(absorbed.map((p) => p.id))
-          pellets = pellets.filter((p) => !absorbedIds.has(p.id))
+          pellets = removePelletsByIds(pellets, absorbedIds)
           absorbFlash = 0.18
           sfx.absorbPellet()
         }
@@ -159,13 +163,7 @@ export function createAvatarGameScene(
       const focusX = controlled?.x ?? WORLD_WIDTH / 2
       const focusY = controlled?.y ?? WORLD_HEIGHT / 2
       const cam = computeCamera(focusX, focusY, focusMass, width, height)
-      const viewPad = 120
-      const halfW = width / cam.renderScale / 2 + viewPad
-      const halfH = height / cam.renderScale / 2 + viewPad
-      const minX = cam.camX - halfW
-      const maxX = cam.camX + halfW
-      const minY = cam.camY - halfH
-      const maxY = cam.camY + halfH
+      const view = computeViewBounds(cam.camX, cam.camY, cam.renderScale, width, height)
 
       const sorted = [...entities].sort((a, b) => avatarEntityRadius(b) - avatarEntityRadius(a))
 
@@ -179,15 +177,10 @@ export function createAvatarGameScene(
       ctx.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
       ctx.clip()
 
-      drawWorld(ctx)
-      for (const pellet of pellets) {
-        if (pellet.x < minX || pellet.x > maxX || pellet.y < minY || pellet.y > maxY) continue
-        drawPellet(ctx, pellet)
-      }
+      drawWorld(ctx, view)
+      drawPelletsInView(ctx, pellets, view)
       for (const entity of sorted) {
-        if (entity.x < minX - 80 || entity.x > maxX + 80 || entity.y < minY - 80 || entity.y > maxY + 80) {
-          continue
-        }
+        if (!isInView(entity.x, entity.y, view, 80)) continue
         if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') {
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
@@ -210,29 +203,5 @@ export function createAvatarGameScene(
         circles: tribe.circles,
       })
     },
-  }
-}
-
-function drawWorld(ctx: CanvasRenderingContext2D) {
-  ctx.fillStyle = '#0f1828'
-  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
-  ctx.strokeStyle = '#3d5578'
-  ctx.lineWidth = 6
-  ctx.strokeRect(3, 3, WORLD_WIDTH - 6, WORLD_HEIGHT - 6)
-
-  ctx.strokeStyle = 'rgba(70, 96, 132, 0.18)'
-  ctx.lineWidth = 1
-  const grid = 100
-  for (let x = grid; x < WORLD_WIDTH; x += grid) {
-    ctx.beginPath()
-    ctx.moveTo(x, 0)
-    ctx.lineTo(x, WORLD_HEIGHT)
-    ctx.stroke()
-  }
-  for (let y = grid; y < WORLD_HEIGHT; y += grid) {
-    ctx.beginPath()
-    ctx.moveTo(0, y)
-    ctx.lineTo(WORLD_WIDTH, y)
-    ctx.stroke()
   }
 }

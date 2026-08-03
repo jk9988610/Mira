@@ -1,3 +1,4 @@
+import { removePelletsByIds } from './pellet-util'
 import { PLAYER_START_RADIUS } from './physics'
 import { createPellet, type Pellet, spawnPellets } from './pellet'
 
@@ -28,7 +29,11 @@ export class GameWorld {
   }
 
   removePellet(id: number): void {
-    this.pellets = this.pellets.filter((p) => p.id !== id)
+    removePelletsByIds(this.pellets, new Set([id]))
+  }
+
+  removePellets(ids: Set<number>): void {
+    removePelletsByIds(this.pellets, ids)
   }
 
   private ensureSpacing(anchorX: number, anchorY: number, minDist: number): void {
