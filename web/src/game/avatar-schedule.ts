@@ -1,9 +1,16 @@
 import { SCHEDULE_DAY_SEC } from './avatar-config'
+import type { CircleEntity } from './entity'
+import { isJuvenile } from './entity'
 
 export type SchedulePhase = 'sleep' | 'eat' | 'learn' | 'play' | 'wander'
 
-/** 日程权重：觅食与闲逛为主，知识/快乐为辅 */
-const PHASE_WEIGHTS: { phase: SchedulePhase; weight: number }[] = [
+interface PhaseWeight {
+  phase: SchedulePhase
+  weight: number
+}
+
+/** 成年圆默认日程 */
+const ADULT_WEIGHTS: PhaseWeight[] = [
   { phase: 'sleep', weight: 0.16 },
   { phase: 'eat', weight: 0.34 },
   { phase: 'learn', weight: 0.1 },
@@ -11,20 +18,56 @@ const PHASE_WEIGHTS: { phase: SchedulePhase; weight: number }[] = [
   { phase: 'wander', weight: 0.3 },
 ]
 
-const PHASE_CUMULATIVE: { phase: SchedulePhase; end: number }[] = (() => {
+/** 未成年：觅食为主，其次知识/快乐，少闲逛 */
+const JUVENILE_WEIGHTS: PhaseWeight[] = [
+  { phase: 'sleep', weight: 0.12 },
+  { phase: 'eat', weight: 0.46 },
+  { phase: 'learn', weight: 0.16 },
+  { phase: 'play', weight: 0.14 },
+  { phase: 'wander', weight: 0.12 },
+]
+
+/** 求偶意图：更多闲逛时间 */
+const SEEKING_MATE_WEIGHTS: PhaseWeight[] = [
+  { phase: 'sleep', weight: 0.12 },
+  { phase: 'eat', weight: 0.2 },
+  { phase: 'learn', weight: 0.06 },
+  { phase: 'play', weight: 0.06 },
+  { phase: 'wander', weight: 0.56 },
+]
+
+function buildCumulative(weights: PhaseWeight[]): { phase: SchedulePhase; end: number }[] {
   let sum = 0
-  return PHASE_WEIGHTS.map(({ phase, weight }) => {
+  return weights.map(({ phase, weight }) => {
     sum += weight
     return { phase, end: sum }
   })
-})()
+}
 
-export function currentSchedulePhase(entity: { id: number }, gameTimeSec: number): SchedulePhase {
-  const t = ((gameTimeSec + entity.id * 13.7) % SCHEDULE_DAY_SEC) / SCHEDULE_DAY_SEC
-  for (const entry of PHASE_CUMULATIVE) {
+const ADULT_CUMULATIVE = buildCumulative(ADULT_WEIGHTS)
+const JUVENILE_CUMULATIVE = buildCumulative(JUVENILE_WEIGHTS)
+const SEEKING_CUMULATIVE = buildCumulative(SEEKING_MATE_WEIGHTS)
+
+function phaseFromCumulative(
+  t: number,
+  cumulative: { phase: SchedulePhase; end: number }[],
+): SchedulePhase {
+  for (const entry of cumulative) {
     if (t < entry.end) return entry.phase
   }
   return 'wander'
+}
+
+export function currentSchedulePhase(
+  entity: CircleEntity,
+  gameTimeSec: number,
+  seekingMate = false,
+): SchedulePhase {
+  const offset = entity.scheduleOffsetSec + entity.id * 2.3
+  const t = ((gameTimeSec + offset) % SCHEDULE_DAY_SEC) / SCHEDULE_DAY_SEC
+  if (isJuvenile(entity)) return phaseFromCumulative(t, JUVENILE_CUMULATIVE)
+  if (seekingMate) return phaseFromCumulative(t, SEEKING_CUMULATIVE)
+  return phaseFromCumulative(t, ADULT_CUMULATIVE)
 }
 
 export function schedulePhaseLabel(phase: SchedulePhase): string {

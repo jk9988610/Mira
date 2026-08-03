@@ -1,4 +1,4 @@
-import { ADULT_MASS_THRESHOLD } from './avatar-config'
+import { ADULT_MASS_THRESHOLD, SCHEDULE_DAY_SEC } from './avatar-config'
 import { initEntityDna } from './dna'
 import { syncEntityGeo } from './geo'
 import { massToRadius, PLAYER_START_MASS } from './physics'
@@ -85,6 +85,8 @@ export interface CircleEntity {
   productionTimer: number
   productionCooldown: number
   productionPartnerId: number
+  mateSeekUrge: number
+  scheduleOffsetSec: number
   aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander' | 'wait'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
@@ -185,6 +187,8 @@ export function createCircle(
     aiAnchorY: y,
     aiAnchorTimer: 0,
     aiMateTargetId: 0,
+    mateSeekUrge: 0.45 + Math.random() * 0.5,
+    scheduleOffsetSec: Math.random() * SCHEDULE_DAY_SEC,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id

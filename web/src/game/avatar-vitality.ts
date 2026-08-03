@@ -10,6 +10,7 @@ import {
   LIFESPAN_AVATAR_TRANS_THRESHOLD,
   LIFESPAN_EVAL_INTERVAL_SEC,
   LOW_MASS_PENALTY_SEC,
+  PRODUCTION_COOLDOWN_SEC,
   SATIETY_ABSORB_PAUSE_RATIO,
   SATIETY_ABSORB_RESUME_RATIO,
   SATIETY_CAP,
@@ -56,7 +57,7 @@ export function initAvatarVitality(entity: CircleEntity, birthGameTimeSec = 0): 
   entity.visualScale = 1
   entity.avatarTransformTimer = 0
   entity.birthGameTimeSec = birthGameTimeSec
-  entity.productionCooldown = 0
+  entity.productionCooldown = Math.random() * PRODUCTION_COOLDOWN_SEC * 0.72
 }
 
 export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 0): void {

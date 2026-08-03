@@ -160,7 +160,7 @@ export function createAvatarGameScene(
 
       if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
         if (player.gender === 'male') {
-          const partner = findSeekingPartner(player, entities)
+          const partner = findSeekingPartner(player, entities, elapsed)
           if (partner) player.aiMateTargetId = partner.id
         }
       }
@@ -179,7 +179,7 @@ export function createAvatarGameScene(
 
       if (player && !player.isFrozen && player.productionStage === 'none') {
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
-        if (player.gender === 'male') tryApproachForProduction(player, entities, dt)
+        if (player.gender === 'male') tryApproachForProduction(player, entities, dt, elapsed)
       }
 
       tickProductionCooldowns(entities, dt)
