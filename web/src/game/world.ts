@@ -1,20 +1,27 @@
 import { removePelletsByIds } from './pellet-util'
-import { PLAYER_START_RADIUS } from './physics'
+import { massToRadius, PLAYER_START_MASS } from './physics'
 import { createPellet, type Pellet, spawnPellets } from './pellet'
 
-export const WORLD_WIDTH = 5600
-export const WORLD_HEIGHT = 3800
+/** 参考 16:9 屏幕在默认缩放下可见的一屏世界尺寸 */
+const VIEW_FILL = 0.48
+const REF_SCREEN_W = 1280
+const REF_SCREEN_H = 720
+const BASE_VIEW_RADIUS = massToRadius(PLAYER_START_MASS) * 3.2
+const REF_RENDER_SCALE = (Math.min(REF_SCREEN_W, REF_SCREEN_H) * VIEW_FILL) / BASE_VIEW_RADIUS
 
-const TARGET_PELLET_COUNT = 600
-const SPAWN_MARGIN = 40
-const MIN_SPAWN_DIST = PLAYER_START_RADIUS + 64
+export const WORLD_WIDTH = Math.round(REF_SCREEN_W / REF_RENDER_SCALE)
+export const WORLD_HEIGHT = Math.round(REF_SCREEN_H / REF_RENDER_SCALE)
+
+const TARGET_PELLET_COUNT = 120
+const SPAWN_MARGIN = 24
+const MIN_SPAWN_DIST = massToRadius(PLAYER_START_MASS) + 48
 
 export class GameWorld {
   pellets: Pellet[] = []
 
   reset(anchorX: number, anchorY: number): void {
     this.pellets = spawnPellets(TARGET_PELLET_COUNT, WORLD_WIDTH, WORLD_HEIGHT, SPAWN_MARGIN)
-    this.ensureSpacing(anchorX, anchorY, PLAYER_START_RADIUS + 48)
+    this.ensureSpacing(anchorX, anchorY, MIN_SPAWN_DIST)
   }
 
   maintainPopulation(anchorX: number, anchorY: number): void {

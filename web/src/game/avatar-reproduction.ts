@@ -10,7 +10,7 @@ import { createCircle, isActive, isAdult } from './entity'
 import { PLAYER_START_MASS } from './physics'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-const SEEK_SCAN_RADIUS = 820
+const SEEK_SCAN_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT) * 0.9
 
 function hash01(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453

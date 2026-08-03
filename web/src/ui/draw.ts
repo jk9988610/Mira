@@ -392,6 +392,7 @@ export function drawAvatarEntityStats(
     `DNA ${formatDnaFingerprint(entity.dnaFingerprint)}`,
     `${entity.name} · ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`,
     `年龄 ${ageSec}s · 出生 ${formatGameTime(entity.birthGameTimeSec)}`,
+    `出生地 (${Math.round(entity.birthX)}, ${Math.round(entity.birthY)})`,
     `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,
     `饱食 ${Math.round(entity.satiety)}/${Math.round(SATIETY_CAP)} (${satietyEvalLabel(entity)})`,

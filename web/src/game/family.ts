@@ -2,14 +2,17 @@ import { needEat, needLearn, needPlay } from './avatar-needs'
 import { isActivelySeekingMate } from './avatar-reproduction'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isJuvenile } from './entity'
+import { WORLD_WIDTH } from './world'
 
-const MOTHER_FOLLOW_RADIUS = 520
-const MOTHER_COMFORT_RADIUS = 140
-const OFFSPRING_CARE_RADIUS = 680
-const MATE_WAIT_RADIUS = 520
-const GROUP_SCAN_RADIUS = 920
-const GROUP_STAY_RADIUS = 480
-const GROUP_SEEK_RADIUS = 640
+const MOTHER_FOLLOW_RADIUS = WORLD_WIDTH * 0.44
+const MOTHER_COMFORT_RADIUS = WORLD_WIDTH * 0.12
+const OFFSPRING_CARE_RADIUS = WORLD_WIDTH * 0.52
+const MATE_WAIT_RADIUS = WORLD_WIDTH * 0.42
+const GROUP_SCAN_RADIUS = WORLD_WIDTH * 0.88
+const GROUP_STAY_RADIUS = WORLD_WIDTH * 0.34
+const GROUP_SEEK_RADIUS = WORLD_WIDTH * 0.46
+const BIRTH_STAY_RADIUS = WORLD_WIDTH * 0.26
+const BIRTH_SEEK_RADIUS = WORLD_WIDTH * 0.38
 
 export function nearbyGroupCenter(
   entity: CircleEntity,
@@ -43,6 +46,20 @@ export function groupCohesionTarget(
   const dist = Math.hypot(center.x - entity.x, center.y - entity.y)
   if (dist > maxDist) return center
   if (dist > maxDist * 0.55 && Math.random() < 0.18) return center
+  return null
+}
+
+/** 闲逛时靠近出生点，避免离初始位置太远 */
+export function birthAnchorTarget(
+  entity: CircleEntity,
+  seekingMate = false,
+): { x: number; y: number } | null {
+  const maxDist = seekingMate ? BIRTH_SEEK_RADIUS : BIRTH_STAY_RADIUS
+  const dx = entity.birthX - entity.x
+  const dy = entity.birthY - entity.y
+  const dist = Math.hypot(dx, dy)
+  if (dist > maxDist) return { x: entity.birthX, y: entity.birthY }
+  if (dist > maxDist * 0.62 && Math.random() < 0.22) return { x: entity.birthX, y: entity.birthY }
   return null
 }
 
