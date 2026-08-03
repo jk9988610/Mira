@@ -357,13 +357,13 @@ export function drawGamepadBanner(
 export interface AvatarHudData {
   gameTimeSec: number
   zoom: number
-  workHint: string
+  farmHint: string
   produceHint: string
-  learnHint: string
-  playHint: string
-  work: number
-  learn: number
-  play: number
+  schoolHint: string
+  parkHint: string
+  farm: number
+  school: number
+  park: number
   producing: number
   circles: number
   demographics: TribeDemographics
@@ -372,9 +372,9 @@ export interface AvatarHudData {
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
   if (productionStage === 'mating') return '生产·交配'
   if (productionStage === 'pregnant') return '生产·怀孕陪护'
-  if (isFrozen && role === 'work') return '化身·上班'
-  if (isFrozen && role === 'learn') return '化身·学习'
-  if (isFrozen && role === 'play') return '化身·娱乐'
+  if (isFrozen && role === 'farm') return '化身·农场'
+  if (isFrozen && role === 'school') return '化身·校园'
+  if (isFrozen && role === 'park') return '化身·乐园'
   if (role === 'ally') return '后代'
   return null
 }
@@ -398,8 +398,8 @@ export function drawAvatarEntityStats(
     `快乐 ${Math.round(entity.joy)} (${happinessEvalLabel(entity.joy)})`,
     `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
-    `化身 上班${entity.countWorkTransforms} 学习${entity.countLearnTransforms}`,
-    `      娱乐${entity.countPlayTransforms} 生产${entity.countProductionSessions}`,
+    `化身 农场${entity.countFarmTransforms} 校园${entity.countSchoolTransforms}`,
+    `      乐园${entity.countParkTransforms} 生产${entity.countProductionSessions}`,
   ]
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
@@ -499,8 +499,8 @@ export function drawAvatarHud(
   data: AvatarHudData,
 ): void {
   const demo = data.demographics
-  const hint = `${data.workHint} · ${data.produceHint} · ${data.learnHint} · ${data.playHint}`
-  const tribe = `上班 ${data.work} · 学习 ${data.learn} · 娱乐 ${data.play} · 生产 ${data.producing} · 圆 ${data.circles}`
+  const hint = `${data.farmHint} · ${data.produceHint} · ${data.schoolHint} · ${data.parkHint}`
+  const tribe = `农场 ${data.farm} · 校园 ${data.school} · 乐园 ${data.park} · 生产 ${data.producing} · 圆 ${data.circles}`
   const demoLine = `成年 男${demo.adultMale} 女${demo.adultFemale} · 未成年 男${demo.juvenileMale} 女${demo.juvenileFemale}`
 
   ctx.textAlign = 'left'
@@ -537,9 +537,9 @@ export function drawAvatarStructure(
   ctx.save()
   const pulse = 0.85 + 0.15 * Math.sin(time * 2)
   const ringColor =
-    avatarRole === 'work'
+    avatarRole === 'farm'
       ? 'rgba(143, 211, 255, 0.55)'
-      : avatarRole === 'learn'
+      : avatarRole === 'school'
         ? 'rgba(130, 170, 255, 0.58)'
         : 'rgba(255, 150, 210, 0.58)'
 

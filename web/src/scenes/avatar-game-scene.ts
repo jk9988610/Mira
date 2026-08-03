@@ -15,9 +15,9 @@ import {
   tickAvatarTransformCooldowns,
   tickMobileAvatarVitality,
   updateAlly,
-  updateLearnStructures,
-  updatePlayStructures,
-  updateWorkStructures,
+  updateFarmStructures,
+  updateParkStructures,
+  updateSchoolStructures,
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
@@ -188,8 +188,8 @@ export function createAvatarGameScene(
       prevSplitHeld = input.splitHeld
       prevGatherHeld = input.gatherHeld
 
-      if (splitTrigger && canBeginAvatarTransform(player, 'work', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'work')
+      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'farm')
         entities = result.entities
         sfx.absorbPellet()
       }
@@ -199,14 +199,14 @@ export function createAvatarGameScene(
         if (mate) player.aiMateTargetId = mate.id
       }
 
-      if (input.schoolPressed && canBeginAvatarTransform(player, 'learn', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'learn')
+      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'school')
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (input.parkPressed && canBeginAvatarTransform(player, 'play', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'play')
+      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'park')
         entities = result.entities
         sfx.absorbPellet()
       }
@@ -216,9 +216,9 @@ export function createAvatarGameScene(
         if (player.aiMateTargetId > 0) updatePlayerMateSeek(player, entities, dt)
       }
 
-      pellets = updateWorkStructures(entities, pellets, pelletGrid, dt)
-      pellets = updateLearnStructures(entities, pellets, dt)
-      pellets = updatePlayStructures(entities, pellets, dt)
+      pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
+      pellets = updateSchoolStructures(entities, pellets, dt)
+      pellets = updateParkStructures(entities, pellets, dt)
       pelletGrid.rebuild(pellets)
 
       entities = updateProductionPairs(entities, dt, elapsed)
@@ -240,7 +240,7 @@ export function createAvatarGameScene(
       const movingIds = new Set<number>()
       for (const entity of entities) {
         if (!isActive(entity) || entity.isFrozen) continue
-        if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') continue
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
           if (entity.aiMateTargetId > 0) movingIds.add(entity.id)
@@ -292,7 +292,7 @@ export function createAvatarGameScene(
       drawPelletsInView(ctx, pellets, view)
       for (const entity of sorted) {
         if (!isInView(entity.x, entity.y, view, 80)) continue
-        if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') {
+        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
           const flash = entity.id === controlledId ? absorbFlash : 0
@@ -308,13 +308,13 @@ export function createAvatarGameScene(
       drawAvatarHud(ctx, width, height, {
         gameTimeSec: elapsed,
         zoom: cam.zoom,
-        workHint: hints.workHint,
+        farmHint: hints.farmHint,
         produceHint: hints.produceHint,
-        learnHint: hints.learnHint,
-        playHint: hints.playHint,
-        work: tribe.work,
-        learn: tribe.learn,
-        play: tribe.play,
+        schoolHint: hints.schoolHint,
+        parkHint: hints.parkHint,
+        farm: tribe.farm,
+        school: tribe.school,
+        park: tribe.park,
         producing: tribe.producing,
         circles: tribe.circles,
         demographics: demo,

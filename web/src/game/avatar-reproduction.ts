@@ -25,7 +25,7 @@ function hasProductionSpace(male: CircleEntity, female: CircleEntity, entities: 
   const needR = avatarEntityRadius(male) + avatarEntityRadius(female) + SPAWN_CLEARANCE * 2
   for (const other of entities) {
     if (other.id === male.id || other.id === female.id || !isActive(other)) continue
-    if (other.avatarRole === 'work' || other.avatarRole === 'learn' || other.avatarRole === 'play') continue
+    if (other.avatarRole === 'farm' || other.avatarRole === 'school' || other.avatarRole === 'park') continue
     const d = Math.hypot(other.x - cx, other.y - cy)
     if (d < needR + avatarEntityRadius(other)) return false
   }

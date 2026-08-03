@@ -4,8 +4,8 @@ import { massToRadius, PLAYER_START_MASS } from './physics'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
 
 export type Gender = 'male' | 'female'
-export type AvatarRole = 'none' | 'work' | 'learn' | 'play' | 'ally'
-export type TransformKind = 'work' | 'learn' | 'play'
+export type AvatarRole = 'none' | 'farm' | 'school' | 'park' | 'ally'
+export type TransformKind = 'farm' | 'school' | 'park'
 export type ProductionStage = 'none' | 'mating' | 'pregnant'
 
 export interface CircleInitOptions {
@@ -67,9 +67,9 @@ export interface CircleEntity {
   restSec: number
   workSec: number
   avatarTransformCount: number
-  countWorkTransforms: number
-  countLearnTransforms: number
-  countPlayTransforms: number
+  countFarmTransforms: number
+  countSchoolTransforms: number
+  countParkTransforms: number
   countProduceTransforms: number
   countProductionSessions: number
   feedRegularity: number
@@ -79,7 +79,7 @@ export interface CircleEntity {
   productionStage: ProductionStage
   productionTimer: number
   productionPartnerId: number
-  aiIntent: 'eat' | 'learn' | 'play' | 'mate' | 'work' | 'idle'
+  aiIntent: 'eat' | 'learn' | 'play' | 'mate' | 'idle'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
   aiAnchorX: number
@@ -157,9 +157,9 @@ export function createCircle(
     restSec: 0,
     workSec: 0,
     avatarTransformCount: 0,
-    countWorkTransforms: 0,
-    countLearnTransforms: 0,
-    countPlayTransforms: 0,
+    countFarmTransforms: 0,
+    countSchoolTransforms: 0,
+    countParkTransforms: 0,
     countProduceTransforms: 0,
     countProductionSessions: 0,
     feedRegularity: 0.5,
