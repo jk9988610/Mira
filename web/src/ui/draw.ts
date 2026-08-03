@@ -351,6 +351,9 @@ export interface AvatarHudData {
   farms: number
   ranches: number
   circles: number
+  lifespanSec?: number
+  temperature?: number
+  absorptionPaused?: boolean
 }
 
 export function drawAvatarCircle(
@@ -411,6 +414,23 @@ export function drawAvatarHud(
   data: AvatarHudData,
 ): void {
   drawHudMass(ctx, width, data.mass, data.zoom)
+
+  if (data.lifespanSec !== undefined) {
+    ctx.textAlign = 'right'
+    ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+    const lifeText = `寿命 ${Math.ceil(data.lifespanSec)}s`
+    const tempText =
+      data.temperature !== undefined
+        ? ` · 体温 ${Math.round(data.temperature * 100)}%`
+        : ''
+    const absorbText = data.absorptionPaused ? ' · 饱食' : ''
+    const status = lifeText + tempText + absorbText
+    ctx.font = '12px system-ui, sans-serif'
+    roundRect(ctx, width - ctx.measureText(status).width - 36, 16, ctx.measureText(status).width + 20, 24, 8)
+    ctx.fill()
+    ctx.fillStyle = data.absorptionPaused ? '#ffb74d' : '#8aa0c8'
+    ctx.fillText(status, width - 26, 32)
+  }
 
   const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 圆 ${data.circles}`
   const hint = `${data.farmHint} · ${data.ranchHint}`

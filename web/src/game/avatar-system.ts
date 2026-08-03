@@ -1,4 +1,11 @@
 import { avatarChildRadius, avatarEntityRadius } from './avatar-radius'
+import {
+  canAvatarAbsorbPellets,
+  initAvatarVitality,
+  isAvatarLifeExpired,
+  tickAvatarMetabolism,
+  updateAbsorptionPause,
+} from './avatar-vitality'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
 import { addMassLogarithmic, massToRadius, PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
@@ -8,16 +15,17 @@ import {
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
-  AVATAR_TRANSFORM_COOLDOWN_SEC,
   AVATAR_MAX_PELLETS,
   FARM_BUILD_COST,
   FARM_NEARBY_PELLET_CAP,
   FARM_PELLET_COUNT,
+  FARM_PELLET_CYCLES_BEFORE_REVERT,
   FARM_PELLET_INTERVAL_SEC,
   FARM_PELLET_RING_RADIUS,
   FARM_PELLET_SENSE_RADIUS,
   FARM_STRUCTURE_MASS,
   FARMS_PER_RANCH,
+  RANCH_ALLIES_BEFORE_REVERT,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
   RANCH_STRUCTURE_MASS,
@@ -131,20 +139,14 @@ export function wouldOverlapStructures(
   return false
 }
 
-/** 化身后建筑与新生圆是否都有合法位置 */
+/** 化身后建筑与自身位置重叠检测（不再生成后代圆） */
 export function canPlaceAvatarTransform(
   entity: CircleEntity,
   kind: 'farm' | 'ranch',
   entities: CircleEntity[],
 ): boolean {
   const structureR = structureRadius(kind)
-  if (wouldOverlapStructures(entity.x, entity.y, structureR, entities, entity.id)) {
-    return false
-  }
-
-  const leftover = Math.max(PLAYER_START_MASS, entity.mass - buildCost(kind))
-  const childRadius = avatarChildRadius(leftover)
-  return hasClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
+  return !wouldOverlapStructures(entity.x, entity.y, structureR, entities, entity.id)
 }
 
 export function canBeginAvatarTransform(
@@ -228,15 +230,12 @@ export function findNearestAvatarTransformSpot(
   }
 
   const structureR = structureRadius(kind)
-  const leftover = Math.max(PLAYER_START_MASS, entity.mass - buildCost(kind))
-  const childRadius = avatarChildRadius(leftover)
 
   const isValidSpot = (x: number, y: number): boolean => {
     if (x < structureR || y < structureR || x > WORLD_WIDTH - structureR || y > WORLD_HEIGHT - structureR) {
       return false
     }
-    if (wouldOverlapStructures(x, y, structureR, entities, entity.id)) return false
-    return hasClearSpawnPosition(x, y, childRadius, entities, entity.id)
+    return !wouldOverlapStructures(x, y, structureR, entities, entity.id)
   }
 
   if (isValidSpot(entity.x, entity.y)) {
@@ -340,18 +339,31 @@ function absorbAndFilterPellets(
   return { pellets: removePelletsByIds(pellets, absorbedIds), absorbed }
 }
 
-function rosterFromEntity(entity: CircleEntity) {
-  return {
-    name: entity.builderName || entity.name,
-    colorLight: entity.colorLight,
-    colorDark: entity.colorDark,
-    strokeColor: entity.strokeColor,
-  }
-}
-
 export interface TransformResult {
   entities: CircleEntity[]
   newControlledId: number | null
+}
+
+function pickNextPlayerControl(entities: CircleEntity[], excludeId: number): number | null {
+  for (const e of entities) {
+    if (e.id === excludeId || !isActive(e) || e.isFrozen) continue
+    if (e.avatarRole !== 'none' && e.avatarRole !== 'ally') continue
+    e.isPlayer = true
+    return e.id
+  }
+  return null
+}
+
+export function revertStructureToCircle(entity: CircleEntity): void {
+  entity.avatarRole = 'none'
+  entity.isFrozen = false
+  entity.isPlayer = false
+  entity.mass = PLAYER_START_MASS
+  entity.name = entity.builderName || entity.name
+  entity.pelletSpawnTimer = 0
+  entity.allySpawnTimer = 0
+  entity.structureProduceCount = 0
+  initAvatarVitality(entity)
 }
 
 export function completeAvatarTransform(
@@ -364,26 +376,8 @@ export function completeAvatarTransform(
     return { entities, newControlledId: null }
   }
 
-  const cost = buildCost(kind)
-  entity.builderName = entity.name.replace(/·后$/, '').replace(/的(农场|牧场)$/, '')
-  entity.mass -= cost
-
-  const leftover = Math.max(PLAYER_START_MASS, entity.mass)
   const wasPlayer = entity.isPlayer && entity.id === controlledId
-  const childRadius = avatarChildRadius(leftover)
-  const spawn = findClearSpawnPosition(entity.x, entity.y, childRadius, entities, entity.id)
-  if (!spawn) return { entities, newControlledId: null }
-
-  const roster = wasPlayer ? PLAYER_ROSTER : rosterFromEntity(entity)
-  const child = createCircle(spawn.x, spawn.y, leftover, wasPlayer, roster)
-  child.avatarTransformCooldown = AVATAR_TRANSFORM_COOLDOWN_SEC
-  if (!wasPlayer) {
-    child.avatarRole = 'ally'
-    child.name = entity.builderName
-    child.builderName = entity.builderName
-  }
-  clampEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
-
+  entity.builderName = entity.name.replace(/·后$/, '').replace(/的(农场|牧场)$/, '')
   entity.isPlayer = false
   entity.avatarRole = kind
   entity.isFrozen = true
@@ -394,10 +388,12 @@ export function completeAvatarTransform(
   entity.pendingAvatarKind = 'none'
   entity.avatarIncubateTimer = 0
   entity.invincibleTimer = 0
+  entity.structureProduceCount = 0
+  entity.absorptionPaused = false
 
   return {
-    entities: [...entities, child],
-    newControlledId: wasPlayer ? child.id : null,
+    entities,
+    newControlledId: wasPlayer ? pickNextPlayerControl(entities, entity.id) : null,
   }
 }
 
@@ -423,7 +419,7 @@ export function absorbPelletsForAvatar(
   pellets: Pellet[],
   grid?: PelletGrid,
 ): Pellet[] {
-  if (!isActive(entity) || entity.isFrozen) return []
+  if (!canAvatarAbsorbPellets(entity)) return []
   const radius = avatarEntityRadius(entity)
   const absorbed: Pellet[] = []
   const collect = (pellet: Pellet) => {
@@ -469,6 +465,10 @@ export function updateFarmStructures(
     if (pellets.length >= AVATAR_MAX_PELLETS) break
     if (countPelletsNearFarm(entity, grid) >= FARM_NEARBY_PELLET_CAP) continue
     pellets.push(...spawnPelletsAroundFarm(entity))
+    entity.structureProduceCount++
+    if (entity.structureProduceCount >= FARM_PELLET_CYCLES_BEFORE_REVERT) {
+      revertStructureToCircle(entity)
+    }
   }
   return trimPellets(pellets)
 }
@@ -483,6 +483,7 @@ export function spawnRanchAlly(entities: CircleEntity[], ranch: CircleEntity): C
   ally.avatarRole = 'ally'
   ally.name = roster.name
   ally.builderName = roster.name
+  initAvatarVitality(ally)
   clampEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
   return [...entities, ally]
 }
@@ -496,6 +497,10 @@ export function updateRanchStructures(entities: CircleEntity[], dt: number): Cir
     entity.allySpawnTimer = RANCH_ALLY_INTERVAL_SEC
     if (!canRanchSpawnAlly(next)) continue
     next = spawnRanchAlly(next, entity)
+    entity.structureProduceCount++
+    if (entity.structureProduceCount >= RANCH_ALLIES_BEFORE_REVERT) {
+      revertStructureToCircle(entity)
+    }
   }
   return next
 }
@@ -552,6 +557,34 @@ export function applyFrozenMovement(entity: CircleEntity, moveX: number, moveY: 
   clampEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
 }
 
+/** 更新可移动圆的代谢、寿命，移除寿终实体 */
+export function tickMobileAvatarVitality(
+  entities: CircleEntity[],
+  dt: number,
+  movingIds: ReadonlySet<number>,
+): CircleEntity[] {
+  const next: CircleEntity[] = []
+  for (const entity of entities) {
+    if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') {
+      next.push(entity)
+      continue
+    }
+    if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') {
+      next.push(entity)
+      continue
+    }
+    if (!isActive(entity) || entity.isFrozen) {
+      next.push(entity)
+      continue
+    }
+    tickAvatarMetabolism(entity, dt, movingIds.has(entity.id))
+    if (!isAvatarLifeExpired(entity)) next.push(entity)
+  }
+  return next
+}
+
+export { temperatureLabel } from './avatar-vitality'
+
 export function getAvatarTransformHints(
   entity: CircleEntity | null,
   entities: CircleEntity[],
@@ -559,6 +592,8 @@ export function getAvatarTransformHints(
   if (!entity) {
     return { farm: 'Q 农场(未就绪)', ranch: 'E 牧场(未就绪)' }
   }
+
+  updateAbsorptionPause(entity)
 
   if (entity.avatarTransformCooldown > 0) {
     const sec = Math.ceil(entity.avatarTransformCooldown)
@@ -569,9 +604,11 @@ export function getAvatarTransformHints(
   const ranchMassOk = entity.mass >= RANCH_BUILD_COST
   const farmPlaceOk = farmMassOk && canPlaceAvatarTransform(entity, 'farm', entities)
   const ranchPlaceOk = ranchMassOk && canPlaceAvatarTransform(entity, 'ranch', entities)
+  const saturated = entity.absorptionPaused
 
   let farm = 'Q 农场(未就绪)'
-  if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
+  if (saturated) farm = 'Q 农场(饱食中)'
+  else if (farmMassOk && farmPlaceOk) farm = 'Q 化身农场'
   else if (farmMassOk && !canBuildMoreFarms(entities)) farm = 'Q 农场(需更多牧场)'
   else if (farmMassOk) farm = 'Q 农场(位置被占)'
 

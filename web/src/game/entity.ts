@@ -27,6 +27,14 @@ export interface CircleEntity {
   /** 化身冷却剩余时间（秒） */
   avatarTransformCooldown: number
   builderName: string
+  /** 化身模式：剩余寿命（秒） */
+  lifespanSec: number
+  /** 化身模式：体温 0~1 */
+  temperature: number
+  /** 化身模式：质量过大时暂停摄取颗粒 */
+  absorptionPaused: boolean
+  /** 化身模式：农场/牧场已产出轮次 */
+  structureProduceCount: number
 }
 
 export type AvatarRole = 'none' | 'farm' | 'ranch' | 'ally'
@@ -64,6 +72,10 @@ export function createCircle(
     pendingAvatarKind: 'none',
     avatarTransformCooldown: 0,
     builderName: roster.name,
+    lifespanSec: 0,
+    temperature: 1,
+    absorptionPaused: false,
+    structureProduceCount: 0,
   }
 }
 

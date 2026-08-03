@@ -53,6 +53,7 @@ export function createGameScene(
   go: (scene: string) => void,
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
+  gamePause: { fn: (() => void) | null },
 ) {
   const world = new GameWorld()
   const pelletGrid = new PelletGrid()
@@ -121,11 +122,13 @@ export function createGameScene(
     enter() {
       reset()
       showPause(false)
+      gamePause.fn = () => showPause(true)
       requestAppFullscreen()
       sfx.unlock()
     },
     exit() {
       showPause(false)
+      if (gamePause.fn) gamePause.fn = null
     },
     update(dt: number) {
       elapsed += dt

@@ -13,10 +13,12 @@ import {
   getControlledEntity,
   resetAvatarState,
   tickAvatarTransformCooldowns,
+  tickMobileAvatarVitality,
   updateAlly,
   updateFarmStructures,
   updateRanchStructures,
 } from '../game/avatar-system'
+import { initAvatarVitality } from '../game/avatar-vitality'
 import {
   AVATAR_INITIAL_PELLETS,
   STARTER_FARM_OFFSET,
@@ -35,11 +37,14 @@ import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
 
+type PauseBridge = { fn: (() => void) | null }
+
 export function createAvatarGameScene(
   app: App,
   _go: (scene: string) => void,
   showPause: (visible: boolean) => void,
   isPaused: () => boolean,
+  gamePause: PauseBridge,
 ) {
   let entities: CircleEntity[] = []
   let pellets: Pellet[] = []
@@ -54,6 +59,12 @@ export function createAvatarGameScene(
   const syncControlledId = () => {
     const controlled = getControlledEntity(entities, controlledId)
     if (controlled && controlled.id !== controlledId) controlledId = controlled.id
+    if (!controlled) {
+      const fallback = entities.find(
+        (e) => e.isPlayer && isActive(e) && !e.isFrozen && (e.avatarRole === 'none' || e.avatarRole === 'ally'),
+      )
+      if (fallback) controlledId = fallback.id
+    }
   }
 
   const reset = () => {
@@ -61,6 +72,7 @@ export function createAvatarGameScene(
     const px = WORLD_WIDTH / 2
     const py = WORLD_HEIGHT / 2
     const player = createCircle(px, py, PLAYER_START_MASS, true, PLAYER_ROSTER)
+    initAvatarVitality(player)
     controlledId = player.id
     const starterFarm = createStarterStructure(
       px + STARTER_FARM_OFFSET.x,
@@ -85,11 +97,13 @@ export function createAvatarGameScene(
     enter() {
       reset()
       showPause(false)
+      gamePause.fn = () => showPause(true)
       requestAppFullscreen()
       sfx.unlock()
     },
     exit() {
       showPause(false)
+      if (gamePause.fn) gamePause.fn = null
     },
     update(dt: number) {
       elapsed += dt
@@ -104,6 +118,10 @@ export function createAvatarGameScene(
       tickAvatarTransformCooldowns(entities, dt)
 
       const player = getControlledEntity(entities, controlledId)
+      const movingIds = new Set<number>()
+      if (player && !player.isFrozen && (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1)) {
+        movingIds.add(player.id)
+      }
 
       const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
       const gatherTrigger = input.gatherPressed || (input.gatherHeld && !prevGatherHeld)
@@ -147,6 +165,7 @@ export function createAvatarGameScene(
 
       pelletGrid.rebuild(pellets)
 
+      entities = tickMobileAvatarVitality(entities, dt, movingIds)
       syncControlledId()
 
       const controlled = getControlledEntity(entities, controlledId)
@@ -208,6 +227,9 @@ export function createAvatarGameScene(
         farms: tribe.farms,
         ranches: tribe.ranches,
         circles: tribe.circles,
+        lifespanSec: controlled?.lifespanSec,
+        temperature: controlled?.temperature,
+        absorptionPaused: controlled?.absorptionPaused,
       })
     },
   }
