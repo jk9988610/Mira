@@ -3,6 +3,7 @@ import {
   isGamepadApiAvailable,
   readStandardGamepad,
   STANDARD_GAMEPAD_ACTIONS,
+  VIRTUAL_BUTTON_ACTIONS,
   installGamepadListeners,
 } from './gamepad'
 
@@ -19,6 +20,7 @@ export interface InputSnapshot {
   backPressed: boolean
   pausePressed: boolean
   splitPressed: boolean
+  splitHeld: boolean
   gatherHeld: boolean
   gatherPressed: boolean
   upPressed: boolean
@@ -51,6 +53,7 @@ export class InputManager {
   private virtualButtonsDown = new Set<string>()
   private prevVirtualButtonsDown = new Set<string>()
   private virtualPressPulse = new Set<string>()
+  private virtualActionPresses = new Set<Action>()
 
   constructor(bindings: Record<Action, Binding>) {
     this.bindings = bindings
@@ -83,7 +86,12 @@ export class InputManager {
 
   setVirtualButton(code: string, pressed: boolean): void {
     const wasDown = this.virtualButtonsDown.has(code)
-    if (pressed && !wasDown) this.virtualPressPulse.add(code)
+    if (pressed && !wasDown) {
+      this.virtualPressPulse.add(code)
+      for (const action of VIRTUAL_BUTTON_ACTIONS[code] ?? []) {
+        this.virtualActionPresses.add(action)
+      }
+    }
     if (pressed) this.virtualButtonsDown.add(code)
     else this.virtualButtonsDown.delete(code)
   }
@@ -92,6 +100,7 @@ export class InputManager {
   endFrame(): void {
     this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
     this.virtualPressPulse.clear()
+    this.virtualActionPresses.clear()
   }
 
   getBindings(): Record<Action, Binding> {
@@ -181,6 +190,7 @@ export class InputManager {
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
       splitPressed: this.wasActionPressed('SPLIT'),
+      splitHeld: this.isActionHeld('SPLIT'),
       gatherHeld: this.isActionHeld('GATHER'),
       gatherPressed: this.wasActionPressed('GATHER'),
       upPressed,
@@ -193,6 +203,7 @@ export class InputManager {
   }
 
   wasActionPressed(action: Action): boolean {
+    if (this.virtualActionPresses.has(action)) return true
     return this.isBindingPressed(this.bindings[action]) || this.isStandardPressed(action)
   }
 

@@ -1,3 +1,5 @@
+import type { Action } from './actions'
+
 const AXIS_DEADZONE = 0.35
 
 export interface StandardGamepadFrame {
@@ -98,6 +100,15 @@ export const STANDARD_GAMEPAD_ACTIONS = {
   SPLIT: ['2'],
   GATHER: ['3'],
 } as const
+
+/** 虚拟按键码 → 游戏动作（按下边沿） */
+export const VIRTUAL_BUTTON_ACTIONS: Record<string, readonly Action[]> = {
+  '0': ['CONFIRM'],
+  '1': ['BACK'],
+  '2': ['SPLIT'],
+  '3': ['GATHER'],
+  '9': ['PAUSE'],
+}
 
 export function isTouchDevice(): boolean {
   return 'ontouchstart' in window || navigator.maxTouchPoints > 0

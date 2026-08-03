@@ -146,6 +146,9 @@ body {
   font-size: 18px;
   background: linear-gradient(145deg, #546e7a, #37474f);
   border: 2px solid #90a4ae;
+  /* 扩大顶部 Start 触控区域 */
+  padding: 12px;
+  margin: -12px;
 }
 
 .vc-shoulder {

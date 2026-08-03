@@ -131,18 +131,18 @@ export function createGameScene(
       elapsed += dt
       splitCooldown = Math.max(0, splitCooldown - dt)
 
-      if (showResults) {
-        if (app.input.snapshot().confirmPressed) go('menu')
-        return
-      }
-
       if (isPaused()) return
-
-      if (!updateStartCountdown(dt)) return
 
       const input = app.input.snapshot()
       if (input.pausePressed && !matchEnded) {
         showPause(true)
+        return
+      }
+
+      if (!updateStartCountdown(dt)) return
+
+      if (showResults) {
+        if (input.confirmPressed) go('menu')
         return
       }
 
