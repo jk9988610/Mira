@@ -9,7 +9,7 @@ import {
   updateSatietyAbsorption,
 } from './avatar-vitality'
 import { canAbsorbPellet, createPellet, type Pellet } from './pellet'
-import { addMassLogarithmic, PLAYER_START_MASS } from './physics'
+import { PLAYER_START_MASS } from './physics'
 import type { CircleEntity } from './entity'
 import { clampEntityToWorld, createCircle, isActive } from './entity'
 import {
@@ -18,6 +18,7 @@ import {
   AVATAR_SEEK_FAIL_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
   AVATAR_MAX_PELLETS,
+  AVG_PELLET_MASS_ESTIMATE,
   FARM_BUILD_COST,
   FARM_NEARBY_PELLET_CAP,
   FARM_PELLET_COUNT,
@@ -29,8 +30,10 @@ import {
   RANCH_ALLIES_BEFORE_REVERT,
   RANCH_ALLY_INTERVAL_SEC,
   RANCH_BUILD_COST,
+  SATIETY_ABSORB_BATCH_THRESHOLD,
   SPAWN_CLEARANCE,
 } from './avatar-config'
+import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
 import { speedForMass } from './movement'
 import type { PelletGrid } from './pellet-grid'
 import { removePelletsByIds } from './pellet-util'
@@ -365,6 +368,21 @@ export function completeAvatarTransform(
   return { entities }
 }
 
+export function getAvatarTransformCountdownSec(entity: CircleEntity): number | null {
+  if (!entity.isFrozen) return null
+  if (entity.avatarRole === 'farm') {
+    const cyclesLeft = FARM_PELLET_CYCLES_BEFORE_REVERT - entity.structureProduceCount
+    if (cyclesLeft <= 0) return 0
+    return entity.pelletSpawnTimer + (cyclesLeft - 1) * FARM_PELLET_INTERVAL_SEC
+  }
+  if (entity.avatarRole === 'ranch') {
+    const alliesLeft = RANCH_ALLIES_BEFORE_REVERT - entity.structureProduceCount
+    if (alliesLeft <= 0) return 0
+    return entity.allySpawnTimer + (alliesLeft - 1) * RANCH_ALLY_INTERVAL_SEC
+  }
+  return null
+}
+
 export function absorbPelletsForAvatar(
   entity: CircleEntity,
   pellets: Pellet[],
@@ -373,11 +391,22 @@ export function absorbPelletsForAvatar(
   if (!canAvatarAbsorbPellets(entity)) return []
   const radius = avatarEntityRadius(entity)
   const absorbed: Pellet[] = []
+  const intakeRoom = remainingIntakeRoom(entity)
+  let absorbedMass = 0
+
+  const maxPellets =
+    entity.satiety >= SATIETY_ABSORB_BATCH_THRESHOLD
+      ? Math.max(1, Math.ceil(intakeRoom / AVG_PELLET_MASS_ESTIMATE))
+      : Number.POSITIVE_INFINITY
+
   const collect = (pellet: Pellet) => {
+    if (absorbed.length >= maxPellets) return
+    if (absorbedMass >= intakeRoom) return
     if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
-    const before = entity.mass
-    entity.mass = addMassLogarithmic(entity.mass, pellet.mass)
-    onAvatarPelletAbsorbed(entity, entity.mass - before > 0 ? entity.mass - before : pellet.mass)
+    const gain = addIntakeMass(entity, pellet.mass)
+    if (gain <= 0) return
+    absorbedMass += gain
+    onAvatarPelletAbsorbed(entity, gain)
     absorbed.push(pellet)
   }
   if (grid) {
@@ -560,6 +589,7 @@ export function tickMobileAvatarVitality(
 }
 
 export { initOptimalAvatarState, satietyLabel } from './avatar-vitality'
+export { healthLabel } from './avatar-mass'
 
 export function getAvatarTransformHints(
   entity: CircleEntity | null,

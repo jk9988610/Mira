@@ -1,5 +1,9 @@
 import {
   CIRCLE_LIFESPAN_SEC,
+  HEALTH_DECAY_LOW_SATIETY,
+  HEALTH_DECAY_STARVE,
+  HEALTH_MAX,
+  HEALTH_RECOVER_RATE,
   LIFESPAN_AVATAR_TRANS_THRESHOLD,
   LIFESPAN_EVAL_INTERVAL_SEC,
   LOW_MASS_PENALTY_SEC,
@@ -11,11 +15,19 @@ import {
   SATIETY_MOVE_DECAY,
   SATIETY_STARVE_MASS_DRAIN,
 } from './avatar-config'
+import {
+  clampHealth,
+  drainBodyMass,
+  initEntityMass,
+  remainingIntakeRoom,
+  tickDigestion,
+} from './avatar-mass'
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
 import { PLAYER_START_MASS } from './physics'
 
 export function initAvatarVitality(entity: CircleEntity): void {
+  initEntityMass(entity, entity.mass, HEALTH_MAX)
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
   entity.satiety = 1
   entity.absorptionPaused = false
@@ -35,12 +47,13 @@ export function initOptimalAvatarState(entity: CircleEntity): void {
   entity.satiety = 1
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
   entity.feedRegularity = 0.85
+  entity.health = HEALTH_MAX
 }
 
-/** 饱食度过高时暂停摄取；回落后恢复 */
+/** 饱食度过高或摄入已满时暂停摄取；回落后恢复 */
 export function updateSatietyAbsorption(entity: CircleEntity): void {
   if (entity.isFrozen || entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return
-  if (entity.satiety >= SATIETY_ABSORB_PAUSE) {
+  if (entity.satiety >= SATIETY_ABSORB_PAUSE || remainingIntakeRoom(entity) <= 0) {
     entity.absorptionPaused = true
   } else if (entity.satiety <= SATIETY_ABSORB_RESUME) {
     entity.absorptionPaused = false
@@ -51,14 +64,25 @@ export function canAvatarAbsorbPellets(entity: CircleEntity): boolean {
   if (!isActive(entity) || entity.isFrozen) return false
   if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return false
   updateSatietyAbsorption(entity)
-  return !entity.absorptionPaused
+  if (entity.absorptionPaused) return false
+  return remainingIntakeRoom(entity) > 0
 }
 
-export function onAvatarPelletAbsorbed(entity: CircleEntity, pelletMass: number): void {
-  const gain = (pelletMass / PLAYER_START_MASS) * SATIETY_GAIN_PER_START_MASS
+export function onAvatarPelletAbsorbed(entity: CircleEntity, absorbedMass: number): void {
+  const gain = (absorbedMass / PLAYER_START_MASS) * SATIETY_GAIN_PER_START_MASS
   entity.satiety = Math.min(1, entity.satiety + gain)
   if (entity.satiety > SATIETY_LOW_THRESHOLD) {
     entity.feedRegularity = Math.min(1, entity.feedRegularity + 0.06)
+  }
+}
+
+function tickHealth(entity: CircleEntity, dt: number): void {
+  if (entity.satiety <= 0) {
+    entity.health = clampHealth(entity.health - HEALTH_DECAY_STARVE * dt)
+  } else if (entity.satiety <= SATIETY_LOW_THRESHOLD) {
+    entity.health = clampHealth(entity.health - HEALTH_DECAY_LOW_SATIETY * dt)
+  } else if (entity.feedRegularity > 0.65 && entity.satiety > 0.55) {
+    entity.health = clampHealth(entity.health + HEALTH_RECOVER_RATE * dt)
   }
 }
 
@@ -141,14 +165,17 @@ export function tickAvatarMetabolism(
   if (!isActive(entity) || entity.isFrozen) return
   if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch') return
 
+  tickDigestion(entity, dt)
+
   let decay = SATIETY_IDLE_DECAY * dt
   if (isMoving) decay += SATIETY_MOVE_DECAY * dt
   entity.satiety = Math.max(0, entity.satiety - decay)
 
   if (entity.satiety <= 0) {
-    entity.mass = Math.max(PLAYER_START_MASS * 0.3, entity.mass - SATIETY_STARVE_MASS_DRAIN * dt)
+    drainBodyMass(entity, SATIETY_STARVE_MASS_DRAIN * dt)
   }
 
+  tickHealth(entity, dt)
   tickLifespan(entity, dt, isMoving)
 }
 

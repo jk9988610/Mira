@@ -16,8 +16,31 @@ export const SATIETY_MOVE_DECAY = 0.006
 export const SATIETY_LOW_THRESHOLD = 0.28
 /** 饱食度为 0 时消耗质量（质量/秒） */
 export const SATIETY_STARVE_MASS_DRAIN = PLAYER_START_MASS * 0.004
-/** 每摄取相当于初始质量一份颗粒，饱食度上升量 */
-export const SATIETY_GAIN_PER_START_MASS = 0.28
+/** 每摄取相当于初始质量一份颗粒，饱食度上升量（直接摄取时的少量提升） */
+export const SATIETY_GAIN_PER_START_MASS = 0.08
+/** 消化摄入质量时，每单位质量恢复的饱食度 */
+export const SATIETY_PER_INTAKE_MASS = 0.35
+/** 饱食度高于此值时，单次摄取受摄入质量上限约束更明显 */
+export const SATIETY_ABSORB_BATCH_THRESHOLD = 0.68
+
+/** 健康值范围 */
+export const HEALTH_MAX = 1
+export const HEALTH_MIN = 0.25
+/** 本体质量上限基数（×健康） */
+export const BODY_MASS_CAP_BASE = PLAYER_START_MASS * 10
+/** 摄入质量上限基数（×健康），亦是一次摄取的质量上限 */
+export const INTAKE_MASS_CAP_BASE = PLAYER_START_MASS * 2.2
+/** 消化基础速率（质量/秒，×健康） */
+export const DIGEST_BASE_RATE = PLAYER_START_MASS * 0.12
+/** 估算颗粒质量，用于计算高饱食下单次可吞颗粒数 */
+export const AVG_PELLET_MASS_ESTIMATE = PLAYER_START_MASS * 0.045
+
+/** 健康值自然恢复（每秒） */
+export const HEALTH_RECOVER_RATE = 0.012
+/** 饥竭时健康下降（每秒） */
+export const HEALTH_DECAY_STARVE = 0.04
+/** 长期低饱食时健康下降（每秒） */
+export const HEALTH_DECAY_LOW_SATIETY = 0.015
 
 /** 基础寿命（秒） */
 export const CIRCLE_LIFESPAN_SEC = 360

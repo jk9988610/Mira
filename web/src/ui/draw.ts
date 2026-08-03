@@ -1,6 +1,8 @@
 import type { LeaderboardView } from '../game/leaderboard'
-import type { AvatarRole, CircleEntity } from '../game/entity'
+import { getAvatarTransformCountdownSec } from '../game/avatar-system'
+import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
+import type { AvatarRole, CircleEntity } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
 export function clearScreen(
@@ -365,12 +367,16 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   const lines = [
     `质量 ${Math.round(entity.mass)}`,
     `饱食 ${Math.round(entity.satiety * 100)}%`,
+    `健康 ${Math.round(entity.health * 100)}% ${healthLabel(entity.health)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
+    `化身 ${entity.avatarTransformCount}次`,
   ]
+  const countdown = getAvatarTransformCountdownSec(entity)
+  if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
   if (roleStatus) lines.push(roleStatus)
 
   const lineHeight = 12
-  const boxWidth = 92
+  const boxWidth = 108
   const boxHeight = lines.length * lineHeight + 8
   const x = entity.x - boxWidth / 2
   const y = entity.y + r + 10
@@ -384,8 +390,9 @@ export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: Cir
   ctx.textBaseline = 'top'
   ctx.font = '11px system-ui, sans-serif'
   lines.forEach((line, index) => {
-    const isRole = index === lines.length - 1 && roleStatus !== null
-    ctx.fillStyle = isRole ? '#8fd3ff' : '#b8c4dc'
+    const isRole = roleStatus !== null && index === lines.length - 1
+    const isCountdown = countdown !== null && line.startsWith('结束化身')
+    ctx.fillStyle = isRole || isCountdown ? '#8fd3ff' : '#b8c4dc'
     ctx.fillText(line, entity.x, y + 4 + index * lineHeight)
   })
   ctx.restore()
