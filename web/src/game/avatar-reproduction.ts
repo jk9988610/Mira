@@ -47,7 +47,7 @@ function canMatePair(a: CircleEntity, b: CircleEntity, gameTimeSec = 0): boolean
 /** 雌性追随最强信号，雄性锁定回应自己的雌性 */
 export function syncMateTargets(entities: CircleEntity[], now = 0): void {
   for (const e of entities) {
-    if (!isActive(e) || e.isFrozen || e.productionStage !== 'none') {
+    if (!isActive(e) || e.productionStage !== 'none') {
       e.aiMateTargetId = 0
       continue
     }
@@ -64,13 +64,13 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
   }
 
   for (const female of entities) {
-    if (!isActive(female) || female.isFrozen || female.gender !== 'female') continue
+    if (!isActive(female) || female.gender !== 'female') continue
     if (!isActivelySeekingMate(female, now)) continue
 
     let bestMale: CircleEntity | null = null
     let bestStrength = MATE_SIGNAL_MIN_STRENGTH
     for (const male of entities) {
-      if (!isActive(male) || male.isFrozen || male.gender !== 'male') continue
+      if (!isActive(male) || male.gender !== 'male') continue
       if (!isActivelySeekingMate(male, now)) continue
       if (areKin(male, female)) continue
       const strength = mateSignalStrength(male, female)
@@ -83,13 +83,13 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
   }
 
   for (const male of entities) {
-    if (!isActive(male) || male.isFrozen || male.gender !== 'male') continue
+    if (!isActive(male) || male.gender !== 'male') continue
     if (!isActivelySeekingMate(male, now)) continue
 
     let bestFemale: CircleEntity | null = null
     let bestDist = Infinity
     for (const female of entities) {
-      if (!isActive(female) || female.isFrozen || female.gender !== 'female') continue
+      if (!isActive(female) || female.gender !== 'female') continue
       if (!isActivelySeekingMate(female, now)) continue
       if (female.aiMateTargetId !== male.id) continue
       if (areKin(male, female)) continue
@@ -114,6 +114,16 @@ function moveTowardPartner(entity: CircleEntity, partner: CircleEntity, dt: numb
   syncEntityGeo(entity)
 }
 
+function releaseTransformForProduction(entity: CircleEntity): void {
+  if (!entity.isFrozen) return
+  entity.avatarRole = 'none'
+  entity.isFrozen = false
+  entity.name = entity.builderName || entity.name
+  entity.pelletSpawnTimer = 0
+  entity.structureProduceCount = 0
+  entity.avatarTransformTimer = 0
+}
+
 /** 双向奔赴；moveSelf=false 时仅检测接触（用于玩家手动移动） */
 export function updateMatePursuit(
   entity: CircleEntity,
@@ -122,7 +132,7 @@ export function updateMatePursuit(
   now = 0,
   moveSelf = true,
 ): boolean {
-  if (!isPursuingMate(entity, now) || entity.productionStage !== 'none' || entity.isFrozen) {
+  if (!isPursuingMate(entity, now) || entity.productionStage !== 'none') {
     return false
   }
 
@@ -142,7 +152,7 @@ export function updateMatePursuit(
     return true
   }
 
-  if (moveSelf) moveTowardPartner(entity, target, dt)
+  if (moveSelf && !entity.isFrozen) moveTowardPartner(entity, target, dt)
   return true
 }
 
@@ -152,7 +162,7 @@ function hash01(seed: number): number {
 }
 
 export function canEngageProduction(entity: CircleEntity, gameTimeSec = 0): boolean {
-  return isAdult(entity, gameTimeSec) && !entity.isFrozen
+  return isAdult(entity, gameTimeSec)
 }
 
 export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
@@ -180,13 +190,14 @@ export function canStartProduction(
 ): boolean {
   if (!isAdult(male, gameTimeSec) || !isAdult(female, gameTimeSec)) return false
   if (male.gender !== 'male' || female.gender !== 'female') return false
-  if (!isSeekingMate(male) || !isSeekingMate(female)) return false
-  if (male.isFrozen || female.isFrozen) return false
+  if (!isSeekingMate(male, gameTimeSec) || !isSeekingMate(female, gameTimeSec)) return false
   if (areKin(male, female)) return false
   return true
 }
 
 export function beginProductionPair(male: CircleEntity, female: CircleEntity): void {
+  releaseTransformForProduction(male)
+  releaseTransformForProduction(female)
   male.productionStage = 'active'
   female.productionStage = 'active'
   male.productionTimer = PRODUCTION_DURATION_SEC

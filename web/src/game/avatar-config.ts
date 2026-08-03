@@ -59,10 +59,10 @@ export const LEARN_PELLET_COUNT = 8
 export const PLAY_PELLET_INTERVAL_SEC = 1.8
 export const PLAY_PELLET_COUNT = 8
 export const PRODUCTION_DURATION_SEC = 2
-export const PRODUCTION_COOLDOWN_SEC = 36 // 仅雌性生产后冷却
+export const PRODUCTION_COOLDOWN_SEC = 8 // 仅雌性生产后冷却
 export const MATE_SIGNAL_RANGE_RATIO = 0.46
 export const MATE_SIGNAL_MIN_STRENGTH = 0.08
-export const MATE_PURSUIT_SPEED = 98
+export const MATE_PURSUIT_SPEED = 240
 /** 达到此年龄（秒）视为成年 */
 export const ADULT_AGE_SEC = 48
 /** 每种颗粒（食物/知识/快乐）的初始数量 */

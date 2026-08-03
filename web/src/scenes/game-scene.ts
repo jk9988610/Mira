@@ -168,7 +168,7 @@ export function createGameScene(
         sfx.absorbPellet()
       }
 
-      if (gatherTrigger && player && isAdult(player, elapsed) && player.productionStage === 'none' && !player.isFrozen) {
+      if (gatherTrigger && player && isAdult(player, elapsed) && player.productionStage === 'none') {
         player.mateSeekUrge = Math.min(1, player.mateSeekUrge + 0.35)
       }
 
@@ -186,8 +186,10 @@ export function createGameScene(
 
       syncMateTargets(entities, elapsed)
 
-      if (player && !player.isFrozen && player.productionStage === 'none') {
-        applyFrozenMovement(player, input.moveX, input.moveY, dt)
+      if (player && player.productionStage === 'none') {
+        if (!player.isFrozen) {
+          applyFrozenMovement(player, input.moveX, input.moveY, dt)
+        }
         updateMatePursuit(player, entities, dt, elapsed, false)
       }
 
