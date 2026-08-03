@@ -64,7 +64,29 @@ export const MATE_SIGNAL_RANGE_RATIO = 0.46
 export const MATE_SIGNAL_MIN_STRENGTH = 0.08
 export const MATE_PURSUIT_SPEED = 240
 /** 达到此年龄（秒）视为成年 */
-export const ADULT_AGE_SEC = 48
+export const ADULT_AGE_SEC = 24
+
+/** 新生后代在母亲身边停留时长（秒） */
+export const OFFSPRING_MOTHER_BOND_SEC = 14
+
+/** 超过该年龄后求偶信号大幅衰减 */
+export const ELDER_MATE_AGE_SEC = 55
+
+/** 自然闲逛：换向间隔与转向平滑 */
+export const WANDER_INTERVAL_MIN_SEC = 3.5
+export const WANDER_INTERVAL_MAX_SEC = 7
+export const WANDER_STEER = 2.8
+
+/** 家族市场 */
+export const INITIAL_FAMILY_FUNDS = 90
+export const ORDER_POST_COST = 18
+export const ORDER_POST_COOLDOWN_SEC = 22
+export const ORDER_DEADLINE_SEC = 35
+export const ORDER_REWARD = 28
+export const ORDER_FULFILL_RADIUS = 95
+export const FAMILY_SHARE_OF_REWARD = 0.5
+export const FAMILY_NEED_POST_THRESHOLD = 0.38
+export const MAX_ORDER_HISTORY = 5
 /** 每种颗粒（食物/知识/快乐）的初始数量 */
 export const AVATAR_INITIAL_PELLETS_PER_KIND = 18
 export const AVATAR_SPAWN_OFFSET = 100

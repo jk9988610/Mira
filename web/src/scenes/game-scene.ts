@@ -37,8 +37,14 @@ import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
+import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure, drawMarketHud } from '../ui/draw'
 import { computeTribeDemographics } from '../game/tribe-stats'
+import {
+  getFamilyMarketRecords,
+  initFamilyMarkets,
+  resetFamilyMarkets,
+  tickFamilyMarkets,
+} from '../game/family-market'
 
 type PauseBridge = { fn: (() => void) | null }
 
@@ -109,6 +115,7 @@ export function createGameScene(
 
   const reset = () => {
     resetAvatarState()
+    resetFamilyMarkets()
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = STARTER_OFFSETS.map((offset, i) => {
@@ -129,6 +136,7 @@ export function createGameScene(
     pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0
+    initFamilyMarkets(entities)
   }
 
   return {
@@ -194,6 +202,8 @@ export function createGameScene(
       }
 
       tickProductionCooldowns(entities, dt)
+
+      tickFamilyMarkets(entities, elapsed, dt)
 
       pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
       pellets = updateSchoolStructures(entities, pellets, dt)
@@ -283,7 +293,8 @@ export function createGameScene(
       const tribe = countTribeStructures(entities)
       const demo = computeTribeDemographics(entities, elapsed)
       const hints = getAvatarTransformHints(controlled, entities, elapsed)
-      drawAvatarHud(ctx, width, height, {
+      const familyMarkets = getFamilyMarketRecords()
+      const hudData = {
         gameTimeSec: elapsed,
         zoom: cam.zoom,
         farmHint: hints.farmHint,
@@ -296,7 +307,11 @@ export function createGameScene(
         producing: tribe.producing,
         circles: tribe.circles,
         demographics: demo,
-      })
+        familyMarkets,
+        entities,
+      }
+      drawAvatarHud(ctx, width, height, hudData)
+      drawMarketHud(ctx, width, height, hudData)
     },
   }
 }

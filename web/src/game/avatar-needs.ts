@@ -1,4 +1,5 @@
 import {
+  FAMILY_NEED_POST_THRESHOLD,
   FARM_TRANSFORM_WEIGHT,
   JOY_CAP,
   KNOWLEDGE_CAP,
@@ -117,6 +118,35 @@ export function findJuvenileOffspring(
     else if (parent.gender === 'female' && e.motherId === parent.id) out.push(e)
   }
   return out
+}
+
+/** 家族调查：按平均饱食/知识/快乐比例选择最急需的化身类型 */
+export function chooseAvatarKindToBuild(
+  foodRatio: number,
+  knowledgeRatio: number,
+  happinessRatio: number,
+): TransformKind | null {
+  const eat = 1 - foodRatio
+  const learn = 1 - knowledgeRatio
+  const play = 1 - happinessRatio
+  if (
+    eat < FAMILY_NEED_POST_THRESHOLD &&
+    learn < FAMILY_NEED_POST_THRESHOLD &&
+    play < FAMILY_NEED_POST_THRESHOLD
+  ) {
+    return null
+  }
+  if (eat >= learn && eat >= play) return 'farm'
+  if (learn >= play) return 'school'
+  return 'park'
+}
+
+export function hasJuvenileOffspringToPlan(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  gameTimeSec: number,
+): boolean {
+  return findJuvenileOffspring(entity, entities, gameTimeSec).length > 0
 }
 
 export function offspringPlanTransformKind(offspring: CircleEntity[]): TransformKind {

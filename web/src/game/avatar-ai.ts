@@ -1,4 +1,10 @@
-import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
+import {
+  NPC_ARRIVE_DIST,
+  NPC_JITTER_DIST,
+  NPC_TARGET_CACHE_SEC,
+  WANDER_INTERVAL_MAX_SEC,
+  WANDER_INTERVAL_MIN_SEC,
+} from './avatar-config'
 import { avatarEntityRadius } from './avatar-radius'
 import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
@@ -10,7 +16,7 @@ import {
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
-import { isJuvenile } from './entity'
+import { isActive, isJuvenile } from './entity'
 import type { PelletGrid } from './pellet-grid'
 import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
@@ -115,12 +121,23 @@ function moveToward(
 function wander(entity: CircleEntity, dt: number, seekingMate = false): void {
   entity.wanderTimer -= dt
   if (entity.wanderTimer <= 0) {
-    entity.wanderAngle += (Math.random() - 0.5) * (seekingMate ? 1.4 : 1.0)
-    entity.wanderTimer = seekingMate ? 1.0 + Math.random() * 1.6 : 1.6 + Math.random() * 2.4
+    const angle = Math.random() * Math.PI * 2
+    const newDirX = Math.cos(angle)
+    const newDirY = Math.sin(angle)
+    const blend = 0.38
+    entity.wanderDirX = entity.wanderDirX * (1 - blend) + newDirX * blend
+    entity.wanderDirY = entity.wanderDirY * (1 - blend) + newDirY * blend
+    const len = Math.hypot(entity.wanderDirX, entity.wanderDirY) || 1
+    entity.wanderDirX /= len
+    entity.wanderDirY /= len
+    const span = WANDER_INTERVAL_MAX_SEC - WANDER_INTERVAL_MIN_SEC
+    entity.wanderTimer =
+      WANDER_INTERVAL_MIN_SEC + Math.random() * span + (seekingMate ? 0.8 : 0)
   }
+
   const speed = speedForMass(entity.mass) * (seekingMate ? 0.42 : 0.35)
-  entity.x += Math.cos(entity.wanderAngle) * speed * dt
-  entity.y += Math.sin(entity.wanderAngle) * speed * dt
+  entity.x += entity.wanderDirX * speed * dt
+  entity.y += entity.wanderDirY * speed * dt
   clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
   syncEntityGeo(entity)
 }
@@ -153,6 +170,24 @@ export function updateNpcIntent(
   if (entity.productionStage === 'active') {
     entity.aiIntent = 'wait'
     return { moving: false, sleeping: false }
+  }
+
+  if (entity.motherBondTimer > 0) {
+    entity.motherBondTimer = Math.max(0, entity.motherBondTimer - dt)
+    const mother = entities.find((e) => e.id === entity.motherId && isActive(e))
+    if (mother) {
+      const dx = mother.x - entity.x
+      const dy = mother.y - entity.y
+      const dist = Math.hypot(dx, dy)
+      const orbit = avatarEntityRadius(mother) + avatarEntityRadius(entity) + 26
+      if (dist > orbit) {
+        moveToward(entity, mother.x, mother.y, dt, 0.62, orbit)
+      } else {
+        wander(entity, dt * 0.4, false)
+      }
+      entity.aiIntent = 'wander'
+      return { moving: true, sleeping: false }
+    }
   }
 
   if (isPursuingMate(entity, now)) {

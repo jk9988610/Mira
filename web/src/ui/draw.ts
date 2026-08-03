@@ -8,6 +8,7 @@ import { getAvatarTransformCountdownSec } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
 import type { TribeDemographics } from '../game/tribe-stats'
+import type { FamilyMarketRecord } from '../game/family-market'
 import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
@@ -164,6 +165,8 @@ export interface AvatarHudData {
   producing: number
   circles: number
   demographics: TribeDemographics
+  familyMarkets: FamilyMarketRecord[]
+  entities: CircleEntity[]
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
@@ -329,7 +332,81 @@ export function drawAvatarHud(
   drawPanel(demoLine)
 
   for (const fam of demo.families) {
-    drawPanel(`${fam.familyName}，后代 ${fam.offspringCount}`)
+    const market = data.familyMarkets.find((m) => m.familyId === fam.familyId)
+    if (market) {
+      const chief = data.entities.find((e) => e.id === market.chiefId)
+      const chiefId = chief ? formatCitizenId(chief) : '—'
+      drawPanel(
+        `${fam.familyName} · 资金 ${Math.floor(market.funds)} · 族长 ${market.chiefName}（${chiefId}）`,
+        28,
+      )
+    } else {
+      drawPanel(`${fam.familyName}，后代 ${fam.offspringCount}`)
+    }
+  }
+}
+
+const MAX_ORDER_HISTORY_DISPLAY = 5
+
+const KIND_LABEL: Record<string, string> = {
+  farm: '农场',
+  school: '校园',
+  park: '乐园',
+}
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  open: '待接单',
+  assigned: '进行中',
+  fulfilled: '已完成',
+  cancelled: '已取消',
+  expired: '已过期',
+}
+
+export function drawMarketHud(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  _height: number,
+  data: AvatarHudData,
+): void {
+  ctx.textAlign = 'right'
+  ctx.font = '12px system-ui, sans-serif'
+
+  let y = 16
+  const panelW = Math.min(360, width - 32)
+
+  const drawRightPanel = (text: string, h = 24) => {
+    ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+    const tw = Math.min(ctx.measureText(text).width + 20, panelW)
+    const x = width - 16 - tw
+    roundRect(ctx, x, y, tw, h, 8)
+    ctx.fill()
+    ctx.fillStyle = '#8aa0c8'
+    ctx.fillText(text, width - 26, y + 16)
+    y += h + 6
+  }
+
+  drawRightPanel('订单与市场', 24)
+
+  for (const market of data.familyMarkets) {
+    const fam = data.demographics.families.find((f) => f.familyId === market.familyId)
+    const famName = fam?.familyName ?? `家族${market.familyId}`
+    const needLine = `需求 饱${(market.surveyFood * 100).toFixed(0)}% 知${(market.surveyKnowledge * 100).toFixed(0)}% 乐${(market.surveyHappiness * 100).toFixed(0)}%`
+    drawRightPanel(`${famName} · ${needLine}`, 28)
+
+    const cooldown = Math.max(0, market.orderPostCooldownUntil - data.gameTimeSec)
+    if (cooldown > 0.5) {
+      drawRightPanel(`发单冷却 ${Math.ceil(cooldown)}s`)
+    }
+
+    for (const order of market.orders.slice(0, MAX_ORDER_HISTORY_DISPLAY)) {
+      const kind = KIND_LABEL[order.kind] ?? order.kind
+      const status = ORDER_STATUS_LABEL[order.status] ?? order.status
+      const remain = Math.max(0, order.deadline - data.gameTimeSec)
+      drawRightPanel(
+        `#${order.id} ${kind} · ${status} · 截止${Math.ceil(remain)}s · 赏${order.reward}`,
+        28,
+      )
+    }
   }
 }
 
