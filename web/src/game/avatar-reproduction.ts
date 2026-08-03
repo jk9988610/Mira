@@ -22,11 +22,9 @@ export function canEngageProduction(entity: CircleEntity): boolean {
 }
 
 export function isSeekingMate(entity: CircleEntity): boolean {
-  return (
-    canEngageProduction(entity) &&
-    entity.productionStage === 'none' &&
-    entity.productionCooldown <= 0
-  )
+  if (!canEngageProduction(entity) || entity.productionStage !== 'none') return false
+  if (entity.gender === 'male') return true
+  return entity.productionCooldown <= 0
 }
 
 /** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
@@ -115,13 +113,14 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
     e.productionStage = 'none'
     e.productionTimer = 0
     e.productionPartnerId = 0
-    e.productionCooldown = PRODUCTION_COOLDOWN_SEC
   }
+  male.productionCooldown = 0
+  female.productionCooldown = PRODUCTION_COOLDOWN_SEC
 }
 
 export function tickProductionCooldowns(entities: CircleEntity[], dt: number): void {
   for (const e of entities) {
-    if (!isActive(e) || e.productionCooldown <= 0) continue
+    if (!isActive(e) || e.gender !== 'female' || e.productionCooldown <= 0) continue
     e.productionCooldown = Math.max(0, e.productionCooldown - dt)
   }
 }

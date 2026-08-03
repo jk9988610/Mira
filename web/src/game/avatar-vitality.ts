@@ -57,7 +57,8 @@ export function initAvatarVitality(entity: CircleEntity, birthGameTimeSec = 0): 
   entity.visualScale = 1
   entity.avatarTransformTimer = 0
   entity.birthGameTimeSec = birthGameTimeSec
-  entity.productionCooldown = Math.random() * PRODUCTION_COOLDOWN_SEC * 0.72
+  entity.productionCooldown =
+    entity.gender === 'female' ? Math.random() * PRODUCTION_COOLDOWN_SEC * 0.72 : 0
 }
 
 export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 0): void {
