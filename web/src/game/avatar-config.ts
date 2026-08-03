@@ -12,6 +12,8 @@ export const SATIETY_ABSORB_RESUME = 0.72
 export const SATIETY_IDLE_DECAY = 0.018
 /** 移动时额外饱食度下降（每秒） */
 export const SATIETY_MOVE_DECAY = 0.006
+/** 睡眠时饱食度下降（每秒） */
+export const SATIETY_SLEEP_DECAY = 0.004
 /** 饱食度低于此值视为「经常挨饿」，影响寿命评估 */
 export const SATIETY_LOW_THRESHOLD = 0.28
 /** 饱食度为 0 时消耗质量（质量/秒） */
@@ -51,37 +53,47 @@ export const LIFESPAN_AVATAR_TRANS_THRESHOLD = 3
 /** 低质量持续超过此秒数后，寿命消耗翻倍 */
 export const LOW_MASS_PENALTY_SEC = 4
 
+/** 游戏内一天时长（秒） */
+export const DAY_DURATION_SEC = 24
+/** 工作日化身时段（秒） */
+export const DAY_WORK_SEC = 8
+/** 睡眠时段（秒） */
+export const DAY_SLEEP_SEC = 8
+/** 觅食时段（秒） */
+export const DAY_FORAGE_SEC = 8
+/** 每周工作日天数（其余为周末） */
+export const WEEKDAY_COUNT = 5
+/** 牧场时刻：连续农场化身上限，超过则下次选牧场 */
+export const RANCH_MOMENT_FARM_STREAK = 3
+
 export const FARM_PELLET_INTERVAL_SEC = 1.6
 export const FARM_PELLET_RING_RADIUS = 130
 export const FARM_PELLET_COUNT = 26
-/** 单农场感知半径内（含其他农场产出的）颗粒上限 */
 export const FARM_NEARBY_PELLET_CAP = 110
 export const FARM_PELLET_SENSE_RADIUS = FARM_PELLET_RING_RADIUS + 90
-/** 农场产出多少轮颗粒后结束化身 */
 export const FARM_PELLET_CYCLES_BEFORE_REVERT = 10
 export const RANCH_ALLY_INTERVAL_SEC = 24
 export const RANCH_SPAWN_RING_RADIUS = 200
-/** 牧场产出多少个圆后结束化身 */
 export const RANCH_ALLIES_BEFORE_REVERT = 2
 export const AVATAR_INITIAL_PELLETS = 280
 export const AVATAR_SPAWN_OFFSET = 100
 export const SPAWN_CLEARANCE = 48
 
-/** 开局 4 个圆的质量（可立即化身牧场） */
 export const STARTER_OPTIMAL_MASS = RANCH_BUILD_COST
 
-/** 每个牧场最多支撑的农场数（超过则禁止再建农场） */
-export const FARMS_PER_RANCH = 8
 /** 每个牧场最多同时存在的可移动圆数（玩家 + 后代） */
 export const ALLIES_PER_RANCH = 4
-/** 化身冷却时间（秒） */
 export const AVATAR_TRANSFORM_COOLDOWN_SEC = 3
-/** 世界颗粒总量上限（性能保护） */
 export const AVATAR_MAX_PELLETS = 1400
-/** AI 寻位目标缓存时间（秒） */
 export const AVATAR_SEEK_CACHE_SEC = 0.4
-/** 寻位失败后的冷却（秒），避免每帧全图搜索导致卡死 */
 export const AVATAR_SEEK_FAIL_CACHE_SEC = 1.5
+
+/** AI 寻路/觅食缓存（秒） */
+export const NPC_TARGET_CACHE_SEC = 1.4
+/** 靠近目标小于此距离则不再移动，避免抖动 */
+export const NPC_ARRIVE_DIST = 32
+/** 与其他圆分离的最小间距 */
+export const NPC_SEPARATION_GAP = 52
 
 /** @deprecated */
 export const AVATAR_FARM_MASS_THRESHOLD = FARM_BUILD_COST

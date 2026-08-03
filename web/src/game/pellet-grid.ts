@@ -8,6 +8,7 @@ const MAX_QUERY_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT)
 export class PelletGrid {
   private readonly cellSize: number
   private buckets = new Map<number, Pellet[]>()
+  private byId = new Map<number, Pellet>()
 
   constructor(cellSize = 128) {
     this.cellSize = cellSize
@@ -15,7 +16,9 @@ export class PelletGrid {
 
   rebuild(pellets: Pellet[]): void {
     this.buckets.clear()
+    this.byId.clear()
     for (const pellet of pellets) {
+      this.byId.set(pellet.id, pellet)
       const cx = Math.floor(pellet.x / this.cellSize)
       const cy = Math.floor(pellet.y / this.cellSize)
       const key = cx * 100003 + cy
@@ -66,5 +69,22 @@ export class PelletGrid {
       }
     })
     return nearest
+  }
+
+  getById(id: number): Pellet | undefined {
+    return this.byId.get(id)
+  }
+
+  findNearestCandidates(x: number, y: number, maxRadius: number, limit: number): Pellet[] {
+    const found: { pellet: Pellet; distSq: number }[] = []
+    const maxR2 = maxRadius * maxRadius
+    this.forEachInRadius(x, y, maxRadius, (pellet) => {
+      const dx = pellet.x - x
+      const dy = pellet.y - y
+      const distSq = dx * dx + dy * dy
+      if (distSq <= maxR2) found.push({ pellet, distSq })
+    })
+    found.sort((a, b) => a.distSq - b.distSq)
+    return found.slice(0, limit).map((entry) => entry.pellet)
   }
 }
