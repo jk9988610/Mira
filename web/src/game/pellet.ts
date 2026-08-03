@@ -221,11 +221,11 @@ export function drawPellet(ctx: CanvasRenderingContext2D, pellet: Pellet): void 
 export function canAbsorbPellet(
   playerX: number,
   playerY: number,
-  playerRadius: number,
+  absorbRadius: number,
   pellet: Pellet,
 ): boolean {
   const dx = pellet.x - playerX
   const dy = pellet.y - playerY
   const dist = Math.hypot(dx, dy)
-  return dist < playerRadius - pellet.radius * 0.35
+  return dist <= absorbRadius + pellet.radius * 0.45
 }

@@ -25,14 +25,14 @@ export function remainingJoyIntakeRoom(entity: CircleEntity): number {
 export function canAbsorbPelletKind(entity: CircleEntity, kind: PelletKind): boolean {
   if (kind === 'food') return true
   if (kind === 'knowledge') {
-    return entity.knowledge < KNOWLEDGE_CAP * 0.92 && remainingKnowledgeIntakeRoom(entity) > 0
+    return entity.knowledge < KNOWLEDGE_CAP * 0.88 && remainingKnowledgeIntakeRoom(entity) > 0
   }
-  return entity.joy < JOY_CAP * 0.92 && remainingJoyIntakeRoom(entity) > 0
+  return entity.joy < JOY_CAP * 0.88 && remainingJoyIntakeRoom(entity) > 0
 }
 
 export function addTraitIntake(entity: CircleEntity, kind: 'knowledge' | 'joy', amount: number): number {
   const room = kind === 'knowledge' ? remainingKnowledgeIntakeRoom(entity) : remainingJoyIntakeRoom(entity)
-  const gain = Math.min(amount, room)
+  const gain = Math.min(amount * 1.35, room)
   if (gain <= 0) return 0
   if (kind === 'knowledge') entity.knowledgeIntake += gain
   else entity.joyIntake += gain

@@ -1,4 +1,4 @@
-import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
+import { avatarEntityRadius, absorbRadiusForEntity, clampAvatarEntityToWorld } from './avatar-radius'
 import {
   canAbsorbFoodPellets,
   isAvatarLifeExpired,
@@ -84,6 +84,15 @@ export function countSchoolStructures(entities: CircleEntity[]): number {
 
 export function countParkStructures(entities: CircleEntity[]): number {
   return entities.filter((e) => e.avatarRole === 'park').length
+}
+
+/** 世界中所有活跃圆（含化身建筑） */
+export function countTotalCircles(entities: CircleEntity[]): number {
+  let count = 0
+  for (const e of entities) {
+    if (isActive(e)) count++
+  }
+  return count
 }
 
 /** 可移动的圆：玩家与后代（不含上班/生产建筑） */
@@ -390,7 +399,7 @@ export function absorbPelletsForAvatar(
 ): Pellet[] {
   if (!isActive(entity) || entity.isFrozen || isStructureRole(entity.avatarRole)) return []
 
-  const radius = avatarEntityRadius(entity)
+  const absorbRadius = absorbRadiusForEntity(entity)
   const absorbed: Pellet[] = []
   let absorbedMass = 0
   const intakeRoom = remainingIntakeRoom(entity)
@@ -401,7 +410,7 @@ export function absorbPelletsForAvatar(
       : Number.POSITIVE_INFINITY
 
   const collect = (pellet: Pellet) => {
-    if (!canAbsorbPellet(entity.x, entity.y, radius, pellet)) return
+    if (!canAbsorbPellet(entity.x, entity.y, absorbRadius, pellet)) return
 
     if (pellet.kind === 'food') {
       if (!canAbsorbFoodPellets(entity)) return
@@ -422,7 +431,7 @@ export function absorbPelletsForAvatar(
   }
 
   if (grid) {
-    grid.forEachInRadius(entity.x, entity.y, radius, collect)
+    grid.forEachInRadius(entity.x, entity.y, absorbRadius, collect)
   } else {
     for (const pellet of pellets) collect(pellet)
   }
@@ -760,5 +769,5 @@ export function countTribeStructures(entities: CircleEntity[]): {
     if (e.avatarRole === 'park') park++
     if (e.productionStage !== 'none') producing++
   }
-  return { farm, school, park, producing, circles: countMobileCircles(entities) }
+  return { farm, school, park, producing, circles: countTotalCircles(entities) }
 }
