@@ -21,7 +21,10 @@ export class VirtualControls {
   private dragPointer: number | null = null
   private dragPart: VirtualControlId | null = null
 
-  constructor(private readonly input: InputManager) {
+  constructor(
+    private readonly input: InputManager,
+    private readonly onPause?: () => void,
+  ) {
     this.layout = loadVirtualLayout()
     this.root = document.createElement('div')
     this.root.id = 'virtual-controls'
@@ -169,6 +172,7 @@ export class VirtualControls {
         if (this.layoutEditMode) return
         this.input.setVirtualButton(code, true)
         btn.classList.add('vc-btn--pressed')
+        if (code === '9') this.onPause?.()
       }
       const release = () => {
         if (this.layoutEditMode) return

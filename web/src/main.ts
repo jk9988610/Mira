@@ -14,12 +14,13 @@ import { createMenuScene, createPauseScene } from './scenes/menu-scene'
 import { createSettingsScene } from './scenes/settings-scene'
 
 const GAME_SCENES = new Set(['game', 'avatar-game'])
+const gamePause = { fn: null as (() => void) | null }
 
 function main() {
   let bindings = loadBindings()
   const input = new InputManager(bindings)
   const app = new App(input)
-  const virtualControls = new VirtualControls(input)
+  const virtualControls = new VirtualControls(input, () => gamePause.fn?.())
 
   let paused = false
   let pauseOverlay: ReturnType<typeof createPauseScene> | null = null
@@ -57,6 +58,7 @@ function main() {
           }
         },
         () => paused,
+        gamePause,
       ),
     'avatar-game': () =>
       createAvatarGameScene(
@@ -76,6 +78,7 @@ function main() {
           }
         },
         () => paused,
+        gamePause,
       ),
   })
 
