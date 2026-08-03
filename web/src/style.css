@@ -18,3 +18,146 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* 虚拟手柄：左侧 360° 摇杆 + 右侧 Xbox 布局 */
+.virtual-controls {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.virtual-controls--hidden {
+  display: none;
+}
+
+.vc-joystick {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  width: 148px;
+  height: 148px;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.vc-joystick-base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(20, 32, 52, 0.55);
+  border: 2px solid rgba(100, 140, 200, 0.35);
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35);
+}
+
+.vc-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #6a9fd8, #2d4f7a);
+  border: 2px solid rgba(160, 200, 255, 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  will-change: transform;
+}
+
+.vc-buttons {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  width: 196px;
+  height: 196px;
+  pointer-events: none;
+}
+
+.vc-btn,
+.vc-shoulder {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  border: none;
+  color: #fff;
+  font: 700 15px/1 system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.vc-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+}
+
+.vc-btn--pressed,
+.vc-shoulder.vc-btn--pressed {
+  transform: scale(0.92);
+  filter: brightness(1.25);
+}
+
+.vc-btn-a {
+  left: 72px;
+  bottom: 0;
+  background: linear-gradient(145deg, #4caf50, #2e7d32);
+  border: 2px solid #81c784;
+}
+
+.vc-btn-b {
+  right: 0;
+  bottom: 36px;
+  background: linear-gradient(145deg, #ef5350, #c62828);
+  border: 2px solid #ef9a9a;
+}
+
+.vc-btn-x {
+  left: 0;
+  bottom: 36px;
+  background: linear-gradient(145deg, #42a5f5, #1565c0);
+  border: 2px solid #90caf9;
+}
+
+.vc-btn-y {
+  left: 72px;
+  top: 0;
+  background: linear-gradient(145deg, #ffca28, #f9a825);
+  border: 2px solid #ffe082;
+  color: #3e2723;
+}
+
+.vc-btn-start {
+  right: 68px;
+  bottom: 88px;
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+  background: linear-gradient(145deg, #546e7a, #37474f);
+  border: 2px solid #90a4ae;
+}
+
+.vc-shoulder {
+  top: max(12px, env(safe-area-inset-top));
+  width: 72px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(30, 45, 68, 0.72);
+  border: 2px solid rgba(100, 140, 200, 0.4);
+  color: #a8bdd8;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vc-lb {
+  left: max(16px, env(safe-area-inset-left));
+}
+
+.vc-rb {
+  right: max(16px, env(safe-area-inset-right));
+}

@@ -46,6 +46,10 @@ export class InputManager {
   private standardHeld = new Set<string>()
   private standardFrame = readStandardGamepad(this.standardHeld)
   private statusListeners = new Set<(status: GamepadStatus) => void>()
+  private virtualStickX = 0
+  private virtualStickY = 0
+  private virtualButtonsDown = new Set<string>()
+  private prevVirtualButtonsDown = new Set<string>()
 
   constructor(bindings: Record<Action, Binding>) {
     this.bindings = bindings
@@ -66,6 +70,16 @@ export class InputManager {
 
   setBindings(bindings: Record<Action, Binding>): void {
     this.bindings = bindings
+  }
+
+  setVirtualStick(x: number, y: number): void {
+    this.virtualStickX = x
+    this.virtualStickY = y
+  }
+
+  setVirtualButton(code: string, pressed: boolean): void {
+    if (pressed) this.virtualButtonsDown.add(code)
+    else this.virtualButtonsDown.delete(code)
   }
 
   getBindings(): Record<Action, Binding> {
@@ -89,7 +103,8 @@ export class InputManager {
 
   beginFrame(): void {
     this.prevKeysDown = new Set(this.keysDown)
-    this.prevButtonsDown = new Set(this.buttonsDown)
+    this.prevButtonsDown = new Set([...this.buttonsDown, ...this.virtualButtonsDown])
+    this.prevVirtualButtonsDown = new Set(this.virtualButtonsDown)
     this.prevAxisState = new Map(this.axisState)
     this.buttonsDown.clear()
     this.axisState.clear()
@@ -119,6 +134,13 @@ export class InputManager {
 
     if (Math.abs(this.standardFrame.moveX) > 0) this.stickX = this.standardFrame.moveX
     if (Math.abs(this.standardFrame.moveY) > 0) this.stickY = this.standardFrame.moveY
+
+    if (Math.abs(this.virtualStickX) > 0 || Math.abs(this.virtualStickY) > 0) {
+      this.stickX = this.virtualStickX
+      this.stickY = this.virtualStickY
+    }
+
+    for (const code of this.virtualButtonsDown) this.buttonsDown.add(code)
 
     this.notifyStatus()
   }
@@ -166,7 +188,9 @@ export class InputManager {
   private isBindingHeld(binding: Binding): boolean {
     if (!binding) return false
     if (binding.source === 'keyboard') return this.keysDown.has(binding.code)
-    if (binding.source === 'gamepad-button') return this.buttonsDown.has(binding.code)
+    if (binding.source === 'gamepad-button') {
+      return this.buttonsDown.has(binding.code) || this.virtualButtonsDown.has(binding.code)
+    }
     const key = `${binding.code}:${binding.axisSign ?? 1}`
     return this.axisState.get(key) ?? false
   }
@@ -177,23 +201,30 @@ export class InputManager {
       return this.keysDown.has(binding.code) && !this.prevKeysDown.has(binding.code)
     }
     if (binding.source === 'gamepad-button') {
-      return this.buttonsDown.has(binding.code) && !this.prevButtonsDown.has(binding.code)
+      const held = this.buttonsDown.has(binding.code) || this.virtualButtonsDown.has(binding.code)
+      const prev =
+        this.prevButtonsDown.has(binding.code) || this.prevVirtualButtonsDown.has(binding.code)
+      return held && !prev
     }
     const key = `${binding.code}:${binding.axisSign ?? 1}`
     return (this.axisState.get(key) ?? false) && !(this.prevAxisState.get(key) ?? false)
   }
 
   private isStandardHeld(action: Action): boolean {
-    if (!this.standardFrame.connected) return false
     const codes = STANDARD_GAMEPAD_ACTIONS[action as keyof typeof STANDARD_GAMEPAD_ACTIONS]
     if (!codes) return false
+    if (codes.some((code) => this.virtualButtonsDown.has(code))) return true
+    if (!this.standardFrame.connected) return false
     return codes.some((code) => this.standardFrame.buttonsHeld.has(code))
   }
 
   private isStandardPressed(action: Action): boolean {
-    if (!this.standardFrame.connected) return false
     const codes = STANDARD_GAMEPAD_ACTIONS[action as keyof typeof STANDARD_GAMEPAD_ACTIONS]
     if (!codes) return false
+    if (codes.some((code) => this.virtualButtonsDown.has(code) && !this.prevVirtualButtonsDown.has(code))) {
+      return true
+    }
+    if (!this.standardFrame.connected) return false
     return codes.some((code) => this.standardFrame.buttonsPressed.has(code))
   }
 
