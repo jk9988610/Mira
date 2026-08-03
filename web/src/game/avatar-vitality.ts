@@ -10,6 +10,8 @@ import {
   LIFESPAN_AVATAR_TRANS_THRESHOLD,
   LIFESPAN_EVAL_INTERVAL_SEC,
   LOW_MASS_PENALTY_SEC,
+  MATE_DRIVE_DECAY,
+  MATE_DRIVE_GAIN_ON_BIRTH,
   SATIETY_ABSORB_PAUSE_RATIO,
   SATIETY_ABSORB_RESUME_RATIO,
   SATIETY_CAP,
@@ -17,11 +19,9 @@ import {
   SATIETY_IDLE_DECAY,
   SATIETY_LOW_THRESHOLD,
   SATIETY_MOVE_DECAY,
-  SATIETY_SLEEP_DECAY,
   SATIETY_STARVE_MASS_DRAIN,
   TRAIT_IDLE_DECAY,
   TRAIT_LOW_THRESHOLD,
-  TRAIT_SLEEP_DECAY,
 } from './avatar-config'
 import {
   clampHealth,
@@ -33,11 +33,9 @@ import {
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
 import { PLAYER_START_MASS } from './physics'
-import { initNpcSchedule } from './avatar-ai'
-import { DAY_DURATION_SEC } from './avatar-config'
 import { tickTraitDigestion } from './avatar-traits'
 
-export function initAvatarVitality(entity: CircleEntity): void {
+export function initAvatarVitality(entity: CircleEntity, birthGameTimeSec = 0): void {
   initEntityMass(entity, entity.mass, HEALTH_CAP * 0.85)
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
   entity.satiety = SATIETY_CAP * 0.55
@@ -57,13 +55,12 @@ export function initAvatarVitality(entity: CircleEntity): void {
   entity.joyIntake = 0
   entity.visualScale = 1
   entity.avatarTransformTimer = 0
-  if (!entity.isPlayer) {
-    initNpcSchedule(entity, (entity.id * 5) % DAY_DURATION_SEC)
-  }
+  entity.birthGameTimeSec = birthGameTimeSec
+  if (entity.mateDrive <= 0) entity.mateDrive = 0.35 + (entity.id % 5) * 0.08
 }
 
-export function initOptimalAvatarState(entity: CircleEntity): void {
-  initAvatarVitality(entity)
+export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 0): void {
+  initAvatarVitality(entity, birthGameTimeSec)
   entity.satiety = SATIETY_CAP * 0.62
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
   entity.feedRegularity = 0.85
@@ -72,16 +69,18 @@ export function initOptimalAvatarState(entity: CircleEntity): void {
   entity.joy = PLAYER_START_MASS * 0.7
 }
 
+function inStructureOrProduction(entity: CircleEntity): boolean {
+  return (
+    entity.avatarRole === 'work' ||
+    entity.avatarRole === 'learn' ||
+    entity.avatarRole === 'play' ||
+    entity.productionStage !== 'none'
+  )
+}
+
 export function updateSatietyAbsorption(entity: CircleEntity): void {
   if (entity.isFrozen) return
-  if (
-    entity.avatarRole === 'farm' ||
-    entity.avatarRole === 'ranch' ||
-    entity.avatarRole === 'school' ||
-    entity.avatarRole === 'park'
-  ) {
-    return
-  }
+  if (inStructureOrProduction(entity)) return
   if (entity.satiety >= SATIETY_CAP * SATIETY_ABSORB_PAUSE_RATIO || remainingIntakeRoom(entity) <= 0) {
     entity.absorptionPaused = true
   } else if (entity.satiety <= SATIETY_CAP * SATIETY_ABSORB_RESUME_RATIO) {
@@ -91,14 +90,7 @@ export function updateSatietyAbsorption(entity: CircleEntity): void {
 
 export function canAbsorbFoodPellets(entity: CircleEntity): boolean {
   if (!isActive(entity) || entity.isFrozen) return false
-  if (
-    entity.avatarRole === 'farm' ||
-    entity.avatarRole === 'ranch' ||
-    entity.avatarRole === 'school' ||
-    entity.avatarRole === 'park'
-  ) {
-    return false
-  }
+  if (inStructureOrProduction(entity)) return false
   updateSatietyAbsorption(entity)
   if (entity.absorptionPaused) return false
   return remainingIntakeRoom(entity) > 0
@@ -114,6 +106,22 @@ export function onAvatarPelletAbsorbed(entity: CircleEntity, absorbedMass: numbe
   if (entity.satiety > SATIETY_LOW_THRESHOLD) {
     entity.feedRegularity = Math.min(1, entity.feedRegularity + 0.06)
   }
+}
+
+export function knowledgeEvalLabel(knowledge: number): string {
+  const ratio = knowledge / KNOWLEDGE_CAP
+  if (ratio >= 0.85) return '博学'
+  if (ratio >= 0.55) return '充实'
+  if (ratio >= 0.25) return '入门'
+  return '匮乏'
+}
+
+export function happinessEvalLabel(joy: number): string {
+  const ratio = joy / JOY_CAP
+  if (ratio >= 0.85) return '愉悦'
+  if (ratio >= 0.55) return '满足'
+  if (ratio >= 0.25) return '平淡'
+  return '低落'
 }
 
 function tickHealth(entity: CircleEntity, dt: number): void {
@@ -188,18 +196,24 @@ function tickLifespan(entity: CircleEntity, dt: number, isMoving: boolean): void
 
 export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving: boolean): void {
   if (!isActive(entity) || entity.isFrozen) return
-  if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') return
+  if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') return
 
   tickDigestion(entity, dt)
   tickTraitDigestion(entity, dt)
 
-  let decay = entity.aiSleeping ? SATIETY_SLEEP_DECAY * dt : SATIETY_IDLE_DECAY * dt
-  if (!entity.aiSleeping && isMoving) decay += SATIETY_MOVE_DECAY * dt
+  let decay = SATIETY_IDLE_DECAY * dt
+  if (isMoving) decay += SATIETY_MOVE_DECAY * dt
   entity.satiety = Math.max(0, entity.satiety - decay)
 
-  const traitDecay = (entity.aiSleeping ? TRAIT_SLEEP_DECAY : TRAIT_IDLE_DECAY) * dt
+  const traitDecay = TRAIT_IDLE_DECAY * dt
   entity.knowledge = Math.max(0, entity.knowledge - traitDecay)
   entity.joy = Math.max(0, entity.joy - traitDecay)
+
+  if (entity.productionStage === 'none') {
+    entity.mateDrive = Math.min(1, entity.mateDrive + dt * 0.004)
+  } else {
+    entity.mateDrive = Math.max(0, entity.mateDrive - MATE_DRIVE_DECAY * dt)
+  }
 
   if (entity.satiety <= 0) drainBodyMass(entity, SATIETY_STARVE_MASS_DRAIN * dt)
   tickHealth(entity, dt)
@@ -208,7 +222,7 @@ export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving:
 
 export function tickAvatarTransformLifespan(entity: CircleEntity, dt: number): void {
   if (!isActive(entity)) return
-  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'ranch' && entity.avatarRole !== 'school' && entity.avatarRole !== 'park') return
+  if (entity.avatarRole !== 'work' && entity.avatarRole !== 'learn' && entity.avatarRole !== 'play') return
   entity.lifespanEvalTimer -= dt
   if (entity.lifespanEvalTimer <= 0) {
     entity.lifespanEvalTimer = LIFESPAN_EVAL_INTERVAL_SEC
@@ -228,4 +242,8 @@ export function satietyLabel(satiety: number): string {
   if (ratio > SATIETY_LOW_THRESHOLD / SATIETY_CAP) return '适宜'
   if (satiety > 0) return '饥饿'
   return '饥竭'
+}
+
+export function onOffspringBorn(entity: CircleEntity): void {
+  entity.mateDrive = Math.min(1, entity.mateDrive + MATE_DRIVE_GAIN_ON_BIRTH)
 }

@@ -1,9 +1,17 @@
 import type { LeaderboardView } from '../game/leaderboard'
-import { JOY_CAP, KNOWLEDGE_CAP } from '../game/avatar-config'
-import { getAvatarTransformCountdownSec, schedulePhaseLabel, traitLabel } from '../game/avatar-system'
+import { SATIETY_CAP } from '../game/avatar-config'
+import { intentLabel } from '../game/avatar-ai'
+import { massLabel, satietyEvalLabel } from '../game/avatar-needs'
+import { happinessEvalLabel, knowledgeEvalLabel } from '../game/avatar-vitality'
+import { getAvatarTransformCountdownSec } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
+import type { TribeDemographics } from '../game/tribe-stats'
+import { formatGameTime } from '../game/game-clock'
+import { formatLatLng } from '../game/geo'
+import { generationLabel } from '../game/naming'
 import type { AvatarRole, CircleEntity } from '../game/entity'
+import { isAdult } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
 
 export function clearScreen(
@@ -347,48 +355,53 @@ export function drawGamepadBanner(
 }
 
 export interface AvatarHudData {
+  gameTimeSec: number
   zoom: number
-  farmHint: string
-  ranchHint: string
-  schoolHint: string
-  parkHint: string
-  farms: number
-  ranches: number
-  schools: number
-  parks: number
+  workHint: string
+  produceHint: string
+  learnHint: string
+  playHint: string
+  work: number
+  learn: number
+  play: number
+  producing: number
   circles: number
+  demographics: TribeDemographics
+  focus: CircleEntity | null
 }
 
-function avatarRoleStatus(role: AvatarRole, isFrozen: boolean): string | null {
-  if (isFrozen && role === 'farm') return '化身·农场'
-  if (isFrozen && role === 'ranch') return '化身·牧场'
-  if (isFrozen && role === 'school') return '化身·学校'
-  if (isFrozen && role === 'park') return '化身·乐园'
+function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
+  if (productionStage === 'mating') return '生产·交配'
+  if (productionStage === 'pregnant') return '生产·怀孕陪护'
+  if (isFrozen && role === 'work') return '化身·上班'
+  if (isFrozen && role === 'learn') return '化身·学习'
+  if (isFrozen && role === 'play') return '化身·娱乐'
   if (role === 'ally') return '后代'
   return null
 }
 
 export function drawAvatarEntityStats(ctx: CanvasRenderingContext2D, entity: CircleEntity): void {
   const r = avatarEntityRadius(entity)
-  const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen)
+  const roleStatus = avatarRoleStatus(entity.avatarRole, entity.isFrozen, entity.productionStage)
   const lines = [
-    `质量 ${Math.round(entity.mass)}`,
-    `饱食 ${Math.round(entity.satiety)}`,
-    `知识 ${Math.round(entity.knowledge)} ${traitLabel(entity.knowledge, KNOWLEDGE_CAP)}`,
-    `快乐 ${Math.round(entity.joy)} ${traitLabel(entity.joy, JOY_CAP)}`,
+    `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,
+    `饱食 ${Math.round(entity.satiety)}/${Math.round(SATIETY_CAP)} (${satietyEvalLabel(entity)})`,
+    `知识 ${Math.round(entity.knowledge)} (${knowledgeEvalLabel(entity.knowledge)})`,
+    `快乐 ${Math.round(entity.joy)} (${happinessEvalLabel(entity.joy)})`,
     `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
-    `化身 ${entity.avatarTransformCount}次`,
+    `化身 上班${entity.countWorkTransforms} 学习${entity.countLearnTransforms}`,
+    `      娱乐${entity.countPlayTransforms} 生产${entity.countProductionSessions}`,
   ]
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
   if (roleStatus) lines.push(roleStatus)
   if (!entity.isPlayer && (entity.avatarRole === 'none' || entity.avatarRole === 'ally')) {
-    lines.push(schedulePhaseLabel(entity))
+    lines.push(intentLabel(entity))
   }
 
   const lineHeight = 12
-  const boxWidth = 118
+  const boxWidth = 138
   const boxHeight = lines.length * lineHeight + 8
   const x = entity.x - boxWidth / 2
   const y = entity.y + r + 10
@@ -420,6 +433,14 @@ export function drawAvatarCircle(
   const { x, y, colorLight, colorDark, strokeColor, name } = entity
 
   ctx.save()
+
+  if (entity.productionStage !== 'none') {
+    ctx.beginPath()
+    ctx.arc(x, y, r + 6, 0, Math.PI * 2)
+    ctx.strokeStyle = 'rgba(255, 158, 207, 0.75)'
+    ctx.lineWidth = 3
+    ctx.stroke()
+  }
 
   if (flash > 0) {
     ctx.beginPath()
@@ -466,26 +487,69 @@ export function drawAvatarCircle(
 
 export function drawAvatarHud(
   ctx: CanvasRenderingContext2D,
-  _width: number,
+  width: number,
+  height: number,
   data: AvatarHudData,
 ): void {
-  const tribe = `农场 ${data.farms} · 牧场 ${data.ranches} · 学校 ${data.schools} · 乐园 ${data.parks} · 圆 ${data.circles}`
-  const hint = `${data.farmHint} · ${data.ranchHint} · ${data.schoolHint} · ${data.parkHint}`
+  const demo = data.demographics
+  const hint = `${data.workHint} · ${data.produceHint} · ${data.learnHint} · ${data.playHint}`
+  const tribe = `上班 ${data.work} · 学习 ${data.learn} · 娱乐 ${data.play} · 生产 ${data.producing} · 圆 ${data.circles}`
+  const demoLine = `成年 男${demo.adultMale} 女${demo.adultFemale} · 未成年 男${demo.juvenileMale} 女${demo.juvenileFemale}`
 
   ctx.textAlign = 'left'
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
-  ctx.font = '13px system-ui, sans-serif'
-  roundRect(ctx, 16, 16, ctx.measureText(hint).width + 20, 28, 8)
-  ctx.fill()
-  ctx.fillStyle = '#8aa0c8'
-  ctx.fillText(hint, 26, 35)
-
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.72)'
-  roundRect(ctx, 16, 50, ctx.measureText(tribe).width + 20, 24, 8)
-  ctx.fill()
-  ctx.fillStyle = '#7f8ca3'
   ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(tribe, 26, 66)
+
+  let y = 16
+  const drawPanel = (text: string, h = 24) => {
+    ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+    roundRect(ctx, 16, y, Math.min(ctx.measureText(text).width + 20, width - 32), h, 8)
+    ctx.fill()
+    ctx.fillStyle = '#8aa0c8'
+    ctx.fillText(text, 26, y + 16)
+    y += h + 6
+  }
+
+  drawPanel(`时间 ${formatGameTime(data.gameTimeSec)} · 玩家 蓝天`)
+  drawPanel(hint, 28)
+  drawPanel(tribe)
+  drawPanel(demoLine)
+
+  for (const fam of demo.families.slice(0, 3)) {
+    drawPanel(`${fam.familyName} 后代 ${fam.offspringCount}`)
+  }
+
+  if (data.focus) {
+    drawAvatarIdCard(ctx, width, height, data.focus)
+  }
+}
+
+function drawAvatarIdCard(ctx: CanvasRenderingContext2D, width: number, _height: number, entity: CircleEntity): void {
+  const panelW = 250
+  const panelH = 210
+  const px = width - panelW - 14
+  const py = 14
+
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.84)'
+  roundRect(ctx, px, py, panelW, panelH, 10)
+  ctx.fill()
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#e8f4ff'
+  ctx.font = '600 13px system-ui, sans-serif'
+  let y = py + 22
+  const line = (s: string) => {
+    ctx.fillText(s, px + 12, y)
+    y += 17
+  }
+
+  line('【身份证】')
+  line(`姓名 ${entity.name}`)
+  line(`性别 ${entity.gender === 'male' ? '男' : '女'} · ${generationLabel(entity.generation)}`)
+  line(`出生 ${formatGameTime(entity.birthGameTimeSec)}`)
+  line(`位置 ${formatLatLng(entity.lat, entity.lng)}`)
+  line(`阶段 ${isAdult(entity) ? '成年' : '未成年'}`)
+  line(`意图 ${intentLabel(entity)}`)
+  line(`后代 ${entity.childrenCount}`)
 }
 
 export function drawAvatarStructure(
@@ -499,13 +563,11 @@ export function drawAvatarStructure(
   ctx.save()
   const pulse = 0.85 + 0.15 * Math.sin(time * 2)
   const ringColor =
-    avatarRole === 'farm'
+    avatarRole === 'work'
       ? 'rgba(143, 211, 255, 0.55)'
-      : avatarRole === 'ranch'
-        ? 'rgba(255, 196, 77, 0.55)'
-        : avatarRole === 'school'
-          ? 'rgba(130, 170, 255, 0.58)'
-          : 'rgba(255, 150, 210, 0.58)'
+      : avatarRole === 'learn'
+        ? 'rgba(130, 170, 255, 0.58)'
+        : 'rgba(255, 150, 210, 0.58)'
 
   ctx.beginPath()
   ctx.arc(x, y, r * pulse + 10, 0, Math.PI * 2)

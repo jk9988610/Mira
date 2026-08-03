@@ -1,19 +1,41 @@
+import { ADULT_MASS_THRESHOLD } from './avatar-config'
+import { syncEntityGeo } from './geo'
 import { massToRadius, PLAYER_START_MASS } from './physics'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
+
+export type Gender = 'male' | 'female'
+export type AvatarRole = 'none' | 'work' | 'learn' | 'play' | 'ally'
+export type TransformKind = 'work' | 'learn' | 'play'
+export type ProductionStage = 'none' | 'mating' | 'pregnant'
+
+export interface CircleInitOptions {
+  gender?: Gender
+  generation?: number
+  motherId?: number
+  fatherId?: number
+  familyId?: number
+  birthGameTimeSec?: number
+}
 
 export interface CircleEntity {
   id: number
   name: string
   x: number
   y: number
+  lat: number
+  lng: number
   mass: number
-  /** 本体质量（消化后的质量） */
   bodyMass: number
-  /** 摄入质量（待消化，不计入单独显示） */
   intakeMass: number
-  /** 健康数值 */
   health: number
   isPlayer: boolean
+  gender: Gender
+  generation: number
+  motherId: number
+  fatherId: number
+  familyId: number
+  birthGameTimeSec: number
+  childrenCount: number
   colorLight: string
   colorDark: string
   strokeColor: string
@@ -23,75 +45,58 @@ export interface CircleEntity {
   invincibleTimer: number
   impulseX: number
   impulseY: number
-  /** 化身模式：农场 / 牧场 / 学校 / 乐园 / 友方后代 */
   avatarRole: AvatarRole
   isFrozen: boolean
   pelletSpawnTimer: number
-  allySpawnTimer: number
   avatarIncubateTimer: number
   pendingAvatarKind: TransformKind | 'none'
-  /** 化身冷却剩余时间（秒） */
   avatarTransformCooldown: number
-  /** 化身剩余时间（秒），固定 8s */
   avatarTransformTimer: number
   builderName: string
-  /** 视觉缩放（固定，不再由按键调节） */
   visualScale: number
-  /** 知识数值 */
   knowledge: number
-  /** 待消化知识 */
   knowledgeIntake: number
-  /** 快乐数值 */
   joy: number
-  /** 待消化快乐 */
   joyIntake: number
-  /** 化身模式：剩余寿命（秒） */
   lifespanSec: number
-  /** 饱食数值 */
   satiety: number
-  /** 食物摄取暂停 */
   absorptionPaused: boolean
-  /** 化身模式：农场/牧场已产出轮次 */
   structureProduceCount: number
-  /** 连续低于初始质量的秒数 */
   lowMassSec: number
-  /** 饱食度低于警戒阈值的累计秒数（评估窗口内） */
   lowSatietySec: number
-  /** 评估窗口内休息秒数 */
   restSec: number
-  /** 评估窗口内工作（移动）秒数 */
   workSec: number
-  /** 累计化身农场/牧场次数 */
   avatarTransformCount: number
-  /** 规律进食评分 0~1 */
+  countWorkTransforms: number
+  countLearnTransforms: number
+  countPlayTransforms: number
+  countProduceTransforms: number
+  countProductionSessions: number
   feedRegularity: number
-  /** 寿命评估倒计时 */
   lifespanEvalTimer: number
-  /** 化身工作经历 */
   transformHistory: TransformKind[]
-  /** 当日时刻 0~DAY_DURATION_SEC */
-  dayTimeSec: number
-  /** 第几天（用于工作日/周末） */
-  dayNumber: number
-  /** AI 当前日程阶段 */
-  aiSchedulePhase: 'work' | 'learn' | 'sleep' | 'forage' | 'play' | 'weekend'
-  /** AI 日程：常规 or 休闲 */
-  aiDayMode: 'routine' | 'leisure'
-  /** AI 是否处于睡眠代谢 */
-  aiSleeping: boolean
-  /** 缓存觅食目标颗粒 id */
+  mateDrive: number
+  productionStage: ProductionStage
+  productionTimer: number
+  productionPartnerId: number
+  aiIntent: 'eat' | 'learn' | 'play' | 'mate' | 'work' | 'idle'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
-  /** 游荡/休息锚点 */
   aiAnchorX: number
   aiAnchorY: number
   aiAnchorTimer: number
+  aiMateTargetId: number
 }
 
-export type AvatarRole = 'none' | 'farm' | 'ranch' | 'school' | 'park' | 'ally'
-export type TransformKind = 'farm' | 'ranch' | 'school' | 'park'
-
 let nextId = 1
+
+export function isAdult(entity: CircleEntity): boolean {
+  return entity.mass >= ADULT_MASS_THRESHOLD
+}
+
+export function isJuvenile(entity: CircleEntity): boolean {
+  return !isAdult(entity)
+}
 
 export function createCircle(
   x: number,
@@ -99,17 +104,28 @@ export function createCircle(
   mass: number,
   isPlayer: boolean,
   roster: { name: string; colorLight: string; colorDark: string; strokeColor: string },
+  options: CircleInitOptions = {},
 ): CircleEntity {
-  return {
+  const gender = options.gender ?? (nextId % 2 === 0 ? 'male' : 'female')
+  const entity: CircleEntity = {
     id: nextId++,
     name: roster.name,
     x,
     y,
+    lat: 0,
+    lng: 0,
     mass,
     bodyMass: mass,
     intakeMass: 0,
     health: PLAYER_START_MASS * 4,
     isPlayer,
+    gender,
+    generation: options.generation ?? 0,
+    motherId: options.motherId ?? 0,
+    fatherId: options.fatherId ?? 0,
+    familyId: options.familyId ?? 0,
+    birthGameTimeSec: options.birthGameTimeSec ?? 0,
+    childrenCount: 0,
     colorLight: roster.colorLight,
     colorDark: roster.colorDark,
     strokeColor: roster.strokeColor,
@@ -122,7 +138,6 @@ export function createCircle(
     avatarRole: 'none',
     isFrozen: false,
     pelletSpawnTimer: 0,
-    allySpawnTimer: 0,
     avatarIncubateTimer: 0,
     pendingAvatarKind: 'none',
     avatarTransformCooldown: 0,
@@ -142,20 +157,29 @@ export function createCircle(
     restSec: 0,
     workSec: 0,
     avatarTransformCount: 0,
+    countWorkTransforms: 0,
+    countLearnTransforms: 0,
+    countPlayTransforms: 0,
+    countProduceTransforms: 0,
+    countProductionSessions: 0,
     feedRegularity: 0.5,
     lifespanEvalTimer: 0,
     transformHistory: [],
-    dayTimeSec: 0,
-    dayNumber: 0,
-    aiSchedulePhase: 'forage',
-    aiDayMode: 'routine',
-    aiSleeping: false,
+    mateDrive: 0.35 + (nextId % 5) * 0.08,
+    productionStage: 'none',
+    productionTimer: 0,
+    productionPartnerId: 0,
+    aiIntent: 'idle',
     aiPelletTargetId: 0,
     aiPelletTargetTimer: 0,
     aiAnchorX: x,
     aiAnchorY: y,
     aiAnchorTimer: 0,
+    aiMateTargetId: 0,
   }
+  syncEntityGeo(entity)
+  if (!entity.familyId) entity.familyId = entity.id
+  return entity
 }
 
 export function entityRadius(entity: CircleEntity): number {
@@ -177,25 +201,18 @@ export function drawCircleEntity(
   time = 0,
 ): void {
   if (!isActive(entity)) return
-
   const r = entityRadius(entity)
   const { x, y, colorLight, colorDark, strokeColor, name } = entity
-
   let alpha = 1
-  if (entity.invincibleTimer > 0) {
-    alpha = 0.35 + 0.65 * Math.abs(Math.sin(time * 12))
-  }
-
+  if (entity.invincibleTimer > 0) alpha = 0.35 + 0.65 * Math.abs(Math.sin(time * 12))
   ctx.save()
   ctx.globalAlpha = alpha
-
   if (flash > 0) {
     ctx.beginPath()
     ctx.arc(x, y, r + 8 * flash, 0, Math.PI * 2)
     ctx.fillStyle = `rgba(143, 211, 255, ${0.35 * flash / 0.18})`
     ctx.fill()
   }
-
   if (r < ENTITY_SIMPLE_DRAW_RADIUS) {
     ctx.fillStyle = colorLight
     ctx.beginPath()
@@ -207,7 +224,6 @@ export function drawCircleEntity(
     ctx.restore()
     return
   }
-
   const gradient = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
   gradient.addColorStop(0, colorLight)
   gradient.addColorStop(1, colorDark)
@@ -218,7 +234,6 @@ export function drawCircleEntity(
   ctx.strokeStyle = strokeColor
   ctx.lineWidth = 2
   ctx.stroke()
-
   if (r > 18) {
     ctx.fillStyle = 'rgba(255,255,255,0.92)'
     ctx.font = `600 ${Math.min(16, r * 0.38)}px system-ui, sans-serif`
@@ -226,20 +241,11 @@ export function drawCircleEntity(
     ctx.textBaseline = 'middle'
     ctx.fillText(name, x, y)
   }
-
   ctx.restore()
 }
 
-export function clampEntityToWorld(
-  entity: CircleEntity,
-  width: number,
-  height: number,
-): void {
+export function clampEntityToWorld(entity: CircleEntity, width: number, height: number): void {
   const r = entityRadius(entity)
-  entity.x = clamp(entity.x, r, width - r)
-  entity.y = clamp(entity.y, r, height - r)
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value))
+  entity.x = Math.max(r, Math.min(width - r, entity.x))
+  entity.y = Math.max(r, Math.min(height - r, entity.y))
 }

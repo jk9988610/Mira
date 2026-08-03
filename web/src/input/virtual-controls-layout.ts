@@ -4,8 +4,6 @@ export type VirtualControlId =
   | 'btnB'
   | 'btnX'
   | 'btnY'
-  | 'btnLb'
-  | 'btnRb'
 
 export interface VirtualControlPosition {
   x: number
@@ -21,8 +19,6 @@ export const VIRTUAL_CONTROL_LABELS: Record<VirtualControlId, string> = {
   btnB: 'B',
   btnX: 'X',
   btnY: 'Y',
-  btnLb: 'LB',
-  btnRb: 'RB',
 }
 
 export const VIRTUAL_CONTROL_IDS: VirtualControlId[] = [
@@ -31,8 +27,6 @@ export const VIRTUAL_CONTROL_IDS: VirtualControlId[] = [
   'btnB',
   'btnX',
   'btnY',
-  'btnLb',
-  'btnRb',
 ]
 
 const ABXY = { cx: 0.86, cy: 0.74, gap: 0.1 }
@@ -43,8 +37,6 @@ export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
   btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy, opacity: 1 },
   btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy, opacity: 1 },
   btnA: { x: ABXY.cx, y: ABXY.cy + ABXY.gap, opacity: 1 },
-  btnLb: { x: 0.12, y: 0.08, opacity: 1 },
-  btnRb: { x: 0.88, y: 0.08, opacity: 1 },
 }
 
 export function normalizeVirtualLayout(layout: Partial<VirtualControlsLayout>): VirtualControlsLayout {

@@ -6,7 +6,7 @@ export interface RosterEntry {
 }
 
 export const PLAYER_ROSTER: RosterEntry = {
-  name: '你',
+  name: '蓝天',
   colorLight: '#8fd3ff',
   colorDark: '#2f7fd3',
   strokeColor: '#d8f1ff',

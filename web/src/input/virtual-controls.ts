@@ -34,8 +34,6 @@ export class VirtualControls {
     this.root.className = 'virtual-controls virtual-controls--hidden'
     this.root.innerHTML = `
       <div class="vc-grid-overlay" aria-hidden="true"></div>
-      <div class="vc-part vc-shoulder" data-part="btnLb" data-btn="4">LB</div>
-      <div class="vc-part vc-shoulder" data-part="btnRb" data-btn="5">RB</div>
       <div class="vc-part vc-joystick" data-part="joystick" aria-label="移动摇杆">
         <div class="vc-joystick-base">
           <div class="vc-joystick-knob"></div>

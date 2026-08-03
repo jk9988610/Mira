@@ -15,14 +15,18 @@ import {
   tickAvatarTransformCooldowns,
   tickMobileAvatarVitality,
   updateAlly,
-  updateFarmStructures,
-  updateParkStructures,
-  updateRanchStructures,
-  updateSchoolStructures,
+  updateLearnStructures,
+  updatePlayStructures,
+  updateWorkStructures,
 } from '../game/avatar-system'
 import { AVATAR_INITIAL_PELLETS, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
+import {
+  beginProductionPair,
+  tryPairProduction,
+  updateProductionPairs,
+} from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
-import { createCircle, isActive, type CircleEntity } from '../game/entity'
+import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PLAYER_START_MASS } from '../game/physics'
@@ -33,6 +37,7 @@ import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure } from '../ui/draw'
+import { computeTribeDemographics } from '../game/tribe-stats'
 
 type PauseBridge = { fn: (() => void) | null }
 
@@ -45,12 +50,51 @@ function isNpcMobile(entity: CircleEntity): boolean {
   )
 }
 
+function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
+  const dist = Math.hypot(a.x - b.x, a.y - b.y)
+  return dist < avatarEntityRadius(a) + avatarEntityRadius(b) - 4
+}
+
+function updatePlayerMateSeek(player: CircleEntity, entities: CircleEntity[], dt: number): void {
+  if (!isAdult(player) || player.productionStage !== 'none' || player.isFrozen) return
+
+  let mate =
+    (player.aiMateTargetId > 0
+      ? entities.find((e) => e.id === player.aiMateTargetId && isActive(e))
+      : null) ?? tryPairProduction(player, entities)
+
+  if (!mate) {
+    player.aiMateTargetId = 0
+    return
+  }
+
+  player.aiMateTargetId = mate.id
+  const male = player.gender === 'male' ? player : mate
+  const female = player.gender === 'female' ? player : mate
+
+  if (circlesTouch(male, female)) {
+    beginProductionPair(male, female)
+    player.aiMateTargetId = 0
+    return
+  }
+
+  const dx = mate.x - player.x
+  const dy = mate.y - player.y
+  const dist = Math.hypot(dx, dy)
+  if (dist <= 1) return
+  const speed = 180
+  player.x += (dx / dist) * speed * dt
+  player.y += (dy / dist) * speed * dt
+}
+
 const STARTER_OFFSETS = [
   { x: 0, y: 0 },
   { x: 220, y: -120 },
   { x: -200, y: 100 },
   { x: 160, y: 140 },
 ]
+
+const STARTER_GENDERS: Gender[] = ['male', 'male', 'female', 'female']
 
 export function createAvatarGameScene(
   app: App,
@@ -84,7 +128,7 @@ export function createAvatarGameScene(
     resetAvatarState()
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
-    const rosters = [PLAYER_ROSTER, AI_ROSTER[0], AI_ROSTER[1], AI_ROSTER[2]]
+    const rosters = [PLAYER_ROSTER, AI_ROSTER[0], AI_ROSTER[9], AI_ROSTER[1]]
     entities = STARTER_OFFSETS.map((offset, i) => {
       const circle = createCircle(
         cx + offset.x,
@@ -92,8 +136,9 @@ export function createAvatarGameScene(
         STARTER_OPTIMAL_MASS,
         i === 0,
         rosters[i],
+        { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: 0 },
       )
-      initOptimalAvatarState(circle)
+      initOptimalAvatarState(circle, 0)
       return circle
     })
     controlledId = entities[0].id
@@ -143,40 +188,40 @@ export function createAvatarGameScene(
       prevSplitHeld = input.splitHeld
       prevGatherHeld = input.gatherHeld
 
-      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'farm')
+      if (splitTrigger && canBeginAvatarTransform(player, 'work', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'work')
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (gatherTrigger && canBeginAvatarTransform(player, 'ranch', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'ranch')
+      if (gatherTrigger && player && isAdult(player) && player.productionStage === 'none' && !player.isFrozen) {
+        const mate = tryPairProduction(player, entities)
+        if (mate) player.aiMateTargetId = mate.id
+      }
+
+      if (input.schoolPressed && canBeginAvatarTransform(player, 'learn', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'learn')
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'school')
-        entities = result.entities
-        sfx.absorbPellet()
-      }
-
-      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities)) {
-        const result = completeAvatarTransform(entities, player!, 'park')
+      if (input.parkPressed && canBeginAvatarTransform(player, 'play', entities)) {
+        const result = completeAvatarTransform(entities, player!, 'play')
         entities = result.entities
         sfx.absorbPellet()
       }
 
       if (player && !player.isFrozen) {
         applyFrozenMovement(player, input.moveX, input.moveY, dt)
+        if (player.aiMateTargetId > 0) updatePlayerMateSeek(player, entities, dt)
       }
 
-      pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
-      pellets = updateSchoolStructures(entities, pellets, dt)
-      pellets = updateParkStructures(entities, pellets, dt)
+      pellets = updateWorkStructures(entities, pellets, pelletGrid, dt)
+      pellets = updateLearnStructures(entities, pellets, dt)
+      pellets = updatePlayStructures(entities, pellets, dt)
       pelletGrid.rebuild(pellets)
 
-      entities = updateRanchStructures(entities, dt)
+      entities = updateProductionPairs(entities, dt, elapsed)
 
       allyUpdateTick++
       const allyStride = allyUpdateStride(entities.length)
@@ -195,18 +240,14 @@ export function createAvatarGameScene(
       const movingIds = new Set<number>()
       for (const entity of entities) {
         if (!isActive(entity) || entity.isFrozen) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
+        if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') continue
         if (entity.id === player?.id) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
-        } else if (
-          isNpcMobile(entity) &&
-          !entity.aiSleeping &&
-          (entity.aiSchedulePhase === 'forage' ||
-            entity.aiSchedulePhase === 'learn' ||
-            entity.aiSchedulePhase === 'play')
-        ) {
+          if (entity.aiMateTargetId > 0) movingIds.add(entity.id)
+        } else if (isNpcMobile(entity) && entity.aiIntent !== 'idle') {
           movingIds.add(entity.id)
         }
+        if (entity.productionStage !== 'none') movingIds.add(entity.id)
       }
 
       entities = tickMobileAvatarVitality(entities, dt, movingIds)
@@ -251,7 +292,7 @@ export function createAvatarGameScene(
       drawPelletsInView(ctx, pellets, view)
       for (const entity of sorted) {
         if (!isInView(entity.x, entity.y, view, 80)) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'ranch' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
+        if (entity.avatarRole === 'work' || entity.avatarRole === 'learn' || entity.avatarRole === 'play') {
           drawAvatarStructure(ctx, entity, elapsed)
         } else {
           const flash = entity.id === controlledId ? absorbFlash : 0
@@ -262,18 +303,22 @@ export function createAvatarGameScene(
       ctx.restore()
 
       const tribe = countTribeStructures(entities)
+      const demo = computeTribeDemographics(entities)
       const hints = getAvatarTransformHints(controlled, entities)
-      drawAvatarHud(ctx, width, {
+      drawAvatarHud(ctx, width, height, {
+        gameTimeSec: elapsed,
         zoom: cam.zoom,
-        farmHint: hints.farm,
-        ranchHint: hints.ranch,
-        schoolHint: hints.school,
-        parkHint: hints.park,
-        farms: tribe.farms,
-        ranches: tribe.ranches,
-        schools: tribe.schools,
-        parks: tribe.parks,
+        workHint: hints.workHint,
+        produceHint: hints.produceHint,
+        learnHint: hints.learnHint,
+        playHint: hints.playHint,
+        work: tribe.work,
+        learn: tribe.learn,
+        play: tribe.play,
+        producing: tribe.producing,
         circles: tribe.circles,
+        demographics: demo,
+        focus: controlled,
       })
     },
   }
