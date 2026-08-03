@@ -25,12 +25,12 @@ export interface NeedWeights {
 }
 
 const EAT_NEED_MULT = 2.1
-const LEARN_NEED_MULT = 0.32
-const PLAY_NEED_MULT = 0.28
+const LEARN_NEED_MULT = 0.1
+const PLAY_NEED_MULT = 0.08
 
 const JUVENILE_EAT_MULT = 2.8
-const JUVENILE_LEARN_MULT = 1.1
-const JUVENILE_PLAY_MULT = 0.95
+const JUVENILE_LEARN_MULT = 0.4
+const JUVENILE_PLAY_MULT = 0.32
 const SEEKING_TRANSFORM_PENALTY = 0.38
 
 function hash01(seed: number): number {

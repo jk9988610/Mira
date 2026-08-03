@@ -35,12 +35,12 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
 
   for (const e of entities) {
     if (!isActive(e)) continue
+    circles++
     if (e.avatarRole === 'farm') farm++
     if (e.avatarRole === 'school') school++
     if (e.avatarRole === 'park') park++
     if (e.productionStage !== 'none') producing++
     if (e.avatarRole === 'none' || e.avatarRole === 'ally') {
-      circles++
       if (isAdult(e)) {
         if (e.gender === 'male') adultMale++
         else adultFemale++
@@ -50,25 +50,23 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
       }
     }
 
-    if (e.motherId === 0) {
+    if (e.motherId === 0 && e.gender === 'male') {
       const familyId = e.familyId || e.id
-      if (!familyMap.has(familyId)) {
-        const founderName = e.builderName || e.name
-        familyMap.set(familyId, { founderName, offspringCount: 0 })
-      }
+      familyMap.set(familyId, {
+        founderName: e.builderName || e.name,
+        offspringCount: 0,
+      })
     }
   }
 
   for (const e of entities) {
     if (!isActive(e)) continue
-    if (e.motherId <= 0) continue
-    const familyId = e.familyId || e.motherId
-    const founder = entities.find((f) => f.id === familyId)
-    const founderName = founder?.builderName || founder?.name || `家族${familyId}`
-    const prev = familyMap.get(familyId)
-    familyMap.set(familyId, {
-      founderName: prev?.founderName ?? founderName,
-      offspringCount: (prev?.offspringCount ?? 0) + 1,
+    if (e.fatherId <= 0) continue
+    const prev = familyMap.get(e.fatherId)
+    if (!prev) continue
+    familyMap.set(e.fatherId, {
+      founderName: prev.founderName,
+      offspringCount: prev.offspringCount + 1,
     })
   }
 
@@ -76,7 +74,7 @@ export function computeTribeDemographics(entities: CircleEntity[]): TribeDemogra
   for (const [familyId, data] of familyMap) {
     families.push({
       familyId,
-      familyName: `${data.founderName}的家族`,
+      familyName: `${data.founderName}家族`,
       offspringCount: data.offspringCount,
     })
   }
