@@ -38,6 +38,8 @@ export interface CircleEntity {
   fatherId: number
   familyId: number
   birthGameTimeSec: number
+  birthX: number
+  birthY: number
   dnaFingerprint: number
   paternalDna: number
   maternalDna: number
@@ -133,6 +135,8 @@ export function createCircle(
     fatherId: options.fatherId ?? 0,
     familyId: options.familyId ?? 0,
     birthGameTimeSec: options.birthGameTimeSec ?? 0,
+    birthX: x,
+    birthY: y,
     dnaFingerprint: 0,
     paternalDna: options.paternalDna ?? 0,
     maternalDna: options.maternalDna ?? 0,

@@ -1,6 +1,7 @@
 import { NPC_ARRIVE_DIST, NPC_JITTER_DIST, NPC_TARGET_CACHE_SEC } from './avatar-config'
 import { avatarEntityRadius } from './avatar-radius'
 import {
+  birthAnchorTarget,
   findMother,
   groupCohesionTarget,
   hasNearbySeekingMate,
@@ -20,6 +21,8 @@ import type { PelletGrid } from './pellet-grid'
 import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
+
+const PELLET_SEEK_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT) * 0.95
 
 function hash01(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453
@@ -135,6 +138,11 @@ function wander(entity: CircleEntity, dt: number, entities: CircleEntity[] = [],
       }
     }
   } else {
+    const birth = birthAnchorTarget(entity, seekingMate)
+    if (birth) {
+      moveToward(entity, birth.x, birth.y, dt, 0.66, avatarEntityRadius(entity) * 0.6)
+      return
+    }
     const group = groupCohesionTarget(entity, entities, seekingMate)
     if (group) {
       moveToward(entity, group.x, group.y, dt, 0.62, avatarEntityRadius(entity) * 0.65)
@@ -163,7 +171,7 @@ function pickPelletTarget(
     const cached = grid.getById(entity.aiPelletTargetId)
     if (cached && cached.kind === kind) return { x: cached.x, y: cached.y, id: cached.id }
   }
-  const candidates = grid.findNearestCandidates(entity.x, entity.y, 2200, 10, kind)
+  const candidates = grid.findNearestCandidates(entity.x, entity.y, PELLET_SEEK_RADIUS, 10, kind)
   if (candidates.length === 0) return null
   entity.aiPelletTargetId = candidates[0].id
   entity.aiPelletTargetTimer = NPC_TARGET_CACHE_SEC
