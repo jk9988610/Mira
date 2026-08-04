@@ -13,16 +13,17 @@ import {
   isPursuingMate,
   updateMatePursuit,
 } from './avatar-reproduction'
+import {
+  emitterArriveRadius,
+  pickBestEmitterTarget,
+  type EmitterTarget,
+} from './resource-ray'
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isJuvenile } from './entity'
-import type { PelletGrid } from './pellet-grid'
-import type { PelletKind } from './pellet'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
-
-const PELLET_SEEK_RADIUS = Math.hypot(WORLD_WIDTH, WORLD_HEIGHT) * 0.95
 
 function countStructures(entities: CircleEntity[]): { farm: number; school: number; park: number } {
   let farm = 0
@@ -59,10 +60,8 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
   if (entity.transformHistory.length > 12) entity.transformHistory.splice(0, entity.transformHistory.length - 12)
 }
 
-export function intentLabel(
-  entity: CircleEntity,
-  gameTimeSec = 0,
-): string {
+
+export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
   if (entity.productionStage === 'active') return '生产'
   if (entity.pendingAvatarKind !== 'none') {
     return entity.avatarTransformCooldown > 0 ? '等待·化身冷却' : '等待·化身'
@@ -75,28 +74,26 @@ export function intentLabel(
 
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
   const phase = currentSchedulePhase(entity, gameTimeSec, seeking)
-  const base =
+  let base =
     phase === 'sleep'
       ? '睡觉'
       : phase === 'wander'
         ? '闲逛'
         : entity.aiIntent === 'eat'
-          ? '觅食'
+          ? '接收食物射线'
           : entity.aiIntent === 'learn'
-            ? '吸收知识'
+            ? '接收知识射线'
             : entity.aiIntent === 'play'
-              ? '吸收快乐'
+              ? '接收快乐射线'
               : schedulePhaseLabel(phase)
+
+  if (entity.intentEtaSec > 0 && (entity.aiIntent === 'eat' || entity.aiIntent === 'learn' || entity.aiIntent === 'play')) {
+    base = `${base} →(${Math.round(entity.intentTargetX)},${Math.round(entity.intentTargetY)}) ${entity.intentEtaSec.toFixed(1)}s`
+  }
 
   if (isJuvenile(entity, gameTimeSec)) return base
   if (seeking) return `求偶·${base}`
   return base
-}
-
-function pelletKindForNeed(need: NeedKind): PelletKind {
-  if (need === 'learn') return 'knowledge'
-  if (need === 'play') return 'joy'
-  return 'food'
 }
 
 function moveToward(
@@ -142,26 +139,44 @@ function wander(entity: CircleEntity, dt: number, seekingMate = false): void {
   syncEntityGeo(entity)
 }
 
-function pickPelletTarget(
-  entity: CircleEntity,
-  grid: PelletGrid,
-  kind: PelletKind,
-): { x: number; y: number; id: number } | null {
-  if (entity.aiPelletTargetTimer > 0 && entity.aiPelletTargetId > 0) {
-    const cached = grid.getById(entity.aiPelletTargetId)
-    if (cached && cached.kind === kind) return { x: cached.x, y: cached.y, id: cached.id }
+function applyIntentTarget(entity: CircleEntity, target: EmitterTarget | null, need: NeedKind): void {
+  if (!target) {
+    entity.intentTargetX = 0
+    entity.intentTargetY = 0
+    entity.intentEtaSec = 0
+    entity.aiEmitterTargetId = 0
+    return
   }
-  const candidates = grid.findNearestCandidates(entity.x, entity.y, PELLET_SEEK_RADIUS, 10, kind)
-  if (candidates.length === 0) return null
-  entity.aiPelletTargetId = candidates[0].id
-  entity.aiPelletTargetTimer = NPC_TARGET_CACHE_SEC
-  return { x: candidates[0].x, y: candidates[0].y, id: candidates[0].id }
+  entity.intentTargetX = target.x
+  entity.intentTargetY = target.y
+  entity.intentEtaSec = target.etaSec
+  entity.aiEmitterTargetId = target.emitterId
+  entity.aiIntent = need
+}
+
+function pickEmitterTarget(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  need: NeedKind,
+): EmitterTarget | null {
+  if (entity.aiPelletTargetTimer > 0 && entity.aiEmitterTargetId > 0) {
+    const cached = entities.find((e) => e.id === entity.aiEmitterTargetId && isActive(e))
+    if (cached) {
+      const target = pickBestEmitterTarget(entity, entities, need)
+      if (target && target.emitterId === cached.id) return target
+    }
+  }
+  const target = pickBestEmitterTarget(entity, entities, need)
+  if (target) {
+    entity.aiEmitterTargetId = target.emitterId
+    entity.aiPelletTargetTimer = NPC_TARGET_CACHE_SEC
+  }
+  return target
 }
 
 export function updateNpcIntent(
   entity: CircleEntity,
   entities: CircleEntity[],
-  grid: PelletGrid,
   dt: number,
   now = 0,
 ): { moving: boolean; sleeping: boolean } {
@@ -169,6 +184,7 @@ export function updateNpcIntent(
 
   if (entity.productionStage === 'active') {
     entity.aiIntent = 'wait'
+    entity.intentEtaSec = 0
     return { moving: false, sleeping: false }
   }
 
@@ -180,6 +196,9 @@ export function updateNpcIntent(
       const dy = mother.y - entity.y
       const dist = Math.hypot(dx, dy)
       const orbit = avatarEntityRadius(mother) + avatarEntityRadius(entity) + 26
+      entity.intentTargetX = mother.x
+      entity.intentTargetY = mother.y
+      entity.intentEtaSec = dist / Math.max(18, speedForMass(entity.mass))
       if (dist > orbit) {
         moveToward(entity, mother.x, mother.y, dt, 0.62, orbit)
       } else {
@@ -192,6 +211,7 @@ export function updateNpcIntent(
 
   if (isPursuingMate(entity, now)) {
     entity.aiIntent = 'wander'
+    entity.intentEtaSec = 0
     updateMatePursuit(entity, entities, dt, now)
     return { moving: true, sleeping: false }
   }
@@ -202,6 +222,7 @@ export function updateNpcIntent(
 
   if (phase === 'sleep') {
     entity.aiIntent = 'sleep'
+    entity.intentEtaSec = 0
     return { moving: false, sleeping: true }
   }
 
@@ -211,6 +232,7 @@ export function updateNpcIntent(
 
   if (phase === 'wander') {
     entity.aiIntent = 'wander'
+    entity.intentEtaSec = 0
     wander(entity, dt, seeking)
   } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
     entity.aiIntent = phase
@@ -220,16 +242,22 @@ export function updateNpcIntent(
 
   const activeNeed = entity.aiIntent
   if (activeNeed === 'eat' || activeNeed === 'learn' || activeNeed === 'play') {
-    const pellet = pickPelletTarget(entity, grid, pelletKindForNeed(activeNeed))
-    if (pellet) {
-      const absorbArrive = Math.max(8, avatarEntityRadius(entity) * 0.42)
-      moveToward(entity, pellet.x, pellet.y, dt, 0.92, absorbArrive)
+    const emitter = pickEmitterTarget(entity, entities, activeNeed)
+    if (emitter) {
+      applyIntentTarget(entity, emitter, activeNeed)
+      const arrive = emitterArriveRadius(
+        entities.find((e) => e.id === emitter.emitterId) ?? entity,
+      )
+      moveToward(entity, emitter.x, emitter.y, dt, 0.92, arrive)
+      entity.intentEtaSec = Math.max(0, entity.intentEtaSec - dt)
       return { moving: true, sleeping: false }
     }
+    applyIntentTarget(entity, null, activeNeed)
     if (!juvenile && phase === 'wander') wander(entity, dt * 0.5, seeking)
     return { moving: !juvenile && phase === 'wander', sleeping: false }
   }
 
+  entity.intentEtaSec = 0
   if (activeNeed === 'wander') {
     return { moving: true, sleeping: false }
   }

@@ -92,6 +92,15 @@ export interface CircleEntity {
   aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander' | 'wait'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
+  /** 意图目标坐标 */
+  intentTargetX: number
+  intentTargetY: number
+  /** 预计到达意图目标的秒数 */
+  intentEtaSec: number
+  /** 当前追踪的射线发射源 id */
+  aiEmitterTargetId: number
+  /** 射线发射剩余秒数（结构体限时广播） */
+  emitBurstSec: number
   aiAnchorX: number
   aiAnchorY: number
   aiAnchorTimer: number
@@ -211,6 +220,11 @@ export function createCircle(
     aiIntent: 'wander',
     aiPelletTargetId: 0,
     aiPelletTargetTimer: 0,
+    intentTargetX: 0,
+    intentTargetY: 0,
+    intentEtaSec: 0,
+    aiEmitterTargetId: 0,
+    emitBurstSec: 0,
     aiAnchorX: x,
     aiAnchorY: y,
     aiAnchorTimer: 0,

@@ -319,9 +319,11 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
   }
   male.productionCooldown = PRODUCTION_COOLDOWN_SEC
   female.productionCooldown = PRODUCTION_COOLDOWN_SEC
-  female.pendingAvatarKind = 'farm'
-  female.aiAnchorX = female.x
-  female.aiAnchorY = female.y
+  if (female.marketContractOrderId <= 0) {
+    female.pendingAvatarKind = 'farm'
+    female.aiAnchorX = female.x
+    female.aiAnchorY = female.y
+  }
 }
 
 export function tickProductionCooldowns(entities: CircleEntity[], dt: number): void {

@@ -252,8 +252,11 @@ function expireOrders(familyId: number, entities: CircleEntity[], gameTimeSec: n
         worker.contractTargetX = 0
         worker.contractTargetY = 0
       }
+      order.status = 'expired'
+      order.contractorId = undefined
+    } else {
+      order.status = 'expired'
     }
-    order.status = 'expired'
   }
 }
 
