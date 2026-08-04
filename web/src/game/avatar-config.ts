@@ -69,8 +69,13 @@ export const ADULT_AGE_SEC = 24
 /** 新生后代在母亲身边停留时长（秒） */
 export const OFFSPRING_MOTHER_BOND_SEC = 14
 
-/** 超过该年龄后求偶信号大幅衰减 */
+/** 超过该年龄后求偶信号大幅衰减（已由 32 秒求偶窗口取代，保留微弱衰减） */
 export const ELDER_MATE_AGE_SEC = 55
+
+/** 每个圆一轮求偶意图持续秒数 */
+export const MATE_INTENT_WINDOW_SEC = 32
+/** 求偶意图结束后基础冷却（秒），随后指数增长 */
+export const MATE_INTENT_COOLDOWN_BASE_SEC = 10
 
 /** 自然闲逛：换向间隔与转向平滑 */
 export const WANDER_INTERVAL_MIN_SEC = 3.5
@@ -81,9 +86,9 @@ export const WANDER_STEER = 2.8
 export const INITIAL_FAMILY_FUNDS = 90
 export const ORDER_POST_COST = 18
 export const ORDER_POST_COOLDOWN_SEC = 22
-export const ORDER_DEADLINE_SEC = 35
+export const ORDER_DEADLINE_SEC = 55
 export const ORDER_REWARD = 28
-export const ORDER_FULFILL_RADIUS = 95
+export const ORDER_FULFILL_RADIUS = 48
 export const FAMILY_SHARE_OF_REWARD = 0.5
 export const FAMILY_NEED_POST_THRESHOLD = 0.38
 export const MAX_ORDER_HISTORY = 5

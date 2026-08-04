@@ -6,17 +6,15 @@ import {
   tickAvatarMetabolism,
   tickAvatarTransformLifespan,
 } from './avatar-vitality'
-import { canAbsorbPellet, clampPelletPosition, createPellet, createTraitPellet, type Pellet } from './pellet'
+import { canAbsorbPellet, clampPelletPosition, createPellet, type Pellet } from './pellet'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isAdult, isJuvenile } from './entity'
 import {
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
   AVATAR_SPAWN_OFFSET,
-  AVATAR_MAX_PELLETS,
   AVATAR_TRANSFORM_DURATION_SEC,
   AVG_PELLET_MASS_ESTIMATE,
-  WORK_NEARBY_PELLET_CAP,
   WORK_PELLET_COUNT,
   WORK_PELLET_INTERVAL_SEC,
   WORK_PELLET_RING_RADIUS,
@@ -33,6 +31,7 @@ import {
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { fulfillMarketOrder } from './family-market'
 import { hasJuvenileOffspringToPlan } from './avatar-needs'
+import { recordPelletProduction } from './production-stats'
 import { isPursuingMate } from './avatar-reproduction'
 import { syncEntityGeo } from './geo'
 import { addIntakeMass, remainingIntakeRoom } from './avatar-mass'
@@ -128,11 +127,6 @@ export function tickAvatarTransformCooldowns(entities: CircleEntity[], dt: numbe
   }
 }
 
-function trimPellets(pellets: Pellet[]): Pellet[] {
-  if (pellets.length <= AVATAR_MAX_PELLETS) return pellets
-  return pellets.slice(pellets.length - AVATAR_MAX_PELLETS)
-}
-
 function isAvatarStructure(entity: CircleEntity): boolean {
   return isStructureRole(entity.avatarRole)
 }
@@ -169,13 +163,14 @@ export function canBeginAvatarTransform(
   _kind: TransformKind,
   entities: CircleEntity[],
   gameTimeSec = 0,
+  forceMarket = false,
 ): boolean {
   if (!entity || !isActive(entity)) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
   if (entity.avatarTransformCooldown > 0) return false
-  if (!canPlaceAvatarTransform(entity, _kind, entities)) return false
+  if (!forceMarket && !canPlaceAvatarTransform(entity, _kind, entities)) return false
   return true
 }
 
@@ -313,12 +308,14 @@ function tryAllyTransform(
   entities: CircleEntity[],
   pellets: Pellet[],
   kind: TransformKind,
+  gameTimeSec = 0,
+  forceMarket = false,
 ): { entities: CircleEntity[]; pellets: Pellet[]; absorbed: Pellet[] } {
-  if (!canBeginAvatarTransform(ally, kind, entities)) {
+  if (!canBeginAvatarTransform(ally, kind, entities, gameTimeSec, forceMarket)) {
     return { entities, pellets, absorbed: [] }
   }
   const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets)
-  const result = completeAvatarTransform(entities, ally, kind)
+  const result = completeAvatarTransform(entities, ally, kind, gameTimeSec)
   return { entities: result.entities, pellets: nextPellets, absorbed }
 }
 
@@ -360,8 +357,10 @@ export function completeAvatarTransform(
   entities: CircleEntity[],
   entity: CircleEntity,
   kind: TransformKind,
+  gameTimeSec = 0,
 ): TransformResult {
-  if (!canBeginAvatarTransform(entity, kind, entities)) {
+  const forceMarket = entity.marketContractOrderId > 0
+  if (!canBeginAvatarTransform(entity, kind, entities, gameTimeSec, forceMarket)) {
     return { entities }
   }
 
@@ -390,7 +389,7 @@ export function completeAvatarTransform(
   recordTransformHistory(entity, kind)
 
   if (entity.marketContractOrderId > 0) {
-    fulfillMarketOrder(entity.marketContractOrderId, entity.id)
+    fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
     entity.marketContractOrderId = 0
     entity.contractTargetX = 0
     entity.contractTargetY = 0
@@ -480,26 +479,6 @@ export function spawnPelletsAroundFarm(farm: CircleEntity): Pellet[] {
   return spawned
 }
 
-function spawnTraitPelletsAround(
-  structure: CircleEntity,
-  kind: 'knowledge' | 'joy',
-  count: number,
-): Pellet[] {
-  const ringRadius = farmPelletRingRadius(structure)
-  const spawned: Pellet[] = []
-  const amount = Math.max(2, Math.round(count * workEfficiency(structure)))
-  for (let i = 0; i < amount; i++) {
-    const angle = (Math.PI * 2 * i) / amount + Math.random() * 0.3
-    const r = ringRadius + Math.random() * ringRadius * 0.25
-    const pellet = createTraitPellet(structure.x + Math.cos(angle) * r, structure.y + Math.sin(angle) * r, kind)
-    const pos = clampPelletPosition(pellet.x, pellet.y, pellet.radius, WORLD_WIDTH, WORLD_HEIGHT)
-    pellet.x = pos.x
-    pellet.y = pos.y
-    spawned.push(pellet)
-  }
-  return spawned
-}
-
 function tickStructureTimer(entity: CircleEntity, dt: number): boolean {
   entity.avatarTransformTimer -= dt
   if (entity.avatarTransformTimer <= 0) {
@@ -512,11 +491,9 @@ function tickStructureTimer(entity: CircleEntity, dt: number): boolean {
 export function updateFarmStructures(
   entities: CircleEntity[],
   pellets: Pellet[],
-  grid: PelletGrid,
+  _grid: PelletGrid,
   dt: number,
 ): Pellet[] {
-  if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
-
   for (const entity of entities) {
     if (entity.avatarRole !== 'farm' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
@@ -524,11 +501,10 @@ export function updateFarmStructures(
     if (entity.pelletSpawnTimer > 0) continue
     entity.pelletSpawnTimer = WORK_PELLET_INTERVAL_SEC
     entity.structureProduceCount++
-    if (pellets.length < AVATAR_MAX_PELLETS && countPelletsNearFarm(entity, grid) < WORK_NEARBY_PELLET_CAP) {
-      pellets.push(...spawnPelletsAroundFarm(entity))
-    }
+    const count = Math.max(3, Math.round(WORK_PELLET_COUNT * workEfficiency(entity)))
+    recordPelletProduction('food', count)
   }
-  return trimPellets(pellets)
+  return pellets
 }
 
 export function updateSchoolStructures(
@@ -536,16 +512,16 @@ export function updateSchoolStructures(
   pellets: Pellet[],
   dt: number,
 ): Pellet[] {
-  if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
   for (const entity of entities) {
     if (entity.avatarRole !== 'school' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
     entity.pelletSpawnTimer = LEARN_PELLET_INTERVAL_SEC
-    pellets.push(...spawnTraitPelletsAround(entity, 'knowledge', LEARN_PELLET_COUNT))
+    const count = Math.max(2, Math.round(LEARN_PELLET_COUNT * workEfficiency(entity)))
+    recordPelletProduction('knowledge', count)
   }
-  return trimPellets(pellets)
+  return pellets
 }
 
 export function updateParkStructures(
@@ -553,16 +529,16 @@ export function updateParkStructures(
   pellets: Pellet[],
   dt: number,
 ): Pellet[] {
-  if (pellets.length >= AVATAR_MAX_PELLETS) return pellets
   for (const entity of entities) {
     if (entity.avatarRole !== 'park' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     entity.pelletSpawnTimer -= dt
     if (entity.pelletSpawnTimer > 0) continue
     entity.pelletSpawnTimer = PLAY_PELLET_INTERVAL_SEC
-    pellets.push(...spawnTraitPelletsAround(entity, 'joy', PLAY_PELLET_COUNT))
+    const count = Math.max(2, Math.round(PLAY_PELLET_COUNT * workEfficiency(entity)))
+    recordPelletProduction('joy', count)
   }
-  return trimPellets(pellets)
+  return pellets
 }
 
 function atTransformSpot(entity: CircleEntity, x: number, y: number): boolean {
@@ -582,13 +558,25 @@ function updatePendingAvatarTransform(
   const kind = ally.pendingAvatarKind
   ally.aiIntent = ally.avatarTransformCooldown > 0 ? 'wait' : 'wander'
 
-  const useContractSpot =
-    ally.marketContractOrderId > 0 && ally.contractTargetX !== 0 && ally.contractTargetY !== 0
-  const spot = useContractSpot
-    ? { x: ally.contractTargetX, y: ally.contractTargetY }
-    : findNearestAvatarTransformSpot(ally, kind, entities, now)
+  const useContractSpot = ally.marketContractOrderId > 0
+  if (useContractSpot) {
+    const distToTarget = Math.hypot(ally.contractTargetX - ally.x, ally.contractTargetY - ally.y)
+    if (distToTarget > ORDER_FULFILL_RADIUS) {
+      moveEntityToward(ally, ally.contractTargetX, ally.contractTargetY, dt)
+      clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+      syncEntityGeo(ally)
+      return { pellets, absorbed: [], entities }
+    }
+  }
+
+  let spot = findNearestAvatarTransformSpot(ally, kind, entities, now)
   if (!spot) {
     ally.pendingAvatarKind = 'none'
+    if (useContractSpot) {
+      ally.marketContractOrderId = 0
+      ally.contractTargetX = 0
+      ally.contractTargetY = 0
+    }
     return null
   }
 
@@ -597,25 +585,21 @@ function updatePendingAvatarTransform(
 
   if (!atTransformSpot(ally, spot.x, spot.y)) {
     moveEntityToward(ally, spot.x, spot.y, dt)
+    clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+    syncEntityGeo(ally)
     return { pellets, absorbed: [], entities }
-  }
-
-  if (useContractSpot) {
-    const dist = Math.hypot(ally.contractTargetX - ally.x, ally.contractTargetY - ally.y)
-    if (dist > ORDER_FULFILL_RADIUS) {
-      return { pellets, absorbed: [], entities }
-    }
   }
 
   if (ally.avatarTransformCooldown > 0) {
     return { pellets, absorbed: [], entities }
   }
 
-  if (!canBeginAvatarTransform(ally, kind, entities, now)) {
+  const forceMarket = ally.marketContractOrderId > 0
+  if (!canBeginAvatarTransform(ally, kind, entities, now, forceMarket)) {
     return { pellets, absorbed: [], entities }
   }
 
-  const result = tryAllyTransform(ally, entities, pellets, kind)
+  const result = tryAllyTransform(ally, entities, pellets, kind, now, forceMarket)
   ally.pendingAvatarKind = 'none'
   return result
 }
@@ -663,9 +647,13 @@ export function updateAlly(
 
   if (intent.moving || ally.productionStage !== 'none') {
     const { pellets: nextPellets, absorbed } = absorbAndFilterPellets(ally, pellets, grid)
+    clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+    syncEntityGeo(ally)
     return { pellets: nextPellets, absorbed, entities }
   }
 
+  clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+  syncEntityGeo(ally)
   return { pellets, absorbed: [], entities }
 }
 

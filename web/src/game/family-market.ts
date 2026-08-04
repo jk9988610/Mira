@@ -16,6 +16,7 @@ import {
 import { chooseAvatarKindToBuild } from './avatar-needs'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
+import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled' | 'expired'
 
@@ -32,6 +33,7 @@ export interface MarketOrder {
   status: OrderStatus
   posterId: number
   contractorId?: number
+  completedAt?: number
 }
 
 export interface FamilyMarketRecord {
@@ -48,6 +50,14 @@ export interface FamilyMarketRecord {
 
 let orderIdSeq = 1
 const familyMarkets = new Map<number, FamilyMarketRecord>()
+const ORDER_WORLD_INSET = 72
+
+function clampOrderPoint(x: number, y: number): { x: number; y: number } {
+  return {
+    x: Math.max(ORDER_WORLD_INSET, Math.min(WORLD_WIDTH - ORDER_WORLD_INSET, x)),
+    y: Math.max(ORDER_WORLD_INSET, Math.min(WORLD_HEIGHT - ORDER_WORLD_INSET, y)),
+  }
+}
 
 function getFamilyId(entity: CircleEntity): number {
   return entity.familyId || entity.id
@@ -180,6 +190,8 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
   const poster = findElderPoster(familyId, entities, gameTimeSec) ?? needy
   if (!needy || !poster) return
 
+  const anchor = clampOrderPoint(needy.x, needy.y)
+
   rec.funds -= ORDER_POST_COST
   rec.orderPostCooldownUntil = gameTimeSec + ORDER_POST_COOLDOWN_SEC
 
@@ -187,8 +199,8 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
     id: orderIdSeq++,
     familyId,
     kind,
-    x: needy.x,
-    y: needy.y,
+    x: anchor.x,
+    y: anchor.y,
     reward: ORDER_REWARD,
     cost: ORDER_POST_COST,
     postedAt: gameTimeSec,
@@ -287,13 +299,14 @@ export function findMarketOrder(orderId: number): MarketOrder | null {
   return null
 }
 
-export function fulfillMarketOrder(orderId: number, contractorId: number): void {
+export function fulfillMarketOrder(orderId: number, contractorId: number, gameTimeSec: number): void {
   for (const rec of familyMarkets.values()) {
     const order = rec.orders.find((o) => o.id === orderId)
     if (!order || order.status !== 'assigned') return
     if (order.contractorId !== contractorId) return
 
     order.status = 'fulfilled'
+    order.completedAt = gameTimeSec
     rec.funds += order.reward * FAMILY_SHARE_OF_REWARD
   }
 }
@@ -320,9 +333,9 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
       })
     }
     electChief(fid, entities, gameTimeSec)
-    expireOrders(fid, entities, gameTimeSec)
     tryPostOrder(fid, entities, gameTimeSec)
     tryAssignContractors(fid, entities, gameTimeSec)
+    expireOrders(fid, entities, gameTimeSec)
   }
 }
 

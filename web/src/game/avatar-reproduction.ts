@@ -1,5 +1,7 @@
 import {
   ELDER_MATE_AGE_SEC,
+  MATE_INTENT_COOLDOWN_BASE_SEC,
+  MATE_INTENT_WINDOW_SEC,
   MATE_PURSUIT_SPEED,
   MATE_SIGNAL_MIN_STRENGTH,
   MATE_SIGNAL_RANGE_RATIO,
@@ -181,16 +183,44 @@ export function canEngageProduction(entity: CircleEntity, gameTimeSec = 0): bool
 export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
   if (!canEngageProduction(entity, gameTimeSec) || entity.productionStage !== 'none') return false
   if (entity.pendingAvatarKind !== 'none') return false
-  return entity.productionCooldown <= 0
+  if (entity.productionCooldown > 0) return false
+  if (entity.mateIntentCooldownSec > 0) return false
+  if (entity.mateIntentElapsedSec >= MATE_INTENT_WINDOW_SEC) return false
+  return true
 }
 
 /** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
 export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
   if (!isSeekingMate(entity, now)) return false
   const elder = elderMateFactor(entity, now)
-  if (elder < 0.12) return false
+  if (elder < 0.08) return false
   const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
   return roll < (0.28 + entity.mateSeekUrge * 0.62) * elder
+}
+
+export function tickMateIntent(entities: CircleEntity[], dt: number, gameTimeSec = 0): void {
+  for (const entity of entities) {
+    if (!isActive(entity) || !isAdult(entity, gameTimeSec)) continue
+    if (entity.productionCooldown > 0) {
+      entity.mateIntentElapsedSec = 0
+      continue
+    }
+    if (entity.mateIntentCooldownSec > 0) {
+      entity.mateIntentCooldownSec = Math.max(0, entity.mateIntentCooldownSec - dt)
+      entity.mateIntentElapsedSec = 0
+      continue
+    }
+    if (entity.productionStage !== 'none' || entity.pendingAvatarKind !== 'none') continue
+
+    entity.mateIntentElapsedSec += dt
+    if (entity.mateIntentElapsedSec < MATE_INTENT_WINDOW_SEC) continue
+
+    entity.mateIntentElapsedSec = 0
+    entity.mateIntentCycles++
+    const exponent = Math.min(entity.mateIntentCycles - 1, 6)
+    entity.mateIntentCooldownSec = MATE_INTENT_COOLDOWN_BASE_SEC * 2 ** exponent
+    entity.aiMateTargetId = 0
+  }
 }
 
 function circlesTouch(a: CircleEntity, b: CircleEntity): boolean {
@@ -223,6 +253,11 @@ export function beginProductionPair(male: CircleEntity, female: CircleEntity): v
   female.countProduceTransforms++
   male.countProductionSessions++
   female.countProductionSessions++
+  for (const e of [male, female]) {
+    e.mateIntentElapsedSec = 0
+    e.mateIntentCooldownSec = 0
+    e.mateIntentCycles = 0
+  }
 }
 
 function findPartner(entities: CircleEntity[], entity: CircleEntity): CircleEntity | null {
@@ -279,6 +314,8 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
     e.productionTimer = 0
     e.productionPartnerId = 0
     if (e.id !== female.id) e.pendingAvatarKind = 'none'
+    e.mateIntentElapsedSec = 0
+    e.mateIntentCooldownSec = 0
   }
   male.productionCooldown = PRODUCTION_COOLDOWN_SEC
   female.productionCooldown = PRODUCTION_COOLDOWN_SEC

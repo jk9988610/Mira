@@ -9,6 +9,7 @@ import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
 import type { TribeDemographics } from '../game/tribe-stats'
 import type { FamilyMarketRecord } from '../game/family-market'
+import type { OrderStatsSummary, ProductionSample } from '../game/production-stats'
 import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
@@ -167,6 +168,18 @@ export interface AvatarHudData {
   demographics: TribeDemographics
   familyMarkets: FamilyMarketRecord[]
   entities: CircleEntity[]
+  statsOpen: boolean
+  productionSamples: ProductionSample[]
+  orderStats: OrderStatsSummary
+}
+
+export function getStatsButtonRect(width: number): { x: number; y: number; w: number; h: number } {
+  return { x: width - 96, y: 12, w: 80, h: 28 }
+}
+
+export function hitTestStatsButton(x: number, y: number, width: number): boolean {
+  const rect = getStatsButtonRect(width)
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h
 }
 
 function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: CircleEntity['productionStage']): string | null {
@@ -368,19 +381,31 @@ export function drawMarketHud(
   _height: number,
   data: AvatarHudData,
 ): void {
+  const btn = getStatsButtonRect(width)
+  ctx.fillStyle = data.statsOpen ? 'rgba(88, 166, 255, 0.28)' : 'rgba(8, 12, 20, 0.78)'
+  roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8)
+  ctx.fill()
+  ctx.strokeStyle = data.statsOpen ? '#58a6ff' : '#3d4f6e'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.textAlign = 'center'
+  ctx.fillStyle = data.statsOpen ? '#ffffff' : '#8aa0c8'
+  ctx.font = '600 12px system-ui, sans-serif'
+  ctx.fillText('统计', btn.x + btn.w / 2, btn.y + 18)
+
   ctx.textAlign = 'right'
   ctx.font = '12px system-ui, sans-serif'
 
-  let y = 16
+  let y = btn.y + btn.h + 10
   const panelW = Math.min(360, width - 32)
 
-  const drawRightPanel = (text: string, h = 24) => {
+  const drawRightPanel = (text: string, h = 24, color = '#8aa0c8') => {
     ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
     const tw = Math.min(ctx.measureText(text).width + 20, panelW)
     const x = width - 16 - tw
     roundRect(ctx, x, y, tw, h, 8)
     ctx.fill()
-    ctx.fillStyle = '#8aa0c8'
+    ctx.fillStyle = color
     ctx.fillText(text, width - 26, y + 16)
     y += h + 6
   }
@@ -402,12 +427,117 @@ export function drawMarketHud(
       const kind = KIND_LABEL[order.kind] ?? order.kind
       const status = ORDER_STATUS_LABEL[order.status] ?? order.status
       const remain = Math.max(0, order.deadline - data.gameTimeSec)
-      drawRightPanel(
-        `#${order.id} ${kind} · ${status} · 截止${Math.ceil(remain)}s · 赏${order.reward}`,
-        28,
-      )
+      const color =
+        order.status === 'fulfilled'
+          ? '#7ddea8'
+          : order.status === 'expired' || order.status === 'cancelled'
+            ? '#ff9f9f'
+            : '#8aa0c8'
+      const timeLabel =
+        order.status === 'fulfilled'
+          ? `完成于 ${formatGameTime(order.completedAt ?? data.gameTimeSec)}`
+          : `截止 ${Math.ceil(remain)}s`
+      drawRightPanel(`#${order.id} ${kind} · ${status} · ${timeLabel} · 赏${order.reward}`, 28, color)
     }
   }
+
+  if (data.statsOpen) {
+    drawStatsPanel(ctx, width, _height, data)
+  }
+}
+
+function drawMiniLineChart(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  samples: ProductionSample[],
+  field: 'food' | 'knowledge' | 'joy',
+  color: string,
+  label: string,
+): void {
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.88)'
+  roundRect(ctx, x, y, w, h, 8)
+  ctx.fill()
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#b8c4dc'
+  ctx.font = '11px system-ui, sans-serif'
+  ctx.fillText(label, x + 10, y + 16)
+
+  const plotX = x + 10
+  const plotY = y + 24
+  const plotW = w - 20
+  const plotH = h - 34
+
+  const values = samples.map((s) => s[field])
+  const maxVal = Math.max(1, ...values)
+  const total = values.reduce((a, b) => a + b, 0)
+  ctx.fillStyle = '#7f8ca3'
+  ctx.fillText(`合计 ${total}`, x + w - 70, y + 16)
+
+  if (samples.length < 2) {
+    ctx.strokeStyle = 'rgba(100, 120, 150, 0.35)'
+    ctx.beginPath()
+    ctx.moveTo(plotX, plotY + plotH / 2)
+    ctx.lineTo(plotX + plotW, plotY + plotH / 2)
+    ctx.stroke()
+    return
+  }
+
+  ctx.strokeStyle = color
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  for (let i = 0; i < samples.length; i++) {
+    const px = plotX + (i / (samples.length - 1)) * plotW
+    const py = plotY + plotH - (values[i] / maxVal) * plotH
+    if (i === 0) ctx.moveTo(px, py)
+    else ctx.lineTo(px, py)
+  }
+  ctx.stroke()
+}
+
+function drawStatsPanel(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  data: AvatarHudData,
+): void {
+  const panelW = Math.min(420, width - 32)
+  const panelH = Math.min(360, height - 48)
+  const x = width - panelW - 16
+  const y = 52
+
+  ctx.fillStyle = 'rgba(6, 10, 18, 0.92)'
+  roundRect(ctx, x, y, panelW, panelH, 12)
+  ctx.fill()
+  ctx.strokeStyle = '#58a6ff'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  ctx.textAlign = 'left'
+  ctx.fillStyle = '#e8f0ff'
+  ctx.font = '600 14px system-ui, sans-serif'
+  ctx.fillText('生产与订单统计', x + 14, y + 24)
+
+  const os = data.orderStats
+  ctx.fillStyle = '#8aa0c8'
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillText(
+    `订单 已完成 ${os.fulfilled} · 进行中 ${os.active} · 未完成 ${os.incomplete}`,
+    x + 14,
+    y + 44,
+  )
+
+  const chartW = panelW - 28
+  const chartH = 72
+  let cy = y + 58
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'food', '#8fd3ff', '食物生产（颗粒数）')
+  cy += chartH + 8
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'knowledge', '#82aaff', '知识生产（颗粒数）')
+  cy += chartH + 8
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'joy', '#ff96c8', '快乐生产（颗粒数）')
 }
 
 export function drawAvatarStructure(
