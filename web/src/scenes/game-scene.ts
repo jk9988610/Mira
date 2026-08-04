@@ -19,10 +19,11 @@ import {
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
-import { ADULT_AGE_SEC, AVATAR_INITIAL_PELLETS_PER_KIND, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
+import { ADULT_AGE_SEC, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
   isPursuingMate,
   syncMateTargets,
+  tickMateIntent,
   tickProductionCooldowns,
   updateMatePursuit,
   updateProductionPairs,
@@ -32,12 +33,18 @@ import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from 
 import { allyUpdateStride } from '../game/perf-config'
 import { removePelletsByIds } from '../game/pellet-util'
 import { PelletGrid } from '../game/pellet-grid'
-import { drawPelletsInView, spawnBalancedPellets, type Pellet } from '../game/pellet'
+import { drawPelletsInView, type Pellet } from '../game/pellet'
 import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure, drawMarketHud } from '../ui/draw'
+import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure, drawMarketHud, hitTestStatsButton } from '../ui/draw'
+import {
+  getProductionSamples,
+  resetProductionStats,
+  summarizeOrders,
+  tickProductionStats,
+} from '../game/production-stats'
 import { computeTribeDemographics } from '../game/tribe-stats'
 import {
   getFamilyMarketRecords,
@@ -100,6 +107,7 @@ export function createGameScene(
   let allyUpdateTick = 0
   let prevSplitHeld = false
   let prevGatherHeld = false
+  let statsOpen = false
   const pelletGrid = new PelletGrid()
 
   const syncControlledId = () => {
@@ -116,6 +124,8 @@ export function createGameScene(
   const reset = () => {
     resetAvatarState()
     resetFamilyMarkets()
+    resetProductionStats()
+    statsOpen = false
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = STARTER_OFFSETS.map((offset, i) => {
@@ -132,7 +142,7 @@ export function createGameScene(
       return circle
     })
     controlledId = entities[0].id
-    pellets = spawnBalancedPellets(AVATAR_INITIAL_PELLETS_PER_KIND, WORLD_WIDTH, WORLD_HEIGHT)
+    pellets = []
     pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0
@@ -202,6 +212,8 @@ export function createGameScene(
       }
 
       tickProductionCooldowns(entities, dt)
+      tickMateIntent(entities, dt, elapsed)
+      tickProductionStats(dt, elapsed)
 
       tickFamilyMarkets(entities, elapsed, dt)
 
@@ -215,10 +227,12 @@ export function createGameScene(
       allyUpdateTick++
       const allyStride = allyUpdateStride(entities.length)
       for (let i = 0; i < entities.length; i++) {
-        if (allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const entity = entities[i]
+        const isContractor = entity.marketContractOrderId > 0
         if (!isNpcMobile(entity)) continue
-        const result = updateAlly(entity, entities, pellets, pelletGrid, dt * allyStride, elapsed)
+        if (!isContractor && allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
+        const stepDt = isContractor ? dt : dt * allyStride
+        const result = updateAlly(entity, entities, pellets, pelletGrid, stepDt, elapsed)
         pellets = result.pellets
         entities = result.entities
         if (result.absorbed.length > 0) absorbFlash = 0.15
@@ -309,9 +323,17 @@ export function createGameScene(
         demographics: demo,
         familyMarkets,
         entities,
+        statsOpen,
+        productionSamples: getProductionSamples(),
+        orderStats: summarizeOrders(familyMarkets),
       }
       drawAvatarHud(ctx, width, height, hudData)
       drawMarketHud(ctx, width, height, hudData)
+    },
+    onTap(x: number, y: number, width: number, _height: number) {
+      if (hitTestStatsButton(x, y, width)) {
+        statsOpen = !statsOpen
+      }
     },
   }
 }

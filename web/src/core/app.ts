@@ -33,7 +33,7 @@ export class App {
     this.canvas.addEventListener(
       'pointerdown',
       (e) => {
-        if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.pointerType === 'mouse') {
           handle(e.clientX, e.clientY)
         }
       },
