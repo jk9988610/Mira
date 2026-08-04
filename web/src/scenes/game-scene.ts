@@ -2,7 +2,6 @@ import type { App } from '../core/app'
 import { sfx } from '../audio/synth'
 import { requestAppFullscreen } from '../core/fullscreen'
 import {
-  absorbPelletsForAvatar,
   applyFrozenMovement,
   avatarEntityRadius,
   canBeginAvatarTransform,
@@ -31,20 +30,18 @@ import {
 import { computeCamera } from '../game/camera'
 import { createCircle, isActive, isAdult, type CircleEntity, type Gender } from '../game/entity'
 import { allyUpdateStride } from '../game/perf-config'
-import { removePelletsByIds } from '../game/pellet-util'
-import { PelletGrid } from '../game/pellet-grid'
-import { drawPelletsInView, type Pellet } from '../game/pellet'
 import { AI_ROSTER, PLAYER_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
-import { clearScreen, drawAvatarCircle, drawAvatarHud, drawAvatarStructure, drawMarketHud, hitTestStatsButton } from '../ui/draw'
 import {
-  getProductionSamples,
-  resetProductionStats,
-  summarizeOrders,
-  tickProductionStats,
-} from '../game/production-stats'
+  clearScreen,
+  drawAvatarCircle,
+  drawAvatarHud,
+  drawAvatarStructure,
+  drawMarketHud,
+  hitTestStatsButton,
+} from '../ui/draw'
 import { computeTribeDemographics } from '../game/tribe-stats'
 import {
   getFamilyMarketRecords,
@@ -52,6 +49,13 @@ import {
   resetFamilyMarkets,
   tickFamilyMarkets,
 } from '../game/family-market'
+import {
+  getProductionSamples,
+  resetProductionStats,
+  summarizeOrders,
+  tickProductionStats,
+} from '../game/production-stats'
+import { drawResourceRays, receiveRaysInRange, tickEmitterBursts, tickResourceRays } from '../game/resource-ray'
 
 type PauseBridge = { fn: (() => void) | null }
 
@@ -100,7 +104,6 @@ export function createGameScene(
   gamePause: PauseBridge,
 ) {
   let entities: CircleEntity[] = []
-  let pellets: Pellet[] = []
   let controlledId = 0
   let elapsed = 0
   let absorbFlash = 0
@@ -108,7 +111,6 @@ export function createGameScene(
   let prevSplitHeld = false
   let prevGatherHeld = false
   let statsOpen = false
-  const pelletGrid = new PelletGrid()
 
   const syncControlledId = () => {
     const controlled = getControlledEntity(entities, controlledId)
@@ -142,8 +144,6 @@ export function createGameScene(
       return circle
     })
     controlledId = entities[0].id
-    pellets = []
-    pelletGrid.rebuild(pellets)
     elapsed = 0
     absorbFlash = 0
     initFamilyMarkets(entities)
@@ -181,7 +181,7 @@ export function createGameScene(
       prevGatherHeld = input.gatherHeld
 
       if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities, elapsed)) {
-        const result = completeAvatarTransform(entities, player!, 'farm')
+        const result = completeAvatarTransform(entities, player!, 'farm', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
@@ -191,13 +191,13 @@ export function createGameScene(
       }
 
       if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities, elapsed)) {
-        const result = completeAvatarTransform(entities, player!, 'school')
+        const result = completeAvatarTransform(entities, player!, 'school', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
 
       if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities, elapsed)) {
-        const result = completeAvatarTransform(entities, player!, 'park')
+        const result = completeAvatarTransform(entities, player!, 'park', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
@@ -217,10 +217,11 @@ export function createGameScene(
 
       tickFamilyMarkets(entities, elapsed, dt)
 
-      pellets = updateFarmStructures(entities, pellets, pelletGrid, dt)
-      pellets = updateSchoolStructures(entities, pellets, dt)
-      pellets = updateParkStructures(entities, pellets, dt)
-      pelletGrid.rebuild(pellets)
+      updateFarmStructures(entities, dt)
+      updateSchoolStructures(entities, dt)
+      updateParkStructures(entities, dt)
+      tickEmitterBursts(entities, dt)
+      tickResourceRays(entities, dt)
 
       entities = updateProductionPairs(entities, dt, elapsed)
 
@@ -232,13 +233,9 @@ export function createGameScene(
         if (!isNpcMobile(entity)) continue
         if (!isContractor && allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const stepDt = isContractor ? dt : dt * allyStride
-        const result = updateAlly(entity, entities, pellets, pelletGrid, stepDt, elapsed)
-        pellets = result.pellets
+        const result = updateAlly(entity, entities, stepDt, elapsed)
         entities = result.entities
-        if (result.absorbed.length > 0) absorbFlash = 0.15
       }
-
-      pelletGrid.rebuild(pellets)
 
       const movingIds = new Set<number>()
       for (const entity of entities) {
@@ -257,14 +254,8 @@ export function createGameScene(
       syncControlledId()
 
       const controlled = getControlledEntity(entities, controlledId)
-      if (controlled && isActive(controlled) && !controlled.isFrozen && !isPursuingMate(controlled, elapsed)) {
-        const absorbed = absorbPelletsForAvatar(controlled, pellets, pelletGrid)
-        if (absorbed.length > 0) {
-          const absorbedIds = new Set(absorbed.map((p) => p.id))
-          pellets = removePelletsByIds(pellets, absorbedIds)
-          absorbFlash = 0.18
-          sfx.absorbPellet()
-        }
+      if (controlled && isActive(controlled) && !controlled.isFrozen) {
+        receiveRaysInRange(controlled, entities, dt)
       }
 
       absorbFlash = Math.max(0, absorbFlash - dt)
@@ -291,7 +282,7 @@ export function createGameScene(
       ctx.clip()
 
       drawWorld(ctx, view)
-      drawPelletsInView(ctx, pellets, view)
+      drawResourceRays(ctx, entities, elapsed)
       for (const entity of sorted) {
         if (!isInView(entity.x, entity.y, view, 80)) continue
         if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
