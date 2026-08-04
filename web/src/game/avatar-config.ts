@@ -85,7 +85,9 @@ export const WANDER_STEER = 2.8
 /** 家族市场 */
 export const INITIAL_FAMILY_FUNDS = 90
 export const ORDER_POST_COST = 18
-export const ORDER_POST_COOLDOWN_SEC = 22
+export const ORDER_POST_COOLDOWN_SEC = 1
+export const ORDER_SERVICE_DURATION_SEC = 5
+export const CHIEF_SURVEY_RADIUS = 320
 export const ORDER_DEADLINE_SEC = 55
 export const ORDER_REWARD = 28
 export const ORDER_FULFILL_RADIUS = 48

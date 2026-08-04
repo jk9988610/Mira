@@ -115,6 +115,10 @@ export interface CircleEntity {
   /** 市场订单服务点位 */
   contractTargetX: number
   contractTargetY: number
+  /** 订单履约光环类型（farm/school/park） */
+  orderServiceKind: TransformKind | 'none'
+  /** 订单履约剩余秒数（>0 表示正在展开光环服务） */
+  orderServiceTimer: number
   /** 当前求偶意图窗口已持续秒数 */
   mateIntentElapsedSec: number
   /** 求偶意识冷却剩余秒数（指数退避） */
@@ -237,6 +241,8 @@ export function createCircle(
     marketContractOrderId: 0,
     contractTargetX: 0,
     contractTargetY: 0,
+    orderServiceKind: 'none',
+    orderServiceTimer: 0,
     mateIntentElapsedSec: 0,
     mateIntentCooldownSec: 0,
     mateIntentCycles: 0,

@@ -11,7 +11,7 @@ import {
 } from './avatar-config'
 import { workEfficiency } from './avatar-traits'
 import type { NeedKind } from './avatar-needs'
-import type { AvatarRole, CircleEntity } from './entity'
+import type { AvatarRole, CircleEntity, TransformKind } from './entity'
 import { isActive } from './entity'
 import { speedForMass } from './movement'
 import { PLAYER_START_MASS } from './physics'
@@ -37,6 +37,12 @@ export function needToResourceKind(need: NeedKind): ResourceKind {
   return 'food'
 }
 
+export function transformKindToResourceKind(kind: TransformKind): ResourceKind {
+  if (kind === 'school') return 'knowledge'
+  if (kind === 'park') return 'joy'
+  return 'food'
+}
+
 export function roleToResourceKind(role: AvatarRole): ResourceKind | null {
   if (role === 'farm') return 'food'
   if (role === 'school') return 'knowledge'
@@ -54,6 +60,10 @@ export function emitterEfficiency(entity: CircleEntity): number {
   return workEfficiency(entity)
 }
 
+export function isOrderServiceEmitter(entity: CircleEntity): boolean {
+  return !entity.isFrozen && entity.orderServiceTimer > 0 && entity.orderServiceKind !== 'none'
+}
+
 export function isStructureEmitter(entity: CircleEntity): boolean {
   return (
     entity.isFrozen &&
@@ -62,7 +72,8 @@ export function isStructureEmitter(entity: CircleEntity): boolean {
 }
 
 export function isEmitterBursting(entity: CircleEntity): boolean {
-  return isStructureEmitter(entity) && entity.emitBurstSec > 0
+  if (entity.emitBurstSec <= 0) return false
+  return isStructureEmitter(entity) || isOrderServiceEmitter(entity)
 }
 
 /** 到达后预计仍可接收的射线秒数 */
@@ -89,7 +100,12 @@ export function resourceRayStrength(
   receiver: CircleEntity,
   kind: ResourceKind,
 ): number {
-  const emitterKind = roleToResourceKind(emitter.avatarRole)
+  let emitterKind: ResourceKind | null = null
+  if (isStructureEmitter(emitter)) {
+    emitterKind = roleToResourceKind(emitter.avatarRole)
+  } else if (isOrderServiceEmitter(emitter)) {
+    emitterKind = transformKindToResourceKind(emitter.orderServiceKind as TransformKind)
+  }
   if (!emitterKind || emitterKind !== kind || !isEmitterBursting(emitter)) return 0
 
   const radius = emitterRadius(emitter)
@@ -188,10 +204,9 @@ export function startEmitterBurst(entity: CircleEntity): void {
 
 export function tickEmitterBursts(entities: CircleEntity[], dt: number): void {
   for (const entity of entities) {
-    if (!isStructureEmitter(entity)) continue
-    if (entity.emitBurstSec > 0) {
-      entity.emitBurstSec = Math.max(0, entity.emitBurstSec - dt)
-    }
+    if (entity.emitBurstSec <= 0) continue
+    if (!isStructureEmitter(entity) && !isOrderServiceEmitter(entity)) continue
+    entity.emitBurstSec = Math.max(0, entity.emitBurstSec - dt)
   }
 }
 
@@ -205,7 +220,12 @@ export function tickResourceRays(entities: CircleEntity[], dt: number): void {
   )
 
   for (const emitter of emitters) {
-    const kind = roleToResourceKind(emitter.avatarRole)
+    let kind: ResourceKind | null = null
+    if (isStructureEmitter(emitter)) {
+      kind = roleToResourceKind(emitter.avatarRole)
+    } else if (isOrderServiceEmitter(emitter)) {
+      kind = transformKindToResourceKind(emitter.orderServiceKind as TransformKind)
+    }
     if (!kind) continue
     for (const receiver of receivers) {
       if (receiver.id === emitter.id) continue
@@ -218,7 +238,12 @@ export function receiveRaysInRange(entity: CircleEntity, entities: CircleEntity[
   if (!isActive(entity) || entity.isFrozen) return
   for (const emitter of entities) {
     if (!isEmitterBursting(emitter)) continue
-    const kind = roleToResourceKind(emitter.avatarRole)
+    let kind: ResourceKind | null = null
+    if (isStructureEmitter(emitter)) {
+      kind = roleToResourceKind(emitter.avatarRole)
+    } else if (isOrderServiceEmitter(emitter)) {
+      kind = transformKindToResourceKind(emitter.orderServiceKind as TransformKind)
+    }
     if (!kind) continue
     applyResourceToReceiver(entity, emitter, kind, dt)
   }
@@ -235,7 +260,12 @@ export function drawResourceRays(
 ): void {
   for (const emitter of entities) {
     if (!isEmitterBursting(emitter)) continue
-    const kind = roleToResourceKind(emitter.avatarRole)
+    let kind: ResourceKind | null = null
+    if (isStructureEmitter(emitter)) {
+      kind = roleToResourceKind(emitter.avatarRole)
+    } else if (isOrderServiceEmitter(emitter)) {
+      kind = transformKindToResourceKind(emitter.orderServiceKind as TransformKind)
+    }
     if (!kind) continue
 
     const radius = emitterRadius(emitter)

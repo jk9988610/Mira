@@ -19,6 +19,7 @@ import {
   type EmitterTarget,
 } from './resource-ray'
 import { clampAvatarEntityToWorld } from './avatar-radius'
+import { isFamilyChief } from './family-market'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isJuvenile } from './entity'
@@ -42,6 +43,7 @@ export function decideNpcTransformKind(
   entities: CircleEntity[],
   now = 0,
 ): TransformKind | null {
+  if (isFamilyChief(entity)) return null
   if (isJuvenile(entity, now)) return null
   if (entity.pendingAvatarKind !== 'none') return null
   if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
@@ -63,6 +65,10 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
 
 export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
   if (entity.productionStage === 'active') return '生产'
+  if (entity.marketContractOrderId > 0) {
+    if (entity.orderServiceTimer > 0) return '履约·展开光环'
+    return '履约·前往订单'
+  }
   if (entity.pendingAvatarKind !== 'none') {
     return entity.avatarTransformCooldown > 0 ? '等待·化身冷却' : '等待·化身'
   }
