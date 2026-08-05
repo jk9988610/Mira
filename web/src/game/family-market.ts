@@ -1,5 +1,6 @@
 import {
   ADULT_AGE_SEC,
+  CHIEF_SURVEY_RADIUS,
   FAMILY_NEED_POST_THRESHOLD,
   FAMILY_SHARE_OF_REWARD,
   INITIAL_FAMILY_FUNDS,
@@ -67,7 +68,21 @@ function isFounderMale(entity: CircleEntity): boolean {
   return entity.motherId === 0 && entity.gender === 'male'
 }
 
-function surveyFamily(entities: CircleEntity[], familyId: number): {
+function isInAvatarState(entity: CircleEntity): boolean {
+  return (
+    entity.isFrozen ||
+    entity.avatarRole === 'farm' ||
+    entity.avatarRole === 'school' ||
+    entity.avatarRole === 'park'
+  )
+}
+
+function surveyAroundPoint(
+  centerX: number,
+  centerY: number,
+  entities: CircleEntity[],
+  familyId: number,
+): {
   food: number
   knowledge: number
   happiness: number
@@ -77,7 +92,9 @@ function surveyFamily(entities: CircleEntity[], familyId: number): {
   let happiness = 0
   let n = 0
   for (const w of entities) {
-    if (!isActive(w) || !isAdult(w, 0) || getFamilyId(w) !== familyId) continue
+    if (!isActive(w) || getFamilyId(w) !== familyId) continue
+    const dist = Math.hypot(w.x - centerX, w.y - centerY)
+    if (dist > CHIEF_SURVEY_RADIUS) continue
     food += w.satiety / SATIETY_CAP
     knowledge += w.knowledge / KNOWLEDGE_CAP
     happiness += w.joy / JOY_CAP
@@ -91,7 +108,7 @@ function chiefScore(w: CircleEntity, gameTimeSec: number): number {
   if (w.gender !== 'male' || !isAdult(w, gameTimeSec)) return -1
   const age = entityAgeSec(w, gameTimeSec)
   if (age < ADULT_AGE_SEC) return -1
-  return w.avatarTransformCount * 18 + w.knowledge * 2.2 + w.joy * 0.6 + age * 0.35
+  return w.knowledge * 2.2 + w.joy * 0.6 + age * 0.35
 }
 
 function electChief(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
@@ -116,7 +133,9 @@ function electChief(familyId: number, entities: CircleEntity[], gameTimeSec: num
   }
 }
 
-function findNeediestMember(
+function findNeediestNearby(
+  centerX: number,
+  centerY: number,
   familyId: number,
   entities: CircleEntity[],
   kind: TransformKind,
@@ -124,7 +143,9 @@ function findNeediestMember(
   let best: CircleEntity | null = null
   let bestNeed = -1
   for (const w of entities) {
-    if (!isActive(w) || !isAdult(w, 0) || getFamilyId(w) !== familyId) continue
+    if (!isActive(w) || getFamilyId(w) !== familyId) continue
+    const dist = Math.hypot(w.x - centerX, w.y - centerY)
+    if (dist > CHIEF_SURVEY_RADIUS) continue
     let need = 0
     if (kind === 'farm') need = 1 - w.satiety / SATIETY_CAP
     else if (kind === 'school') need = 1 - w.knowledge / KNOWLEDGE_CAP
@@ -137,33 +158,28 @@ function findNeediestMember(
   return best
 }
 
-function findElderPoster(
-  familyId: number,
-  entities: CircleEntity[],
-  gameTimeSec: number,
-): CircleEntity | null {
-  let best: CircleEntity | null = null
-  let bestAge = -1
-  for (const w of entities) {
-    if (!isActive(w) || !isAdult(w, gameTimeSec) || w.gender !== 'male' || getFamilyId(w) !== familyId) continue
-    const age = entityAgeSec(w, gameTimeSec)
-    if (age >= bestAge) {
-      bestAge = age
-      best = w
-    }
-  }
-  return best
-}
-
 function hasOpenOrder(rec: FamilyMarketRecord): boolean {
   return rec.orders.some((o) => o.status === 'open' || o.status === 'assigned')
 }
 
-function isIdleContractor(w: CircleEntity, gameTimeSec: number): boolean {
+function isIdleContractor(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
-  if (w.isFrozen || w.productionStage !== 'none') return false
+  if (w.id === chiefId) return false
+  if (isInAvatarState(w)) return false
+  if (w.productionStage !== 'none') return false
   if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
+  if (w.orderServiceTimer > 0) return false
   return true
+}
+
+function clearWorkerContract(worker: CircleEntity): void {
+  worker.marketContractOrderId = 0
+  worker.pendingAvatarKind = 'none'
+  worker.contractTargetX = 0
+  worker.contractTargetY = 0
+  worker.orderServiceKind = 'none'
+  worker.orderServiceTimer = 0
+  worker.emitBurstSec = 0
 }
 
 function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
@@ -172,7 +188,10 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
   if (rec.funds < ORDER_POST_COST) return
   if (hasOpenOrder(rec)) return
 
-  const survey = surveyFamily(entities, familyId)
+  const chief = entities.find((w) => w.id === rec.chiefId && isActive(w))
+  if (!chief) return
+
+  const survey = surveyAroundPoint(chief.x, chief.y, entities, familyId)
   rec.surveyFood = survey.food
   rec.surveyKnowledge = survey.knowledge
   rec.surveyHappiness = survey.happiness
@@ -186,9 +205,8 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
   else triggerNeed = 1 - survey.happiness
   if (triggerNeed < FAMILY_NEED_POST_THRESHOLD) return
 
-  const needy = findNeediestMember(familyId, entities, kind)
-  const poster = findElderPoster(familyId, entities, gameTimeSec) ?? needy
-  if (!needy || !poster) return
+  const needy = findNeediestNearby(chief.x, chief.y, familyId, entities, kind)
+  if (!needy) return
 
   const anchor = clampOrderPoint(needy.x, needy.y)
 
@@ -206,7 +224,7 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
     postedAt: gameTimeSec,
     deadline: gameTimeSec + ORDER_DEADLINE_SEC,
     status: 'open',
-    posterId: poster.id,
+    posterId: chief.id,
   }
   rec.orders.unshift(order)
   if (rec.orders.length > MAX_ORDER_HISTORY) rec.orders.length = MAX_ORDER_HISTORY
@@ -218,21 +236,25 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
 
   for (const order of rec.orders) {
     if (order.status !== 'open') continue
-    const worker = entities.find(
-      (w) =>
-        isActive(w) &&
-        getFamilyId(w) === familyId &&
-        isIdleContractor(w, gameTimeSec) &&
-        w.id !== order.posterId,
-    )
-    if (!worker) continue
+
+    let bestWorker: CircleEntity | null = null
+    let bestDist = Infinity
+    for (const w of entities) {
+      if (!isActive(w) || getFamilyId(w) !== familyId) continue
+      if (!isIdleContractor(w, gameTimeSec, rec.chiefId)) continue
+      const dist = Math.hypot(w.x - order.x, w.y - order.y)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestWorker = w
+      }
+    }
+    if (!bestWorker) continue
 
     order.status = 'assigned'
-    order.contractorId = worker.id
-    worker.marketContractOrderId = order.id
-    worker.contractTargetX = order.x
-    worker.contractTargetY = order.y
-    worker.pendingAvatarKind = order.kind
+    order.contractorId = bestWorker.id
+    bestWorker.marketContractOrderId = order.id
+    bestWorker.contractTargetX = order.x
+    bestWorker.contractTargetY = order.y
   }
 }
 
@@ -246,12 +268,7 @@ function expireOrders(familyId: number, entities: CircleEntity[], gameTimeSec: n
 
     if (order.status === 'assigned' && order.contractorId) {
       const worker = entities.find((w) => w.id === order.contractorId)
-      if (worker) {
-        worker.marketContractOrderId = 0
-        worker.pendingAvatarKind = 'none'
-        worker.contractTargetX = 0
-        worker.contractTargetY = 0
-      }
+      if (worker) clearWorkerContract(worker)
       order.status = 'expired'
       order.contractorId = undefined
     } else {
@@ -272,7 +289,7 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       funds: INITIAL_FAMILY_FUNDS,
       chiefId: w.id,
       chiefName: w.name,
-      orderPostCooldownUntil: 8,
+      orderPostCooldownUntil: 2,
       surveyFood: 1,
       surveyKnowledge: 0.35,
       surveyHappiness: 0.55,
@@ -300,6 +317,12 @@ export function findMarketOrder(orderId: number): MarketOrder | null {
     if (order) return order
   }
   return null
+}
+
+export function isFamilyChief(entity: CircleEntity): boolean {
+  const fid = getFamilyId(entity)
+  const rec = familyMarkets.get(fid)
+  return rec != null && rec.chiefId === entity.id
 }
 
 export function fulfillMarketOrder(orderId: number, contractorId: number, gameTimeSec: number): void {

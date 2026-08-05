@@ -24,12 +24,13 @@ import {
   LEARN_PELLET_COUNT,
   SPAWN_CLEARANCE,
   ORDER_FULFILL_RADIUS,
+  ORDER_SERVICE_DURATION_SEC,
   RESOURCE_EMIT_INTERVAL_FARM_SEC,
   RESOURCE_EMIT_INTERVAL_SCHOOL_SEC,
   RESOURCE_EMIT_INTERVAL_PARK_SEC,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
-import { fulfillMarketOrder } from './family-market'
+import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
 import { hasJuvenileOffspringToPlan } from './avatar-needs'
 import { recordPelletProduction } from './production-stats'
 import { startEmitterBurst } from './resource-ray'
@@ -166,6 +167,7 @@ export function canBeginAvatarTransform(
   forceMarket = false,
 ): boolean {
   if (!entity || !isActive(entity)) return false
+  if (isFamilyChief(entity)) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
@@ -382,6 +384,8 @@ export function completeAvatarTransform(
     entity.marketContractOrderId = 0
     entity.contractTargetX = 0
     entity.contractTargetY = 0
+    entity.orderServiceKind = 'none'
+    entity.orderServiceTimer = 0
   }
 
   return { entities }
@@ -521,6 +525,88 @@ function atTransformSpot(entity: CircleEntity, x: number, y: number): boolean {
   return Math.hypot(x - entity.x, y - entity.y) <= arrive
 }
 
+function beginOrderService(
+  worker: CircleEntity,
+  order: { kind: TransformKind },
+): void {
+  worker.orderServiceKind = order.kind
+  worker.orderServiceTimer = ORDER_SERVICE_DURATION_SEC
+  startEmitterBurst(worker)
+}
+
+function updateMarketContract(
+  ally: CircleEntity,
+  entities: CircleEntity[],
+  dt: number,
+  _now: number,
+): { entities: CircleEntity[] } | null {
+  if (ally.marketContractOrderId <= 0) return null
+
+  const order = findMarketOrder(ally.marketContractOrderId)
+  if (!order || order.status !== 'assigned' || order.contractorId !== ally.id) {
+    ally.marketContractOrderId = 0
+    ally.contractTargetX = 0
+    ally.contractTargetY = 0
+    ally.orderServiceKind = 'none'
+    ally.orderServiceTimer = 0
+    ally.emitBurstSec = 0
+    return null
+  }
+
+  if (ally.orderServiceTimer > 0) {
+    ally.aiIntent = 'wait'
+    ally.intentTargetX = ally.x
+    ally.intentTargetY = ally.y
+    ally.intentEtaSec = ally.orderServiceTimer
+    return { entities }
+  }
+
+  const tx = ally.contractTargetX
+  const ty = ally.contractTargetY
+  const arriveDist = Math.max(12, ORDER_FULFILL_RADIUS * 0.45)
+
+  ally.intentTargetX = tx
+  ally.intentTargetY = ty
+  ally.intentEtaSec = Math.hypot(tx - ally.x, ty - ally.y) / Math.max(18, speedForMass(ally.mass))
+
+  if (Math.hypot(tx - ally.x, ty - ally.y) > arriveDist) {
+    ally.aiIntent = 'wander'
+    moveEntityToward(ally, tx, ty, dt)
+    clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+    syncEntityGeo(ally)
+    return { entities }
+  }
+
+  beginOrderService(ally, order)
+  return { entities }
+}
+
+export function tickOrderService(
+  entities: CircleEntity[],
+  dt: number,
+  gameTimeSec: number,
+): void {
+  for (const entity of entities) {
+    if (entity.orderServiceTimer <= 0) continue
+
+    if (entity.emitBurstSec <= 0 && entity.orderServiceTimer > 0.5) {
+      startEmitterBurst(entity)
+    }
+
+    entity.orderServiceTimer = Math.max(0, entity.orderServiceTimer - dt)
+    if (entity.orderServiceTimer > 0) continue
+
+    if (entity.marketContractOrderId > 0) {
+      fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
+    }
+    entity.marketContractOrderId = 0
+    entity.contractTargetX = 0
+    entity.contractTargetY = 0
+    entity.orderServiceKind = 'none'
+    entity.emitBurstSec = 0
+  }
+}
+
 function updatePendingAvatarTransform(
   ally: CircleEntity,
   entities: CircleEntity[],
@@ -534,7 +620,7 @@ function updatePendingAvatarTransform(
 
   const useContractSpot = ally.marketContractOrderId > 0
   const spot = useContractSpot
-    ? { x: ally.contractTargetX, y: ally.contractTargetY }
+    ? null
     : findNearestAvatarTransformSpot(ally, kind, entities, now)
 
   if (!spot) {
@@ -584,6 +670,9 @@ export function updateAlly(
     return { entities }
   }
 
+  const contract = updateMarketContract(ally, entities, dt, now)
+  if (contract) return contract
+
   const pending = updatePendingAvatarTransform(ally, entities, dt, now)
   if (pending) return pending
 
@@ -593,25 +682,24 @@ export function updateAlly(
     return { entities }
   }
 
-  const transformKind = hasJuvenileOffspringToPlan(ally, entities, now)
-    ? decideNpcTransformKind(ally, entities, now)
-    : null
-
-  if (transformKind) {
-    const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)
-    if (spot) {
-      ally.pendingAvatarKind = transformKind
-      ally.aiAnchorX = spot.x
-      ally.aiAnchorY = spot.y
-      if (!atTransformSpot(ally, spot.x, spot.y)) {
-        moveEntityToward(ally, spot.x, spot.y, dt)
-      } else if (ally.avatarTransformCooldown <= 0) {
-        const committed = updatePendingAvatarTransform(ally, entities, dt, now)
-        if (committed) return committed
+  if (!isFamilyChief(ally) && hasJuvenileOffspringToPlan(ally, entities, now)) {
+    const transformKind = decideNpcTransformKind(ally, entities, now)
+    if (transformKind) {
+      const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)
+      if (spot) {
+        ally.pendingAvatarKind = transformKind
+        ally.aiAnchorX = spot.x
+        ally.aiAnchorY = spot.y
+        if (!atTransformSpot(ally, spot.x, spot.y)) {
+          moveEntityToward(ally, spot.x, spot.y, dt)
+        } else if (ally.avatarTransformCooldown <= 0) {
+          const committed = updatePendingAvatarTransform(ally, entities, dt, now)
+          if (committed) return committed
+        }
+        clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
+        syncEntityGeo(ally)
+        return { entities }
       }
-      clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
-      syncEntityGeo(ally)
-      return { entities }
     }
   }
 

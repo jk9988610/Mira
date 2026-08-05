@@ -13,6 +13,7 @@ import {
   resetAvatarState,
   tickAvatarTransformCooldowns,
   tickMobileAvatarVitality,
+  tickOrderService,
   updateAlly,
   updateFarmStructures,
   updateParkStructures,
@@ -221,6 +222,7 @@ export function createGameScene(
       updateSchoolStructures(entities, dt)
       updateParkStructures(entities, dt)
       tickEmitterBursts(entities, dt)
+      tickOrderService(entities, dt, elapsed)
       tickResourceRays(entities, dt)
 
       entities = updateProductionPairs(entities, dt, elapsed)
@@ -229,7 +231,7 @@ export function createGameScene(
       const allyStride = allyUpdateStride(entities.length)
       for (let i = 0; i < entities.length; i++) {
         const entity = entities[i]
-        const isContractor = entity.marketContractOrderId > 0
+        const isContractor = entity.marketContractOrderId > 0 || entity.orderServiceTimer > 0
         if (!isNpcMobile(entity)) continue
         if (!isContractor && allyStride > 1 && (i + allyUpdateTick) % allyStride !== 0) continue
         const stepDt = isContractor ? dt : dt * allyStride
