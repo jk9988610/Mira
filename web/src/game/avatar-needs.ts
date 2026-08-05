@@ -104,6 +104,7 @@ const TRANSFORM_WEIGHT: Record<TransformKind, number> = {
   farm: FARM_TRANSFORM_WEIGHT,
   school: SCHOOL_TRANSFORM_WEIGHT,
   park: PARK_TRANSFORM_WEIGHT,
+  fortress: 0,
 }
 
 export function findJuvenileOffspring(
@@ -189,6 +190,7 @@ export function pickWeightedTransformKind(
     farm: 1 / (1 + structureCounts.farm * 0.45),
     school: 1 / (1 + structureCounts.school),
     park: 1 / (1 + structureCounts.park),
+    fortress: 1,
   }
   const values = kinds.map((kind) => {
     let base = TRANSFORM_WEIGHT[kind] * scarcity[kind]

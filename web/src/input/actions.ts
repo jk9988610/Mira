@@ -12,6 +12,8 @@ export type Action =
   | 'GATHER'
   | 'SCHOOL'
   | 'PARK'
+  | 'FORTRESS'
+  | 'CYCLE_VIEW'
 
 export const ALL_ACTIONS: Action[] = [
   'MOVE_UP',
@@ -25,6 +27,8 @@ export const ALL_ACTIONS: Action[] = [
   'GATHER',
   'SCHOOL',
   'PARK',
+  'FORTRESS',
+  'CYCLE_VIEW',
 ]
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -39,6 +43,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   GATHER: '生产',
   SCHOOL: '校园',
   PARK: '乐园',
+  FORTRESS: '堡垒',
+  CYCLE_VIEW: '切换视角',
 }
 
 export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
@@ -63,6 +69,8 @@ export const DEFAULT_BINDINGS: BindingMap = {
   GATHER: { source: 'keyboard', code: 'KeyE' },
   SCHOOL: { source: 'keyboard', code: 'KeyZ' },
   PARK: { source: 'keyboard', code: 'KeyX' },
+  FORTRESS: { source: 'keyboard', code: 'KeyC' },
+  CYCLE_VIEW: { source: 'keyboard', code: 'KeyV' },
 }
 
 export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
@@ -76,7 +84,7 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   GATHER: { source: 'gamepad-button', code: '3' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v7'
+const STORAGE_KEY = 'mira_bindings_v8'
 
 function defaultBindingsForDevice(): BindingMap {
   if (isTouchDevice()) {
@@ -128,6 +136,8 @@ const KEYBOARD_LABELS: Record<string, string> = {
   KeyE: 'E',
   KeyZ: 'Z',
   KeyX: 'X',
+  KeyC: 'C',
+  KeyV: 'V',
 }
 
 const GAMEPAD_BUTTON_LABELS: Record<string, string> = {

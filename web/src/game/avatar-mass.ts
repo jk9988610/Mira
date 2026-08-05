@@ -82,6 +82,18 @@ export function drainBodyMass(entity: CircleEntity, amount: number): void {
   syncEntityMass(entity)
 }
 
+/** 战斗伤害：直接削减质量，质量归零则死亡 */
+export function applyCombatDamage(entity: CircleEntity, amount: number): void {
+  if (amount <= 0) return
+  entity.bodyMass = Math.max(0, entity.bodyMass - amount)
+  entity.intakeMass = Math.max(0, entity.intakeMass - amount * 0.5)
+  syncEntityMass(entity)
+  if (entity.mass <= 0) {
+    entity.mass = 0
+    entity.lifespanSec = 0
+  }
+}
+
 export function remainingIntakeRoom(entity: CircleEntity): number {
   const caps = getMassCaps(entity)
   return Math.max(0, Math.min(caps.intakeCap - entity.intakeMass, caps.totalCap - entity.mass))

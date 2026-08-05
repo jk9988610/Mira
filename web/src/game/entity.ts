@@ -5,8 +5,8 @@ import { massToRadius, PLAYER_START_MASS } from './physics'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from './perf-config'
 
 export type Gender = 'male' | 'female'
-export type AvatarRole = 'none' | 'farm' | 'school' | 'park' | 'ally'
-export type TransformKind = 'farm' | 'school' | 'park'
+export type AvatarRole = 'none' | 'farm' | 'school' | 'park' | 'fortress' | 'ally'
+export type TransformKind = 'farm' | 'school' | 'park' | 'fortress'
 export type ProductionStage = 'none' | 'active'
 
 export interface CircleInitOptions {
@@ -78,6 +78,7 @@ export interface CircleEntity {
   countFarmTransforms: number
   countSchoolTransforms: number
   countParkTransforms: number
+  countFortressTransforms: number
   countProduceTransforms: number
   countProductionSessions: number
   feedRegularity: number
@@ -129,6 +130,14 @@ export interface CircleEntity {
   isAvatarPractitioner: boolean
   /** 化身者入册掷骰间隔计时 */
   practitionerRollTimer: number
+  /** 已登记为保卫者，可化身为堡垒 */
+  isDefender: boolean
+  /** 保卫者入册掷骰间隔计时 */
+  defenderRollTimer: number
+  /** 堡垒护甲光环缓冲（抵御敌对堡垒伤害） */
+  fortressArmor: number
+  /** 感受到的隐藏压力强度 */
+  pressureFelt: number
 }
 
 let nextId = 1
@@ -216,6 +225,7 @@ export function createCircle(
     countFarmTransforms: 0,
     countSchoolTransforms: 0,
     countParkTransforms: 0,
+    countFortressTransforms: 0,
     countProduceTransforms: 0,
     countProductionSessions: 0,
     feedRegularity: 0.5,
@@ -252,6 +262,10 @@ export function createCircle(
     mateIntentCycles: 0,
     isAvatarPractitioner: false,
     practitionerRollTimer: Math.random() * 4,
+    isDefender: false,
+    defenderRollTimer: Math.random() * 5,
+    fortressArmor: 0,
+    pressureFelt: 0,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id
@@ -264,7 +278,7 @@ export function entityRadius(entity: CircleEntity): number {
 }
 
 export function isActive(entity: CircleEntity): boolean {
-  return entity.respawnTimer <= 0
+  return entity.respawnTimer <= 0 && entity.mass > 0
 }
 
 export function isInvincible(entity: CircleEntity): boolean {
