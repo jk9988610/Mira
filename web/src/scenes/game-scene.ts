@@ -16,10 +16,21 @@ import {
   tickOrderService,
   updateAlly,
   updateFarmStructures,
+  updateFortressStructures,
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
+import { tickDefenderEnrollment } from '../game/avatar-defender'
 import { tickAvatarPractitionerEnrollment } from '../game/avatar-practitioner'
+import { drawFortressHalos, tickFortressHalos } from '../game/fortress-ray'
+import { getActiveHalosOnEntity } from '../game/halo-status'
+import { resetPressureField, tickPressureField } from '../game/pressure-field'
+import {
+  drawResourceZones,
+  generateResourceZones,
+  resetResourceZones,
+  tickResourceZones,
+} from '../game/resource-zones'
 import { ADULT_AGE_SEC, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
   isPursuingMate,
@@ -70,6 +81,22 @@ function isNpcMobile(entity: CircleEntity): boolean {
   )
 }
 
+function isRenderableEntity(entity: CircleEntity): boolean {
+  return isActive(entity) || entity.isFrozen
+}
+
+function listViewableEntities(entities: CircleEntity[]): CircleEntity[] {
+  return entities.filter(isRenderableEntity).sort((a, b) => a.id - b.id)
+}
+
+function cycleViewTarget(entities: CircleEntity[], currentId: number, direction: 1 | -1): number {
+  const list = listViewableEntities(entities)
+  if (list.length === 0) return currentId
+  const idx = list.findIndex((e) => e.id === currentId)
+  const next = idx < 0 ? 0 : (idx + direction + list.length) % list.length
+  return list[next].id
+}
+
 const STARTER_OFFSETS = [
   { x: 0, y: 0 },
   { x: 272, y: -152 },
@@ -107,6 +134,7 @@ export function createGameScene(
 ) {
   let entities: CircleEntity[] = []
   let controlledId = 0
+  let viewTargetId = 0
   let elapsed = 0
   let absorbFlash = 0
   let allyUpdateTick = 0
@@ -123,12 +151,18 @@ export function createGameScene(
       )
       if (fallback) controlledId = fallback.id
     }
+    if (!listViewableEntities(entities).some((e) => e.id === viewTargetId)) {
+      viewTargetId = controlledId
+    }
   }
 
   const reset = () => {
     resetAvatarState()
     resetFamilyMarkets()
     resetProductionStats()
+    resetPressureField()
+    resetResourceZones()
+    generateResourceZones()
     statsOpen = false
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
@@ -146,6 +180,7 @@ export function createGameScene(
       return circle
     })
     controlledId = entities[0].id
+    viewTargetId = controlledId
     elapsed = 0
     absorbFlash = 0
     initFamilyMarkets(entities)
@@ -173,40 +208,51 @@ export function createGameScene(
         return
       }
 
+      if (input.cycleViewPressed) {
+        viewTargetId = cycleViewTarget(entities, viewTargetId, 1)
+      }
+
       tickAvatarTransformCooldowns(entities, dt)
 
       const player = getControlledEntity(entities, controlledId)
+      const viewingSelf = viewTargetId === controlledId
 
       const splitTrigger = input.splitPressed || (input.splitHeld && !prevSplitHeld)
       const gatherTrigger = input.gatherPressed || (input.gatherHeld && !prevGatherHeld)
       prevSplitHeld = input.splitHeld
       prevGatherHeld = input.gatherHeld
 
-      if (splitTrigger && canBeginAvatarTransform(player, 'farm', entities, elapsed)) {
+      if (viewingSelf && splitTrigger && canBeginAvatarTransform(player, 'farm', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'farm', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (gatherTrigger && player && isAdult(player, elapsed) && player.productionStage === 'none') {
+      if (viewingSelf && gatherTrigger && player && isAdult(player, elapsed) && player.productionStage === 'none') {
         player.mateSeekUrge = Math.min(1, player.mateSeekUrge + 0.35)
       }
 
-      if (input.schoolPressed && canBeginAvatarTransform(player, 'school', entities, elapsed)) {
+      if (viewingSelf && input.schoolPressed && canBeginAvatarTransform(player, 'school', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'school', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
 
-      if (input.parkPressed && canBeginAvatarTransform(player, 'park', entities, elapsed)) {
+      if (viewingSelf && input.parkPressed && canBeginAvatarTransform(player, 'park', entities, elapsed)) {
         const result = completeAvatarTransform(entities, player!, 'park', elapsed)
+        entities = result.entities
+        sfx.absorbPellet()
+      }
+
+      if (viewingSelf && input.fortressPressed && canBeginAvatarTransform(player, 'fortress', entities, elapsed)) {
+        const result = completeAvatarTransform(entities, player!, 'fortress', elapsed)
         entities = result.entities
         sfx.absorbPellet()
       }
 
       syncMateTargets(entities, elapsed)
 
-      if (player && player.productionStage === 'none') {
+      if (viewingSelf && player && player.productionStage === 'none') {
         if (!player.isFrozen) {
           applyFrozenMovement(player, input.moveX, input.moveY, dt)
         }
@@ -217,15 +263,21 @@ export function createGameScene(
       tickMateIntent(entities, dt, elapsed)
       tickProductionStats(dt, elapsed)
 
+      tickPressureField(entities, dt)
       tickFamilyMarkets(entities, elapsed, dt)
       tickAvatarPractitionerEnrollment(entities, elapsed, dt)
+      tickDefenderEnrollment(entities, elapsed, dt)
+
+      tickResourceZones(entities, dt)
 
       updateFarmStructures(entities, dt)
       updateSchoolStructures(entities, dt)
       updateParkStructures(entities, dt)
+      updateFortressStructures(entities, dt)
       tickEmitterBursts(entities, dt)
       tickOrderService(entities, dt, elapsed)
       tickResourceRays(entities, dt)
+      tickFortressHalos(entities, dt)
 
       entities = updateProductionPairs(entities, dt, elapsed)
 
@@ -244,8 +296,14 @@ export function createGameScene(
       const movingIds = new Set<number>()
       for (const entity of entities) {
         if (!isActive(entity) || entity.isFrozen) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') continue
-        if (entity.id === player?.id) {
+        if (
+          entity.avatarRole === 'farm' ||
+          entity.avatarRole === 'school' ||
+          entity.avatarRole === 'park' ||
+          entity.avatarRole === 'fortress'
+        )
+          continue
+        if (entity.id === player?.id && viewingSelf) {
           if (Math.abs(input.moveX) > 0.1 || Math.abs(input.moveY) > 0.1) movingIds.add(entity.id)
           if (isPursuingMate(entity, elapsed)) movingIds.add(entity.id)
         } else if (isNpcMobile(entity) && entity.aiIntent !== 'sleep') {
@@ -268,8 +326,9 @@ export function createGameScene(
       clearScreen(ctx, width, height)
 
       const controlled = getControlledEntity(entities, controlledId)
-      const focusX = controlled?.x ?? WORLD_WIDTH / 2
-      const focusY = controlled?.y ?? WORLD_HEIGHT / 2
+      const viewTarget = entities.find((e) => e.id === viewTargetId) ?? controlled
+      const focusX = viewTarget?.x ?? WORLD_WIDTH / 2
+      const focusY = viewTarget?.y ?? WORLD_HEIGHT / 2
       const cam = computeCamera(focusX, focusY, STARTER_OPTIMAL_MASS, width, height)
       const view = computeViewBounds(cam.camX, cam.camY, cam.renderScale, width, height)
 
@@ -286,12 +345,19 @@ export function createGameScene(
       ctx.clip()
 
       drawWorld(ctx, view)
+      drawResourceZones(ctx, view)
       drawResourceRays(ctx, entities, elapsed)
+      drawFortressHalos(ctx, entities, elapsed)
       for (const entity of sorted) {
         if (!isInView(entity.x, entity.y, view, 80)) continue
-        if (entity.avatarRole === 'farm' || entity.avatarRole === 'school' || entity.avatarRole === 'park') {
+        if (
+          entity.avatarRole === 'farm' ||
+          entity.avatarRole === 'school' ||
+          entity.avatarRole === 'park' ||
+          entity.avatarRole === 'fortress'
+        ) {
           drawAvatarStructure(ctx, entity, elapsed)
-        } else {
+        } else if (isActive(entity)) {
           const flash = entity.id === controlledId ? absorbFlash : 0
           drawAvatarCircle(ctx, entity, flash, elapsed)
         }
@@ -303,6 +369,8 @@ export function createGameScene(
       const demo = computeTribeDemographics(entities, elapsed)
       const hints = getAvatarTransformHints(controlled, entities, elapsed)
       const familyMarkets = getFamilyMarketRecords()
+      const viewHalos = viewTarget ? getActiveHalosOnEntity(viewTarget, entities) : []
+      const observingOther = viewTargetId !== controlledId
       const hudData = {
         gameTimeSec: elapsed,
         zoom: cam.zoom,
@@ -310,9 +378,11 @@ export function createGameScene(
         produceHint: hints.produceHint,
         schoolHint: hints.schoolHint,
         parkHint: hints.parkHint,
+        fortressHint: hints.fortressHint,
         farm: tribe.farm,
         school: tribe.school,
         park: tribe.park,
+        fortress: tribe.fortress,
         producing: tribe.producing,
         circles: tribe.circles,
         demographics: demo,
@@ -321,6 +391,9 @@ export function createGameScene(
         statsOpen,
         productionSamples: getProductionSamples(),
         orderStats: summarizeOrders(familyMarkets),
+        viewTargetName: viewTarget?.name ?? '—',
+        observingOther,
+        activeHalos: viewHalos,
       }
       drawAvatarHud(ctx, width, height, hudData)
       drawMarketHud(ctx, width, height, hudData)

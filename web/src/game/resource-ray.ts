@@ -216,7 +216,7 @@ export function tickResourceRays(entities: CircleEntity[], dt: number): void {
   if (emitters.length === 0) return
 
   const receivers = entities.filter(
-    (e) => isActive(e) && !e.isFrozen && e.avatarRole !== 'farm' && e.avatarRole !== 'school' && e.avatarRole !== 'park',
+    (e) => isActive(e) && !e.isFrozen && e.avatarRole !== 'farm' && e.avatarRole !== 'school' && e.avatarRole !== 'park' && e.avatarRole !== 'fortress',
   )
 
   for (const emitter of emitters) {

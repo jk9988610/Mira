@@ -28,10 +28,12 @@ import {
   RESOURCE_EMIT_INTERVAL_FARM_SEC,
   RESOURCE_EMIT_INTERVAL_SCHOOL_SEC,
   RESOURCE_EMIT_INTERVAL_PARK_SEC,
+  FORTRESS_EMIT_INTERVAL_SEC,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
 import { registerAvatarPractitioner } from './avatar-practitioner'
+import { registerDefender } from './avatar-defender'
 import { recordPelletProduction } from './production-stats'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
@@ -71,11 +73,13 @@ function structureLabel(kind: TransformKind, builderName: string): string {
       return `${builderName}的校园`
     case 'park':
       return `${builderName}的乐园`
+    case 'fortress':
+      return `${builderName}的堡垒`
   }
 }
 
 function isStructureRole(role: CircleEntity['avatarRole']): boolean {
-  return role === 'farm' || role === 'school' || role === 'park'
+  return role === 'farm' || role === 'school' || role === 'park' || role === 'fortress'
 }
 
 export function countFarmStructures(entities: CircleEntity[]): number {
@@ -88,6 +92,10 @@ export function countSchoolStructures(entities: CircleEntity[]): number {
 
 export function countParkStructures(entities: CircleEntity[]): number {
   return entities.filter((e) => e.avatarRole === 'park').length
+}
+
+export function countFortressStructures(entities: CircleEntity[]): number {
+  return entities.filter((e) => e.avatarRole === 'fortress').length
 }
 
 /** 世界中所有活跃圆（含化身建筑） */
@@ -104,7 +112,7 @@ export function countMobileCircles(entities: CircleEntity[]): number {
   let count = 0
   for (const e of entities) {
     if (!isActive(e) || e.isFrozen) continue
-    if (e.avatarRole === 'farm' || e.avatarRole === 'school' || e.avatarRole === 'park') continue
+    if (e.avatarRole === 'farm' || e.avatarRole === 'school' || e.avatarRole === 'park' || e.avatarRole === 'fortress') continue
     count++
   }
   return count
@@ -168,6 +176,7 @@ export function canBeginAvatarTransform(
 ): boolean {
   if (!entity || !isActive(entity)) return false
   if (isFamilyChief(entity)) return false
+  if (_kind === 'fortress' && !entity.isDefender) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
@@ -355,7 +364,7 @@ export function completeAvatarTransform(
 
   entity.builderName = entity.name
     .replace(/·后$/, '')
-    .replace(/的(农场|牧场|校园|乐园)$/, '')
+    .replace(/的(农场|牧场|校园|乐园|堡垒)$/, '')
   entity.avatarRole = kind
   entity.isFrozen = true
   entity.name = structureLabel(kind, entity.builderName)
@@ -365,7 +374,9 @@ export function completeAvatarTransform(
       ? RESOURCE_EMIT_INTERVAL_FARM_SEC
       : kind === 'school'
         ? RESOURCE_EMIT_INTERVAL_SCHOOL_SEC
-        : RESOURCE_EMIT_INTERVAL_PARK_SEC
+        : kind === 'park'
+          ? RESOURCE_EMIT_INTERVAL_PARK_SEC
+          : FORTRESS_EMIT_INTERVAL_SEC
   entity.emitBurstSec = 0
   startEmitterBurst(entity)
   entity.pendingAvatarKind = 'none'
@@ -376,6 +387,10 @@ export function completeAvatarTransform(
   if (kind === 'farm') entity.countFarmTransforms++
   if (kind === 'school') entity.countSchoolTransforms++
   if (kind === 'park') entity.countParkTransforms++
+  if (kind === 'fortress') {
+    entity.countFortressTransforms++
+    registerDefender(entity)
+  }
   entity.absorptionPaused = false
   recordTransformHistory(entity, kind)
 
@@ -519,6 +534,17 @@ export function updateParkStructures(entities: CircleEntity[], dt: number): void
     if (entity.avatarRole !== 'park' || !entity.isFrozen) continue
     if (tickStructureTimer(entity, dt)) continue
     tickStructureEmit(entity, RESOURCE_EMIT_INTERVAL_PARK_SEC, 'joy', PLAY_PELLET_COUNT, dt)
+  }
+}
+
+export function updateFortressStructures(entities: CircleEntity[], dt: number): void {
+  for (const entity of entities) {
+    if (entity.avatarRole !== 'fortress' || !entity.isFrozen) continue
+    if (tickStructureTimer(entity, dt)) continue
+    entity.pelletSpawnTimer -= dt
+    if (entity.pelletSpawnTimer > 0) continue
+    entity.pelletSpawnTimer = FORTRESS_EMIT_INTERVAL_SEC
+    startEmitterBurst(entity)
   }
 }
 
@@ -758,13 +784,16 @@ export interface AvatarTransformHints {
   produceHint: string
   schoolHint: string
   parkHint: string
+  fortressHint: string
   canFarm: boolean
   canMate: boolean
   canSchool: boolean
   canPark: boolean
+  canFortress: boolean
   farmCount: number
   schoolCount: number
   parkCount: number
+  fortressCount: number
 }
 
 export function getAvatarTransformHints(
@@ -775,6 +804,7 @@ export function getAvatarTransformHints(
   const farmCount = countFarmStructures(entities)
   const schoolCount = countSchoolStructures(entities)
   const parkCount = countParkStructures(entities)
+  const fortressCount = countFortressStructures(entities)
 
   if (!entity) {
     return {
@@ -782,19 +812,23 @@ export function getAvatarTransformHints(
       produceHint: 'E 生产',
       schoolHint: 'Z 校园',
       parkHint: 'X 乐园',
+      fortressHint: 'C 堡垒',
       canFarm: false,
       canMate: false,
       canSchool: false,
       canPark: false,
+      canFortress: false,
       farmCount,
       schoolCount,
       parkCount,
+      fortressCount,
     }
   }
 
   const canFarm = canBeginAvatarTransform(entity, 'farm', entities, gameTimeSec)
   const canSchool = canBeginAvatarTransform(entity, 'school', entities, gameTimeSec)
   const canPark = canBeginAvatarTransform(entity, 'park', entities, gameTimeSec)
+  const canFortress = canBeginAvatarTransform(entity, 'fortress', entities, gameTimeSec)
   const canMate =
     !isJuvenile(entity, gameTimeSec) &&
     entity.productionStage === 'none' &&
@@ -807,13 +841,16 @@ export function getAvatarTransformHints(
       produceHint: 'E 未成年禁生产',
       schoolHint: 'Z 未成年禁化身',
       parkHint: 'X 未成年禁化身',
+      fortressHint: 'C 未成年禁化身',
       canFarm: false,
       canMate: false,
       canSchool: false,
       canPark: false,
+      canFortress: false,
       farmCount,
       schoolCount,
       parkCount,
+      fortressCount,
     }
   }
 
@@ -823,15 +860,22 @@ export function getAvatarTransformHints(
       produceHint: entity.productionStage !== 'none' ? 'E 生产中' : 'E 生产',
       schoolHint: entity.avatarRole === 'school' ? 'Z 化身校园中' : 'Z 化身中',
       parkHint: entity.avatarRole === 'park' ? 'X 化身乐园中' : 'X 化身中',
+      fortressHint: entity.avatarRole === 'fortress' ? 'C 化身堡垒中' : 'C 化身中',
       canFarm,
       canMate,
       canSchool,
       canPark,
+      canFortress,
       farmCount,
       schoolCount,
       parkCount,
+      fortressCount,
     }
   }
+
+  const fortressHint = !entity.isDefender
+    ? 'C 堡垒(需保卫者)'
+    : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
 
   return {
     farmHint: transformHint(entity, entities, 'farm', 'Q', '农场', gameTimeSec),
@@ -843,13 +887,16 @@ export function getAvatarTransformHints(
           : 'E 生产(需成年异性)',
     schoolHint: transformHint(entity, entities, 'school', 'Z', '校园', gameTimeSec),
     parkHint: transformHint(entity, entities, 'park', 'X', '乐园', gameTimeSec),
+    fortressHint,
     canFarm,
     canMate,
     canSchool,
     canPark,
+    canFortress,
     farmCount,
     schoolCount,
     parkCount,
+    fortressCount,
   }
 }
 
@@ -857,18 +904,21 @@ export function countTribeStructures(entities: CircleEntity[]): {
   farm: number
   school: number
   park: number
+  fortress: number
   producing: number
   circles: number
 } {
   let farm = 0
   let school = 0
   let park = 0
+  let fortress = 0
   let producing = 0
   for (const e of entities) {
     if (e.avatarRole === 'farm') farm++
     if (e.avatarRole === 'school') school++
     if (e.avatarRole === 'park') park++
+    if (e.avatarRole === 'fortress') fortress++
     if (e.productionStage !== 'none') producing++
   }
-  return { farm, school, park, producing, circles: countTotalCircles(entities) }
+  return { farm, school, park, fortress, producing, circles: countTotalCircles(entities) }
 }

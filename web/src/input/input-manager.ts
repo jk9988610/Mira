@@ -25,6 +25,8 @@ export interface InputSnapshot {
   gatherPressed: boolean
   schoolPressed: boolean
   parkPressed: boolean
+  fortressPressed: boolean
+  cycleViewPressed: boolean
   upPressed: boolean
   downPressed: boolean
 }
@@ -197,6 +199,8 @@ export class InputManager {
       gatherPressed: this.wasActionPressed('GATHER'),
       schoolPressed: this.wasActionPressed('SCHOOL'),
       parkPressed: this.wasActionPressed('PARK'),
+      fortressPressed: this.wasActionPressed('FORTRESS'),
+      cycleViewPressed: this.wasActionPressed('CYCLE_VIEW'),
       upPressed,
       downPressed,
     }

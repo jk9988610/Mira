@@ -76,6 +76,7 @@ function inStructureOrProduction(entity: CircleEntity): boolean {
     entity.avatarRole === 'farm' ||
     entity.avatarRole === 'school' ||
     entity.avatarRole === 'park' ||
+    entity.avatarRole === 'fortress' ||
     entity.productionStage !== 'none'
   )
 }
@@ -223,7 +224,7 @@ export function tickAvatarMetabolism(entity: CircleEntity, dt: number, isMoving:
 
 export function tickAvatarTransformLifespan(entity: CircleEntity, dt: number): void {
   if (!isActive(entity)) return
-  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'school' && entity.avatarRole !== 'park') return
+  if (entity.avatarRole !== 'farm' && entity.avatarRole !== 'school' && entity.avatarRole !== 'park' && entity.avatarRole !== 'fortress') return
   entity.lifespanEvalTimer -= dt
   if (entity.lifespanEvalTimer <= 0) {
     entity.lifespanEvalTimer = LIFESPAN_EVAL_INTERVAL_SEC

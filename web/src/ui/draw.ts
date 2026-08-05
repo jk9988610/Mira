@@ -7,6 +7,7 @@ import { happinessEvalLabel, knowledgeEvalLabel } from '../game/avatar-vitality'
 import { getAvatarTransformCountdownSec } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
+import type { ActiveHalo } from '../game/halo-status'
 import type { TribeDemographics } from '../game/tribe-stats'
 import type { FamilyMarketRecord } from '../game/family-market'
 import type { OrderStatsSummary, ProductionSample } from '../game/production-stats'
@@ -160,9 +161,11 @@ export interface AvatarHudData {
   produceHint: string
   schoolHint: string
   parkHint: string
+  fortressHint: string
   farm: number
   school: number
   park: number
+  fortress: number
   producing: number
   circles: number
   demographics: TribeDemographics
@@ -171,6 +174,9 @@ export interface AvatarHudData {
   statsOpen: boolean
   productionSamples: ProductionSample[]
   orderStats: OrderStatsSummary
+  viewTargetName: string
+  observingOther: boolean
+  activeHalos: ActiveHalo[]
 }
 
 export function getStatsButtonRect(width: number): { x: number; y: number; w: number; h: number } {
@@ -187,6 +193,7 @@ function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: 
   if (isFrozen && role === 'farm') return '化身·农场'
   if (isFrozen && role === 'school') return '化身·校园'
   if (isFrozen && role === 'park') return '化身·乐园'
+  if (isFrozen && role === 'fortress') return '化身·堡垒'
   if (role === 'ally') return '后代'
   return null
 }
@@ -322,8 +329,8 @@ export function drawAvatarHud(
   data: AvatarHudData,
 ): void {
   const demo = data.demographics
-  const hint = `${data.farmHint} · ${data.produceHint} · ${data.schoolHint} · ${data.parkHint}`
-  const tribe = `农场 ${data.farm} · 校园 ${data.school} · 乐园 ${data.park} · 生产 ${data.producing} · 圆 ${data.circles}`
+  const hint = `${data.farmHint} · ${data.produceHint} · ${data.schoolHint} · ${data.parkHint} · ${data.fortressHint}`
+  const tribe = `农场 ${data.farm} · 校园 ${data.school} · 乐园 ${data.park} · 堡垒 ${data.fortress} · 生产 ${data.producing} · 圆 ${data.circles}`
   const demoLine = `成年 男${demo.adultMale} 女${demo.adultFemale} · 未成年 男${demo.juvenileMale} 女${demo.juvenileFemale}`
 
   ctx.textAlign = 'left'
@@ -340,6 +347,16 @@ export function drawAvatarHud(
   }
 
   drawPanel(`时间 ${formatGameTime(data.gameTimeSec)} · 玩家 蓝天`)
+  if (data.observingOther) {
+    drawPanel(`观察视角 · ${data.viewTargetName}（V 切换）`, 28)
+  } else {
+    drawPanel(`视角 · ${data.viewTargetName}（V 切换观察其他圆）`, 28)
+  }
+  const haloText =
+    data.activeHalos.length > 0
+      ? data.activeHalos.map((h) => h.label).join(' · ')
+      : '无光环'
+  drawPanel(`光环 ${haloText}`, 28)
   drawPanel(hint, 28)
   drawPanel(tribe)
   drawPanel(demoLine)
@@ -365,6 +382,7 @@ const KIND_LABEL: Record<string, string> = {
   farm: '农场',
   school: '校园',
   park: '乐园',
+  fortress: '堡垒',
 }
 
 const ORDER_STATUS_LABEL: Record<string, string> = {
@@ -555,7 +573,9 @@ export function drawAvatarStructure(
       ? 'rgba(143, 211, 255, 0.55)'
       : avatarRole === 'school'
         ? 'rgba(130, 170, 255, 0.58)'
-        : 'rgba(255, 150, 210, 0.58)'
+        : avatarRole === 'park'
+          ? 'rgba(255, 150, 210, 0.58)'
+          : 'rgba(255, 160, 90, 0.62)'
 
   ctx.beginPath()
   ctx.arc(x, y, r * pulse + 10, 0, Math.PI * 2)

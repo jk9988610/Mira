@@ -74,7 +74,8 @@ function isInAvatarState(entity: CircleEntity): boolean {
     entity.isFrozen ||
     entity.avatarRole === 'farm' ||
     entity.avatarRole === 'school' ||
-    entity.avatarRole === 'park'
+    entity.avatarRole === 'park' ||
+    entity.avatarRole === 'fortress'
   )
 }
 
