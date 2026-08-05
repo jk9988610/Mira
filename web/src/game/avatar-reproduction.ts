@@ -5,7 +5,6 @@ import {
   MATE_PURSUIT_SPEED,
   MATE_SIGNAL_MIN_STRENGTH,
   MATE_SIGNAL_RANGE_RATIO,
-  OFFSPRING_MOTHER_BOND_SEC,
   PRODUCTION_COOLDOWN_SEC,
   PRODUCTION_DURATION_SEC,
 } from './avatar-config'
@@ -299,7 +298,6 @@ function spawnChild(
     },
   )
   child.avatarRole = 'ally'
-  child.motherBondTimer = OFFSPRING_MOTHER_BOND_SEC
   initAvatarVitality(child, birthGameTimeSec)
   clampAvatarEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
   syncEntityGeo(child)
@@ -319,11 +317,6 @@ function endProductionPair(male: CircleEntity, female: CircleEntity): void {
   }
   male.productionCooldown = PRODUCTION_COOLDOWN_SEC
   female.productionCooldown = PRODUCTION_COOLDOWN_SEC
-  if (female.marketContractOrderId <= 0) {
-    female.pendingAvatarKind = 'farm'
-    female.aiAnchorX = female.x
-    female.aiAnchorY = female.y
-  }
 }
 
 export function tickProductionCooldowns(entities: CircleEntity[], dt: number): void {

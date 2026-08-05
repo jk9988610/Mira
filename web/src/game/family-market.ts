@@ -15,6 +15,7 @@ import {
   SATIETY_CAP,
 } from './avatar-config'
 import { chooseAvatarKindToBuild } from './avatar-needs'
+import { registerAvatarPractitioner } from './avatar-practitioner'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
@@ -165,6 +166,7 @@ function hasOpenOrder(rec: FamilyMarketRecord): boolean {
 function isIdleContractor(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
   if (w.id === chiefId) return false
+  if (!w.isAvatarPractitioner) return false
   if (isInAvatarState(w)) return false
   if (w.productionStage !== 'none') return false
   if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
@@ -252,6 +254,7 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
 
     order.status = 'assigned'
     order.contractorId = bestWorker.id
+    registerAvatarPractitioner(bestWorker)
     bestWorker.marketContractOrderId = order.id
     bestWorker.contractTargetX = order.x
     bestWorker.contractTargetY = order.y

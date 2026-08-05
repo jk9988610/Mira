@@ -31,7 +31,7 @@ import {
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
-import { hasJuvenileOffspringToPlan } from './avatar-needs'
+import { registerAvatarPractitioner } from './avatar-practitioner'
 import { recordPelletProduction } from './production-stats'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
@@ -379,6 +379,8 @@ export function completeAvatarTransform(
   entity.absorptionPaused = false
   recordTransformHistory(entity, kind)
 
+  registerAvatarPractitioner(entity)
+
   if (entity.marketContractOrderId > 0) {
     fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
     entity.marketContractOrderId = 0
@@ -529,6 +531,7 @@ function beginOrderService(
   worker: CircleEntity,
   order: { kind: TransformKind },
 ): void {
+  registerAvatarPractitioner(worker)
   worker.orderServiceKind = order.kind
   worker.orderServiceTimer = ORDER_SERVICE_DURATION_SEC
   startEmitterBurst(worker)
@@ -680,27 +683,6 @@ export function updateAlly(
 
   if (isPursuingMate(ally, now)) {
     return { entities }
-  }
-
-  if (!isFamilyChief(ally) && hasJuvenileOffspringToPlan(ally, entities, now)) {
-    const transformKind = decideNpcTransformKind(ally, entities, now)
-    if (transformKind) {
-      const spot = findNearestAvatarTransformSpot(ally, transformKind, entities, now)
-      if (spot) {
-        ally.pendingAvatarKind = transformKind
-        ally.aiAnchorX = spot.x
-        ally.aiAnchorY = spot.y
-        if (!atTransformSpot(ally, spot.x, spot.y)) {
-          moveEntityToward(ally, spot.x, spot.y, dt)
-        } else if (ally.avatarTransformCooldown <= 0) {
-          const committed = updatePendingAvatarTransform(ally, entities, dt, now)
-          if (committed) return committed
-        }
-        clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
-        syncEntityGeo(ally)
-        return { entities }
-      }
-    }
   }
 
   if (intent.moving || ally.productionStage !== 'none') {
