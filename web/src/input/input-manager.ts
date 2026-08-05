@@ -26,7 +26,11 @@ export interface InputSnapshot {
   schoolPressed: boolean
   parkPressed: boolean
   fortressPressed: boolean
-  cycleViewPressed: boolean
+  cycleViewPrevPressed: boolean
+  cycleViewNextPressed: boolean
+  viewSelfPressed: boolean
+  lbHeld: boolean
+  rbHeld: boolean
   upPressed: boolean
   downPressed: boolean
 }
@@ -184,6 +188,15 @@ export class InputManager {
 
     this.prevStickY = this.stickY
 
+    const lbHeld = this.isActionHeld('CYCLE_VIEW_PREV')
+    const rbHeld = this.isActionHeld('CYCLE_VIEW_NEXT')
+    const lbPressed = this.wasActionPressed('CYCLE_VIEW_PREV')
+    const rbPressed = this.wasActionPressed('CYCLE_VIEW_NEXT')
+    const viewSelfPressed =
+      (lbPressed && rbHeld) ||
+      (rbPressed && lbHeld) ||
+      this.wasActionPressed('VIEW_SELF')
+
     return {
       moveX,
       moveY,
@@ -200,7 +213,11 @@ export class InputManager {
       schoolPressed: this.wasActionPressed('SCHOOL'),
       parkPressed: this.wasActionPressed('PARK'),
       fortressPressed: this.wasActionPressed('FORTRESS'),
-      cycleViewPressed: this.wasActionPressed('CYCLE_VIEW'),
+      cycleViewPrevPressed: lbPressed && !viewSelfPressed,
+      cycleViewNextPressed: rbPressed && !viewSelfPressed,
+      viewSelfPressed,
+      lbHeld,
+      rbHeld,
       upPressed,
       downPressed,
     }

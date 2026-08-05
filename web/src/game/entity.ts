@@ -138,6 +138,8 @@ export interface CircleEntity {
   fortressArmor: number
   /** 感受到的隐藏压力强度 */
   pressureFelt: number
+  /** 来自敌族圆的压力强度 */
+  hostilePressureFelt: number
 }
 
 let nextId = 1
@@ -266,6 +268,7 @@ export function createCircle(
     defenderRollTimer: Math.random() * 5,
     fortressArmor: 0,
     pressureFelt: 0,
+    hostilePressureFelt: 0,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id

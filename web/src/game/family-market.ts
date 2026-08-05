@@ -3,6 +3,7 @@ import {
   CHIEF_SURVEY_RADIUS,
   FAMILY_NEED_POST_THRESHOLD,
   FAMILY_SHARE_OF_REWARD,
+  HOSTILE_PRESSURE_ORDER_THRESHOLD,
   INITIAL_FAMILY_FUNDS,
   KNOWLEDGE_CAP,
   JOY_CAP,
@@ -14,13 +15,25 @@ import {
   ORDER_REWARD,
   SATIETY_CAP,
 } from './avatar-config'
+import { registerDefender } from './avatar-defender'
 import { chooseAvatarKindToBuild } from './avatar-needs'
 import { registerAvatarPractitioner } from './avatar-practitioner'
+import {
+  findMostPressuredByHostiles,
+  maxHostilePressureInFamily,
+} from './pressure-field'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled' | 'expired'
+
+export const ORDER_DEMAND_LABEL: Record<TransformKind, string> = {
+  farm: '食物服务',
+  school: '知识服务',
+  park: '快乐服务',
+  fortress: '堡垒防御',
+}
 
 export interface MarketOrder {
   id: number
@@ -44,9 +57,6 @@ export interface FamilyMarketRecord {
   chiefId: number
   chiefName: string
   orderPostCooldownUntil: number
-  surveyFood: number
-  surveyKnowledge: number
-  surveyHappiness: number
   orders: MarketOrder[]
 }
 
@@ -151,7 +161,8 @@ function findNeediestNearby(
     let need = 0
     if (kind === 'farm') need = 1 - w.satiety / SATIETY_CAP
     else if (kind === 'school') need = 1 - w.knowledge / KNOWLEDGE_CAP
-    else need = 1 - w.joy / JOY_CAP
+    else if (kind === 'park') need = 1 - w.joy / JOY_CAP
+    else continue
     if (need > bestNeed) {
       bestNeed = need
       best = w
@@ -164,10 +175,22 @@ function hasOpenOrder(rec: FamilyMarketRecord): boolean {
   return rec.orders.some((o) => o.status === 'open' || o.status === 'assigned')
 }
 
-function isIdleContractor(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
+function isIdlePractitioner(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
   if (w.id === chiefId) return false
   if (!w.isAvatarPractitioner) return false
+  if (isInAvatarState(w)) return false
+  if (w.productionStage !== 'none') return false
+  if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
+  if (w.orderServiceTimer > 0) return false
+  return true
+}
+
+function isIdleDefender(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
+  if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
+  if (w.gender !== 'male') return false
+  if (!w.isDefender) return false
+  if (w.id === chiefId) return false
   if (isInAvatarState(w)) return false
   if (w.productionStage !== 'none') return false
   if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
@@ -185,40 +208,21 @@ function clearWorkerContract(worker: CircleEntity): void {
   worker.emitBurstSec = 0
 }
 
-function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
-  const rec = familyMarkets.get(familyId)
-  if (!rec || gameTimeSec < rec.orderPostCooldownUntil) return
-  if (rec.funds < ORDER_POST_COST) return
-  if (hasOpenOrder(rec)) return
-
-  const chief = entities.find((w) => w.id === rec.chiefId && isActive(w))
-  if (!chief) return
-
-  const survey = surveyAroundPoint(chief.x, chief.y, entities, familyId)
-  rec.surveyFood = survey.food
-  rec.surveyKnowledge = survey.knowledge
-  rec.surveyHappiness = survey.happiness
-
-  const kind = chooseAvatarKindToBuild(survey.food, survey.knowledge, survey.happiness)
-  if (!kind) return
-
-  let triggerNeed = 0
-  if (kind === 'farm') triggerNeed = 1 - survey.food
-  else if (kind === 'school') triggerNeed = 1 - survey.knowledge
-  else triggerNeed = 1 - survey.happiness
-  if (triggerNeed < FAMILY_NEED_POST_THRESHOLD) return
-
-  const needy = findNeediestNearby(chief.x, chief.y, familyId, entities, kind)
-  if (!needy) return
-
-  const anchor = clampOrderPoint(needy.x, needy.y)
-
+function postOrder(
+  rec: FamilyMarketRecord,
+  chief: CircleEntity,
+  kind: TransformKind,
+  anchorX: number,
+  anchorY: number,
+  gameTimeSec: number,
+): void {
+  const anchor = clampOrderPoint(anchorX, anchorY)
   rec.funds -= ORDER_POST_COST
   rec.orderPostCooldownUntil = gameTimeSec + ORDER_POST_COOLDOWN_SEC
 
   const order: MarketOrder = {
     id: orderIdSeq++,
-    familyId,
+    familyId: rec.familyId,
     kind,
     x: anchor.x,
     y: anchor.y,
@@ -233,6 +237,52 @@ function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: n
   if (rec.orders.length > MAX_ORDER_HISTORY) rec.orders.length = MAX_ORDER_HISTORY
 }
 
+function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
+  const rec = familyMarkets.get(familyId)
+  if (!rec || gameTimeSec < rec.orderPostCooldownUntil) return
+  if (rec.funds < ORDER_POST_COST) return
+  if (hasOpenOrder(rec)) return
+
+  const chief = entities.find((w) => w.id === rec.chiefId && isActive(w))
+  if (!chief) return
+
+  const hostilePressure = maxHostilePressureInFamily(
+    familyId,
+    chief.x,
+    chief.y,
+    CHIEF_SURVEY_RADIUS,
+    entities,
+  )
+  if (hostilePressure >= HOSTILE_PRESSURE_ORDER_THRESHOLD) {
+    const pressured = findMostPressuredByHostiles(
+      chief.x,
+      chief.y,
+      familyId,
+      CHIEF_SURVEY_RADIUS,
+      entities,
+    )
+    if (pressured) {
+      postOrder(rec, chief, 'fortress', pressured.x, pressured.y, gameTimeSec)
+      return
+    }
+  }
+
+  const survey = surveyAroundPoint(chief.x, chief.y, entities, familyId)
+  const kind = chooseAvatarKindToBuild(survey.food, survey.knowledge, survey.happiness)
+  if (!kind) return
+
+  let triggerNeed = 0
+  if (kind === 'farm') triggerNeed = 1 - survey.food
+  else if (kind === 'school') triggerNeed = 1 - survey.knowledge
+  else triggerNeed = 1 - survey.happiness
+  if (triggerNeed < FAMILY_NEED_POST_THRESHOLD) return
+
+  const needy = findNeediestNearby(chief.x, chief.y, familyId, entities, kind)
+  if (!needy) return
+
+  postOrder(rec, chief, kind, needy.x, needy.y, gameTimeSec)
+}
+
 function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
   const rec = familyMarkets.get(familyId)
   if (!rec) return
@@ -244,7 +294,11 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
     let bestDist = Infinity
     for (const w of entities) {
       if (!isActive(w) || getFamilyId(w) !== familyId) continue
-      if (!isIdleContractor(w, gameTimeSec, rec.chiefId)) continue
+      const eligible =
+        order.kind === 'fortress'
+          ? isIdleDefender(w, gameTimeSec, rec.chiefId)
+          : isIdlePractitioner(w, gameTimeSec, rec.chiefId)
+      if (!eligible) continue
       const dist = Math.hypot(w.x - order.x, w.y - order.y)
       if (dist < bestDist) {
         bestDist = dist
@@ -255,7 +309,11 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
 
     order.status = 'assigned'
     order.contractorId = bestWorker.id
-    registerAvatarPractitioner(bestWorker)
+    if (order.kind === 'fortress') {
+      registerDefender(bestWorker)
+    } else {
+      registerAvatarPractitioner(bestWorker)
+    }
     bestWorker.marketContractOrderId = order.id
     bestWorker.contractTargetX = order.x
     bestWorker.contractTargetY = order.y
@@ -294,9 +352,6 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       chiefId: w.id,
       chiefName: w.name,
       orderPostCooldownUntil: 2,
-      surveyFood: 1,
-      surveyKnowledge: 0.35,
-      surveyHappiness: 0.55,
       orders: [],
     })
   }
@@ -356,9 +411,6 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
         chiefId: 0,
         chiefName: '—',
         orderPostCooldownUntil: gameTimeSec + 5,
-        surveyFood: 0.8,
-        surveyKnowledge: 0.35,
-        surveyHappiness: 0.55,
         orders: [],
       })
     }

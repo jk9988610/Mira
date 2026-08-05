@@ -4,6 +4,8 @@ export type VirtualControlId =
   | 'btnB'
   | 'btnX'
   | 'btnY'
+  | 'btnLB'
+  | 'btnRB'
 
 export interface VirtualControlPosition {
   x: number
@@ -15,14 +17,18 @@ export type VirtualControlsLayout = Record<VirtualControlId, VirtualControlPosit
 
 export const VIRTUAL_CONTROL_LABELS: Record<VirtualControlId, string> = {
   joystick: '摇杆',
-  btnA: 'A',
-  btnB: 'B',
-  btnX: 'X',
-  btnY: 'Y',
+  btnA: 'A·农场',
+  btnB: 'B·校园',
+  btnX: 'X·乐园',
+  btnY: 'Y·堡垒',
+  btnLB: 'LB·视角←',
+  btnRB: 'RB·视角→',
 }
 
 export const VIRTUAL_CONTROL_IDS: VirtualControlId[] = [
   'joystick',
+  'btnLB',
+  'btnRB',
   'btnA',
   'btnB',
   'btnX',
@@ -33,6 +39,8 @@ const ABXY = { cx: 0.86, cy: 0.74, gap: 0.1 }
 
 export const DEFAULT_VIRTUAL_LAYOUT: VirtualControlsLayout = {
   joystick: { x: 0.15, y: 0.84, opacity: 1 },
+  btnLB: { x: 0.72, y: 0.62, opacity: 1 },
+  btnRB: { x: 0.94, y: 0.62, opacity: 1 },
   btnY: { x: ABXY.cx, y: ABXY.cy - ABXY.gap, opacity: 1 },
   btnX: { x: ABXY.cx - ABXY.gap, y: ABXY.cy, opacity: 1 },
   btnB: { x: ABXY.cx + ABXY.gap, y: ABXY.cy, opacity: 1 },

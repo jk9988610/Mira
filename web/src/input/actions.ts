@@ -13,7 +13,9 @@ export type Action =
   | 'SCHOOL'
   | 'PARK'
   | 'FORTRESS'
-  | 'CYCLE_VIEW'
+  | 'CYCLE_VIEW_PREV'
+  | 'CYCLE_VIEW_NEXT'
+  | 'VIEW_SELF'
 
 export const ALL_ACTIONS: Action[] = [
   'MOVE_UP',
@@ -28,7 +30,9 @@ export const ALL_ACTIONS: Action[] = [
   'SCHOOL',
   'PARK',
   'FORTRESS',
-  'CYCLE_VIEW',
+  'CYCLE_VIEW_PREV',
+  'CYCLE_VIEW_NEXT',
+  'VIEW_SELF',
 ]
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -44,7 +48,9 @@ export const ACTION_LABELS: Record<Action, string> = {
   SCHOOL: '校园',
   PARK: '乐园',
   FORTRESS: '堡垒',
-  CYCLE_VIEW: '切换视角',
+  CYCLE_VIEW_PREV: '视角←',
+  CYCLE_VIEW_NEXT: '视角→',
+  VIEW_SELF: '回到自己',
 }
 
 export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
@@ -70,7 +76,9 @@ export const DEFAULT_BINDINGS: BindingMap = {
   SCHOOL: { source: 'keyboard', code: 'KeyZ' },
   PARK: { source: 'keyboard', code: 'KeyX' },
   FORTRESS: { source: 'keyboard', code: 'KeyC' },
-  CYCLE_VIEW: { source: 'keyboard', code: 'KeyV' },
+  CYCLE_VIEW_PREV: { source: 'keyboard', code: 'BracketLeft' },
+  CYCLE_VIEW_NEXT: { source: 'keyboard', code: 'BracketRight' },
+  VIEW_SELF: { source: 'keyboard', code: 'KeyV' },
 }
 
 export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
@@ -80,11 +88,15 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   MOVE_RIGHT: { source: 'gamepad-button', code: '15' },
   CONFIRM: { source: 'gamepad-button', code: '0' },
   BACK: { source: 'gamepad-button', code: '1' },
-  SPLIT: { source: 'gamepad-button', code: '2' },
-  GATHER: { source: 'gamepad-button', code: '3' },
+  SPLIT: { source: 'gamepad-button', code: '0' },
+  SCHOOL: { source: 'gamepad-button', code: '1' },
+  PARK: { source: 'gamepad-button', code: '2' },
+  FORTRESS: { source: 'gamepad-button', code: '3' },
+  CYCLE_VIEW_PREV: { source: 'gamepad-button', code: '4' },
+  CYCLE_VIEW_NEXT: { source: 'gamepad-button', code: '5' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v8'
+const STORAGE_KEY = 'mira_bindings_v9'
 
 function defaultBindingsForDevice(): BindingMap {
   if (isTouchDevice()) {

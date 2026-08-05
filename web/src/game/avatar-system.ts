@@ -176,7 +176,7 @@ export function canBeginAvatarTransform(
 ): boolean {
   if (!entity || !isActive(entity)) return false
   if (isFamilyChief(entity)) return false
-  if (_kind === 'fortress' && !entity.isDefender) return false
+  if (_kind === 'fortress' && (entity.gender !== 'male' || !entity.isDefender)) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
@@ -606,6 +606,11 @@ function updateMarketContract(
     return { entities }
   }
 
+  if (order.kind === 'fortress') {
+    const result = completeAvatarTransform(entities, ally, 'fortress', _now)
+    return result
+  }
+
   beginOrderService(ally, order)
   return { entities }
 }
@@ -873,9 +878,12 @@ export function getAvatarTransformHints(
     }
   }
 
-  const fortressHint = !entity.isDefender
-    ? 'C 堡垒(需保卫者)'
-    : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
+  const fortressHint =
+    entity.gender !== 'male'
+      ? 'C 堡垒(需男性保卫者)'
+      : !entity.isDefender
+        ? 'C 堡垒(需保卫者)'
+        : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
 
   return {
     farmHint: transformHint(entity, entities, 'farm', 'Q', '农场', gameTimeSec),
