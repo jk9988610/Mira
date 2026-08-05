@@ -3,7 +3,9 @@ export interface Scene {
   exit(): void
   update(dt: number): void
   render(ctx: CanvasRenderingContext2D, width: number, height: number): void
-  onTap?(x: number, y: number, width: number, height: number): void
+  onPointerDown?(x: number, y: number, width: number, height: number, pointerId: number): void
+  onPointerMove?(x: number, y: number, width: number, height: number, pointerId: number): void
+  onPointerUp?(x: number, y: number, width: number, height: number, pointerId: number): void
 }
 
 export type SceneFactory = () => Scene

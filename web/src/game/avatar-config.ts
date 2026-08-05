@@ -94,6 +94,8 @@ export const ORDER_FULFILL_RADIUS = 48
 export const FAMILY_SHARE_OF_REWARD = 1
 export const FAMILY_NEED_POST_THRESHOLD = 0.38
 export const MAX_ORDER_HISTORY = 5
+/** 每族同时活跃（待接/进行中）订单上限 */
+export const MAX_ACTIVE_ORDERS_PER_FAMILY = 2
 
 /** 成年圆成为化身者的掷骰概率（周期性检测） */
 export const AVATAR_PRACTITIONER_ROLL_CHANCE = 0.18

@@ -16,7 +16,7 @@ import {
 import { tickPractitionerEnrollment } from '../game/avatar-practitioner'
 import { buildFamilyGenealogies, resetFamilyRegistry } from '../game/family-registry'
 import { drawFortressHalos, tickFortressHalos } from '../game/fortress-ray'
-import { resetPressureField, tickPressureField } from '../game/pressure-field'
+import { resetPressureField, summarizePressureField, tickPressureField } from '../game/pressure-field'
 import {
   drawResourceZones,
   generateResourceZones,
@@ -49,6 +49,8 @@ import {
   clampStatsScroll,
   drawStatsFullscreenOverlay,
   getStatsPageContentHeight,
+  hitTestStatsClose,
+  hitTestStatsTab,
   STATS_PAGE_COUNT,
   type StatsOverlayData,
 } from '../ui/stats-overlay'
@@ -63,10 +65,12 @@ import {
 import { summarizeOrders } from '../game/production-stats'
 import { drawResourceRays, tickEmitterBursts, tickResourceRays } from '../game/resource-ray'
 import { initOptimalAvatarState } from '../game/avatar-vitality'
+import { createPointerTapHandler, isTap, type PointerPoint } from '../input/touch-gestures'
 
 type PauseBridge = { fn: (() => void) | null }
 
 const CAMERA_PAN_SPEED = 400
+const TOUCH_PAN_SCALE = 1.35
 
 const STARTER_OFFSETS = [
   { x: 0, y: 0 },
@@ -122,6 +126,41 @@ export function createGameScene(
   let lastCanvasWidth = 800
   let lastCanvasHeight = 600
 
+  const pointerStarts = new Map<number, PointerPoint>()
+  let panPointerId: number | null = null
+  let panLast: PointerPoint | null = null
+  let scrollPointerId: number | null = null
+  let scrollLastY = 0
+
+  const closeStats = () => {
+    statsOpen = false
+    statsPage = 0
+    statsScrollY = 0
+  }
+
+  const openStats = () => {
+    statsOpen = true
+    statsPage = 0
+    statsScrollY = 0
+  }
+
+  const measureStatsScroll = (): { contentH: number; pageHeight: number } => {
+    const margin = Math.max(16, lastCanvasWidth * 0.04)
+    const contentW = lastCanvasWidth - margin * 2
+    const contentH = lastCanvasHeight - 72 - 40
+    const canvas = document.createElement('canvas')
+    const measureCtx = canvas.getContext('2d')
+    if (!measureCtx) return { contentH, pageHeight: 0 }
+    const data = buildStatsData()
+    const pageHeight = getStatsPageContentHeight(data, statsPage, contentW, measureCtx)
+    return { contentH, pageHeight }
+  }
+
+  const applyStatsScrollDelta = (deltaY: number) => {
+    const { contentH, pageHeight } = measureStatsScroll()
+    statsScrollY = clampStatsScroll(statsScrollY + deltaY, pageHeight, contentH)
+  }
+
   const reset = () => {
     resetAvatarState()
     resetFamilyMarkets()
@@ -134,6 +173,10 @@ export function createGameScene(
     statsScrollY = 0
     cameraX = WORLD_WIDTH / 2
     cameraY = WORLD_HEIGHT / 2
+    pointerStarts.clear()
+    panPointerId = null
+    panLast = null
+    scrollPointerId = null
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = STARTER_OFFSETS.map((offset, i) => {
@@ -168,12 +211,10 @@ export function createGameScene(
     }
   }
 
-  const handleStatsInput = (dt: number) => {
+  const handleStatsKeyboard = (dt: number) => {
     const input = app.input.snapshot()
     if (input.backPressed) {
-      statsOpen = false
-      statsPage = 0
-      statsScrollY = 0
+      closeStats()
       return
     }
     if (input.statsPagePrevPressed) {
@@ -185,21 +226,12 @@ export function createGameScene(
       statsScrollY = 0
     }
 
-    const margin = Math.max(16, lastCanvasWidth * 0.04)
-    const contentW = lastCanvasWidth - margin * 2
-    const contentH = lastCanvasHeight - 72 - 40
-    const canvas = document.createElement('canvas')
-    const measureCtx = canvas.getContext('2d')
-    if (!measureCtx) return
-    const data = buildStatsData()
-    const pageHeight = getStatsPageContentHeight(data, statsPage, contentW, measureCtx)
     if (input.scrollDeltaY !== 0) {
-      statsScrollY += input.scrollDeltaY * 0.5
+      applyStatsScrollDelta(input.scrollDeltaY * 0.5)
     }
     if (Math.abs(input.moveY) > 0.12) {
-      statsScrollY += input.moveY * 280 * dt
+      applyStatsScrollDelta(input.moveY * 280 * dt)
     }
-    statsScrollY = clampStatsScroll(statsScrollY, pageHeight, contentH)
   }
 
   const simulateWorld = (dt: number) => {
@@ -250,6 +282,27 @@ export function createGameScene(
     entities = tickMobileAvatarVitality(entities, dt, movingIds, elapsed)
   }
 
+  const tapHandler = createPointerTapHandler((x, y, width) => {
+    if (isPaused()) return
+
+    if (statsOpen) {
+      if (hitTestStatsClose(x, y, width)) {
+        closeStats()
+        return
+      }
+      const tab = hitTestStatsTab(x, y, width)
+      if (tab !== null) {
+        statsPage = tab
+        statsScrollY = 0
+      }
+      return
+    }
+
+    if (hitTestStatsButton(x, y, width)) {
+      openStats()
+    }
+  })
+
   return {
     enter() {
       reset()
@@ -266,7 +319,7 @@ export function createGameScene(
       const input = app.input.snapshot()
 
       if (statsOpen) {
-        handleStatsInput(dt)
+        handleStatsKeyboard(dt)
         return
       }
 
@@ -279,8 +332,13 @@ export function createGameScene(
 
       elapsed += dt
 
-      cameraX += input.moveX * CAMERA_PAN_SPEED * dt
-      cameraY += input.moveY * CAMERA_PAN_SPEED * dt
+      if (panPointerId !== null && panLast) {
+        // 触屏拖拽在 pointermove 中更新相机，此处仅处理键盘/手柄
+      } else {
+        cameraX += input.moveX * CAMERA_PAN_SPEED * dt
+        cameraY += input.moveY * CAMERA_PAN_SPEED * dt
+      }
+
       const camPreview = computeCamera(
         cameraX,
         cameraY,
@@ -333,11 +391,13 @@ export function createGameScene(
       ctx.restore()
 
       const demo = computeTribeDemographics(entities, elapsed)
+      const pressure = summarizePressureField(entities)
       drawAvatarHud(ctx, width, height, {
         gameTimeSec: elapsed,
         cameraX: Math.round(cameraX),
         cameraY: Math.round(cameraY),
         demographics: demo,
+        pressureSummary: pressure,
       })
       drawStatsButton(ctx, width, statsOpen)
 
@@ -345,13 +405,55 @@ export function createGameScene(
         drawStatsFullscreenOverlay(ctx, width, height, buildStatsData())
       }
     },
-    onTap(x: number, y: number, width: number, _height: number) {
-      if (hitTestStatsButton(x, y, width)) {
-        statsOpen = !statsOpen
-        if (statsOpen) {
-          statsPage = 0
-          statsScrollY = 0
+    onPointerDown(x: number, y: number, width: number, height: number, pointerId: number) {
+      if (isPaused()) return
+      pointerStarts.set(pointerId, { x, y })
+      tapHandler.onPointerDown(x, y, width, height, pointerId)
+
+      if (statsOpen) {
+        scrollPointerId = pointerId
+        scrollLastY = y
+        return
+      }
+
+      panPointerId = pointerId
+      panLast = { x, y }
+    },
+    onPointerMove(x: number, y: number, width: number, height: number, pointerId: number) {
+      if (isPaused()) return
+
+      if (statsOpen && scrollPointerId === pointerId) {
+        const dy = y - scrollLastY
+        scrollLastY = y
+        if (Math.abs(dy) > 0.5) {
+          applyStatsScrollDelta(-dy)
         }
+        return
+      }
+
+      if (!statsOpen && panPointerId === pointerId && panLast) {
+        const dx = x - panLast.x
+        const dy = y - panLast.y
+        panLast = { x, y }
+        const cam = computeCamera(cameraX, cameraY, STARTER_OPTIMAL_MASS, width, height)
+        cameraX -= (dx / cam.renderScale) * TOUCH_PAN_SCALE
+        cameraY -= (dy / cam.renderScale) * TOUCH_PAN_SCALE
+      }
+    },
+    onPointerUp(x: number, y: number, width: number, height: number, pointerId: number) {
+      const start = pointerStarts.get(pointerId)
+      pointerStarts.delete(pointerId)
+
+      if (scrollPointerId === pointerId) {
+        scrollPointerId = null
+      }
+      if (panPointerId === pointerId) {
+        panPointerId = null
+        panLast = null
+      }
+
+      if (start && isTap(start, { x, y })) {
+        tapHandler.onPointerUp(x, y, width, height, pointerId)
       }
     },
   }

@@ -4,21 +4,17 @@ import { requestAppFullscreen } from './core/fullscreen'
 import { SceneManager } from './core/scene-manager'
 import { loadBindings, saveBindings } from './input/actions'
 import { InputManager } from './input/input-manager'
-import { VirtualControls } from './input/virtual-controls'
 import { createBindingsScene } from './scenes/bindings-scene'
 import { createGameScene } from './scenes/game-scene'
-import { createLayoutEditorScene } from './scenes/layout-editor-scene'
 import { createMenuScene, createPauseScene } from './scenes/menu-scene'
 import { createSettingsScene } from './scenes/settings-scene'
 
-const GAME_SCENES = new Set(['game'])
 const gamePause = { fn: null as (() => void) | null }
 
 function main() {
   let bindings = loadBindings()
   const input = new InputManager(bindings)
   const app = new App(input)
-  const virtualControls = new VirtualControls(input)
 
   let paused = false
   let pauseOverlay: ReturnType<typeof createPauseScene> | null = null
@@ -26,7 +22,6 @@ function main() {
   const scenes = new SceneManager({
     menu: () => createMenuScene(app, (name) => scenes.switchTo(name)),
     settings: () => createSettingsScene(app, (name) => scenes.switchTo(name)),
-    'layout-editor': () => createLayoutEditorScene(app, (name) => scenes.switchTo(name), virtualControls),
     bindings: () =>
       createBindingsScene(
         app,
@@ -59,14 +54,8 @@ function main() {
       ),
   })
 
-  const originalSwitchTo = scenes.switchTo.bind(scenes)
-  scenes.switchTo = (name: string) => {
-    originalSwitchTo(name)
-    virtualControls.setInGame(GAME_SCENES.has(name))
-  }
-
   app.scenes = scenes
-  if (!localStorage.getItem('mira_bindings_v5')) {
+  if (!localStorage.getItem('mira_bindings_v10')) {
     saveBindings(bindings)
   }
   requestAppFullscreen()
@@ -74,6 +63,29 @@ function main() {
   window.addEventListener('pointerdown', unlockAudio, { once: true })
   window.addEventListener('keydown', unlockAudio, { once: true })
   app.start('menu')
+
+  const canvas = document.getElementById('game')
+  const toLocal = (clientX: number, clientY: number) => {
+    if (!(canvas instanceof HTMLCanvasElement)) return { x: 0, y: 0 }
+    const rect = canvas.getBoundingClientRect()
+    return { x: clientX - rect.left, y: clientY - rect.top }
+  }
+
+  const forwardPausePointer = (
+    type: 'down' | 'up',
+    e: PointerEvent,
+  ) => {
+    if (!paused || !pauseOverlay) return
+    const { x, y } = toLocal(e.clientX, e.clientY)
+    const w = canvas instanceof HTMLCanvasElement ? canvas.clientWidth : 800
+    const h = canvas instanceof HTMLCanvasElement ? canvas.clientHeight : 600
+    if (type === 'down') pauseOverlay.onPointerDown?.(x, y, w, h, e.pointerId)
+    else pauseOverlay.onPointerUp?.(x, y, w, h, e.pointerId)
+  }
+
+  canvas?.addEventListener('pointerdown', (e) => forwardPausePointer('down', e), { passive: true })
+  canvas?.addEventListener('pointerup', (e) => forwardPausePointer('up', e), { passive: true })
+  canvas?.addEventListener('pointercancel', (e) => forwardPausePointer('up', e), { passive: true })
 
   const originalUpdate = scenes.update.bind(scenes)
   scenes.update = (dt: number) => {

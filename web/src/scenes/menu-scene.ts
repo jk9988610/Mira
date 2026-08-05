@@ -2,6 +2,7 @@ import type { App } from '../core/app'
 import type { GamepadStatus } from '../input/input-manager'
 import { requestAppFullscreen } from '../core/fullscreen'
 import { FocusList } from '../input/focus-list'
+import { createPointerTapHandler } from '../input/touch-gestures'
 import {
   clearScreen,
   drawGamepadBanner,
@@ -24,6 +25,22 @@ export function createMenuScene(app: App, go: (scene: string) => void) {
     if (item === '设置') go('settings')
   }
 
+  const handleMenuTap = (x: number, y: number, width: number, height: number) => {
+    const startY = height * 0.38
+    const itemWidth = 320
+    const itemHeight = 52
+    const left = (width - itemWidth) / 2
+    MENU_ITEMS.forEach((_, i) => {
+      const top = startY + i * 68
+      if (x >= left && x <= left + itemWidth && y >= top && y <= top + itemHeight) {
+        focus.setIndex(i)
+        activate(i)
+      }
+    })
+  }
+
+  const tapHandler = createPointerTapHandler(handleMenuTap)
+
   return {
     enter() {
       focus.setIndex(0)
@@ -41,34 +58,41 @@ export function createMenuScene(app: App, go: (scene: string) => void) {
       if (input.upPressed) focus.move(-1)
       if (input.confirmPressed) activate(focus.getIndex())
     },
-    onTap(x: number, y: number, width: number, height: number) {
-      const startY = height * 0.38
-      const itemWidth = 320
-      const itemHeight = 52
-      const left = (width - itemWidth) / 2
-      MENU_ITEMS.forEach((_, i) => {
-        const top = startY + i * 68
-        if (x >= left && x <= left + itemWidth && y >= top && y <= top + itemHeight) {
-          focus.setIndex(i)
-          activate(i)
-        }
-      })
-    },
+    onPointerDown: tapHandler.onPointerDown,
+    onPointerUp: tapHandler.onPointerUp,
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
-      drawTitle(ctx, width, 'Mira', '手柄全程可操控')
+      drawTitle(ctx, width, 'Mira', '触屏优先 · 手柄可选')
       drawGamepadBanner(ctx, width, gamepadStatus)
       const startY = height * 0.38
       MENU_ITEMS.forEach((label, i) => {
         drawMenuItem(ctx, width, startY + i * 68, label, focus.getIndex() === i)
       })
-      drawHint(ctx, width, height, '十字键/摇杆切换 · A 确认 · Start 暂停')
+      drawHint(ctx, width, height, '点击菜单项进入 · 手柄/键盘亦可导航')
     },
   }
 }
 
 export function createPauseScene(app: App, go: (scene: string) => void, resume: () => void) {
   const focus = new FocusList(2)
+
+  const handlePauseTap = (x: number, y: number, width: number, height: number) => {
+    const startY = height * 0.42
+    const itemWidth = 320
+    const itemHeight = 52
+    const left = (width - itemWidth) / 2
+    const items = ['继续游戏', '返回主菜单']
+    items.forEach((_, i) => {
+      const top = startY + i * 68
+      if (x >= left && x <= left + itemWidth && y >= top && y <= top + itemHeight) {
+        focus.setIndex(i)
+        if (i === 0) resume()
+        else go('menu')
+      }
+    })
+  }
+
+  const tapHandler = createPointerTapHandler(handlePauseTap)
 
   return {
     enter() {
@@ -85,6 +109,8 @@ export function createPauseScene(app: App, go: (scene: string) => void, resume: 
         else go('menu')
       }
     },
+    onPointerDown: tapHandler.onPointerDown,
+    onPointerUp: tapHandler.onPointerUp,
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       ctx.fillStyle = 'rgba(0, 0, 0, 0.55)'
       ctx.fillRect(0, 0, width, height)
@@ -93,7 +119,7 @@ export function createPauseScene(app: App, go: (scene: string) => void, resume: 
       ;['继续游戏', '返回主菜单'].forEach((label, i) => {
         drawMenuItem(ctx, width, startY + i * 68, label, focus.getIndex() === i)
       })
-      drawHint(ctx, width, height, 'A 继续 · Start 关闭暂停')
+      drawHint(ctx, width, height, '点击选项 · A 继续 · Start 关闭暂停')
     },
   }
 }

@@ -7,10 +7,11 @@ import { happinessEvalLabel, knowledgeEvalLabel } from '../game/avatar-vitality'
 import { getAvatarTransformCountdownSec } from '../game/avatar-system'
 import { healthLabel } from '../game/avatar-mass'
 import { avatarEntityRadius } from '../game/avatar-radius'
+import type { PressureFieldSummary } from '../game/pressure-field'
 import type { TribeDemographics } from '../game/tribe-stats'
-import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
+import { formatGameTime } from '../game/game-clock'
 import type { AvatarRole, CircleEntity } from '../game/entity'
 import { isJuvenile, secondsUntilAdult } from '../game/entity'
 import { ENTITY_SIMPLE_DRAW_RADIUS } from '../game/perf-config'
@@ -156,6 +157,7 @@ export interface AvatarHudData {
   cameraX: number
   cameraY: number
   demographics: TribeDemographics
+  pressureSummary?: PressureFieldSummary
 }
 
 export function getStatsButtonRect(width: number): { x: number; y: number; w: number; h: number } {
@@ -351,7 +353,13 @@ export function drawAvatarHud(
   }
 
   drawPanel(`时间 ${formatGameTime(data.gameTimeSec)} · 观察者模式`)
-  drawPanel(`视角 (${data.cameraX}, ${data.cameraY}) · 摇杆平移`)
+  drawPanel(`视角 (${data.cameraX}, ${data.cameraY}) · 触屏拖拽平移`)
+  if (data.pressureSummary) {
+    const p = data.pressureSummary
+    drawPanel(
+      `压力 均${p.avgPressure.toFixed(1)} · 敌压峰${p.maxHostile.toFixed(1)} · 敌对族${p.hostileFamilyPairs}`,
+    )
+  }
   drawPanel(tribe)
 }
 

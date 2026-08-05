@@ -1,9 +1,10 @@
 import type { App } from '../core/app'
 import { FocusList } from '../input/focus-list'
 import { getMasterVolume, setMasterVolume } from '../audio/synth'
+import { createPointerTapHandler } from '../input/touch-gestures'
 import { clearScreen, drawHint, drawMenuItem, drawTitle } from '../ui/draw'
 
-const ITEMS = ['音量', '摇杆布局', '返回'] as const
+const ITEMS = ['音量', '返回'] as const
 
 export function createSettingsScene(app: App, go: (scene: string) => void) {
   const focus = new FocusList(ITEMS.length)
@@ -11,9 +12,24 @@ export function createSettingsScene(app: App, go: (scene: string) => void) {
 
   const activate = (index: number) => {
     const item = ITEMS[index]
-    if (item === '摇杆布局') go('layout-editor')
     if (item === '返回') go('menu')
   }
+
+  const handleTap = (x: number, y: number, width: number, height: number) => {
+    const startY = height * 0.38
+    const itemWidth = 320
+    const itemHeight = 52
+    const left = (width - itemWidth) / 2
+    ITEMS.forEach((_, i) => {
+      const top = startY + i * 68
+      if (x >= left && x <= left + itemWidth && y >= top && y <= top + itemHeight) {
+        focus.setIndex(i)
+        activate(i)
+      }
+    })
+  }
+
+  const tapHandler = createPointerTapHandler(handleTap)
 
   return {
     enter() {
@@ -49,28 +65,16 @@ export function createSettingsScene(app: App, go: (scene: string) => void) {
       if (input.upPressed) focus.move(-1)
       if (input.confirmPressed) activate(focus.getIndex())
     },
-    onTap(x: number, y: number, width: number, height: number) {
-      const startY = height * 0.38
-      const itemWidth = 320
-      const itemHeight = 52
-      const left = (width - itemWidth) / 2
-      ITEMS.forEach((_, i) => {
-        const top = startY + i * 68
-        if (x >= left && x <= left + itemWidth && y >= top && y <= top + itemHeight) {
-          focus.setIndex(i)
-          activate(i)
-        }
-      })
-    },
+    onPointerDown: tapHandler.onPointerDown,
+    onPointerUp: tapHandler.onPointerUp,
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
-      drawTitle(ctx, width, '设置', '调整音量与虚拟摇杆布局')
+      drawTitle(ctx, width, '设置', '调整音量')
       const startY = height * 0.38
       const volumeLabel = `音量 (${Math.round(volume * 100)}%)`
       drawMenuItem(ctx, width, startY, volumeLabel, focus.getIndex() === 0)
-      drawMenuItem(ctx, width, startY + 68, '摇杆布局', focus.getIndex() === 1)
-      drawMenuItem(ctx, width, startY + 136, '返回', focus.getIndex() === 2)
-      drawHint(ctx, width, height, '↑↓ 选择 · 左右调音量 · A 确认')
+      drawMenuItem(ctx, width, startY + 68, '返回', focus.getIndex() === 1)
+      drawHint(ctx, width, height, '点击选择 · 左右调音量 · 键盘/手柄亦可')
     },
   }
 }

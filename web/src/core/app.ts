@@ -19,26 +19,67 @@ export class App {
     this.ctx = ctx
     this.resize()
     window.addEventListener('resize', () => this.resize())
-    this.bindTouch()
+    this.bindPointers()
   }
 
-  private bindTouch(): void {
-    const handle = (clientX: number, clientY: number) => {
+  private bindPointers(): void {
+    const sceneSize = () => ({
+      width: this.canvas.clientWidth,
+      height: this.canvas.clientHeight,
+    })
+
+    const toLocal = (clientX: number, clientY: number) => {
       const rect = this.canvas.getBoundingClientRect()
-      const x = clientX - rect.left
-      const y = clientY - rect.top
-      const scene = this.scenes.currentScene()
-      scene?.onTap?.(x, y, this.canvas.clientWidth, this.canvas.clientHeight)
+      return { x: clientX - rect.left, y: clientY - rect.top }
     }
+
     this.canvas.addEventListener(
       'pointerdown',
       (e) => {
-        if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.pointerType === 'mouse') {
-          handle(e.clientX, e.clientY)
+        if (e.pointerType === 'mouse' && e.button !== 0) return
+        const scene = this.scenes.currentScene()
+        const { x, y } = toLocal(e.clientX, e.clientY)
+        const { width, height } = sceneSize()
+        scene?.onPointerDown?.(x, y, width, height, e.pointerId)
+        if (scene?.onPointerMove) {
+          try {
+            this.canvas.setPointerCapture(e.pointerId)
+          } catch {
+            /* ignore */
+          }
         }
       },
       { passive: true },
     )
+
+    this.canvas.addEventListener(
+      'pointermove',
+      (e) => {
+        const scene = this.scenes.currentScene()
+        if (!scene?.onPointerMove) return
+        const { x, y } = toLocal(e.clientX, e.clientY)
+        const { width, height } = sceneSize()
+        scene.onPointerMove(x, y, width, height, e.pointerId)
+      },
+      { passive: true },
+    )
+
+    const endPointer = (e: PointerEvent) => {
+      const scene = this.scenes.currentScene()
+      const { x, y } = toLocal(e.clientX, e.clientY)
+      const { width, height } = sceneSize()
+      scene?.onPointerUp?.(x, y, width, height, e.pointerId)
+      if (this.canvas.hasPointerCapture(e.pointerId)) {
+        try {
+          this.canvas.releasePointerCapture(e.pointerId)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    this.canvas.addEventListener('pointerup', endPointer, { passive: true })
+    this.canvas.addEventListener('pointercancel', endPointer, { passive: true })
   }
 
   start(initialScene: string): void {
