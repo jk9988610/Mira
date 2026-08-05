@@ -54,12 +54,18 @@ export function isPractitioner(entity: CircleEntity, kind: TransformKind): boole
   return Boolean(entity[PRACTITIONER_FLAGS[kind]])
 }
 
-/** 将成年圆登记为指定类型的化身者 */
+/** 将成年圆登记为指定类型的化身者（仅首次入册时累计次数） */
 export function registerPractitioner(entity: CircleEntity, kind: TransformKind): void {
-  if (!isPractitioner(entity, kind)) {
-    ;(entity[PRACTITIONER_FLAGS[kind]] as boolean) = true
+  const wasRegistered = isPractitioner(entity, kind)
+  ;(entity[PRACTITIONER_FLAGS[kind]] as boolean) = true
+  if (!wasRegistered) {
+    ;(entity[PRACTITIONER_REG_COUNTS[kind]] as number)++
   }
-  ;(entity[PRACTITIONER_REG_COUNTS[kind]] as number)++
+}
+
+/** 履约结束或订单失效后注销该类型化身者身份 */
+export function unregisterPractitioner(entity: CircleEntity, kind: TransformKind): void {
+  ;(entity[PRACTITIONER_FLAGS[kind]] as boolean) = false
 }
 
 function rollInterval(kind: TransformKind): number {
@@ -82,6 +88,7 @@ export function tickPractitionerEnrollment(
   for (const entity of entities) {
     if (!isActive(entity) || !isAdult(entity, gameTimeSec)) continue
     if (isFamilyChief(entity)) continue
+    if (entity.marketContractOrderId > 0 || entity.orderServiceTimer > 0) continue
 
     const familyId = getFamilyId(entity)
     const boostKind = familyBoosts.get(familyId)

@@ -389,12 +389,15 @@ export function createGameScene(
 
       const demo = computeTribeDemographics(entities, elapsed)
       const pressure = summarizePressureField(entities)
+      const familyMarkets = getFamilyMarketRecords()
+      const familyFunds = new Map(familyMarkets.map((m) => [m.familyId, Math.floor(m.funds)]))
       drawAvatarHud(ctx, width, height, {
         gameTimeSec: elapsed,
         cameraX: Math.round(cameraX),
         cameraY: Math.round(cameraY),
         demographics: demo,
         pressureSummary: pressure,
+        familyFunds,
       })
       drawStatsButton(ctx, width, statsOpen)
 

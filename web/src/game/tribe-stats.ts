@@ -12,6 +12,7 @@ export interface FamilyOffspringStat {
 export interface FamilyPractitionerStat {
   familyId: number
   familyName: string
+  activePopulation: number
   farm: number
   school: number
   park: number
@@ -39,9 +40,17 @@ export function computeTribeDemographics(
   gameTimeSec = 0,
 ): TribeDemographics {
   const familyMap = new Map<number, { founderName: string; offspringCount: number }>()
+  const populationMap = new Map<number, number>()
   const practitionerMap = new Map<
     number,
-    { familyName: string; farm: number; school: number; park: number; fortress: number }
+    {
+      familyName: string
+      activePopulation: number
+      farm: number
+      school: number
+      park: number
+      fortress: number
+    }
   >()
   let adultMale = 0
   let adultFemale = 0
@@ -58,6 +67,10 @@ export function computeTribeDemographics(
     if (!isActive(e)) continue
     circles++
     if (e.productionStage !== 'none') producing++
+
+    const familyId = e.familyId || e.id
+    populationMap.set(familyId, (populationMap.get(familyId) ?? 0) + 1)
+
     if (e.avatarRole === 'none' || e.avatarRole === 'ally') {
       if (isAdult(e, gameTimeSec)) {
         if (e.gender === 'male') adultMale++
@@ -68,7 +81,6 @@ export function computeTribeDemographics(
       }
     }
 
-    const familyId = e.familyId || e.id
     if (e.motherId === 0 && e.fatherId === 0) {
       const surname = nameSurname(e.builderName || e.name)
       if (!familyMap.has(familyId)) {
@@ -81,9 +93,17 @@ export function computeTribeDemographics(
 
     if (!isAdult(e, gameTimeSec)) continue
     const famName = familyDisplayName(familyId)
+    const pop = populationMap.get(familyId) ?? 0
     const prev =
       practitionerMap.get(familyId) ??
-      ({ familyName: famName, farm: 0, school: 0, park: 0, fortress: 0 } as const)
+      ({
+        familyName: famName,
+        activePopulation: pop,
+        farm: 0,
+        school: 0,
+        park: 0,
+        fortress: 0,
+      } as const)
     let farm = prev.farm
     let school = prev.school
     let park = prev.park
@@ -104,7 +124,14 @@ export function computeTribeDemographics(
       fortress++
       practitionerFortress++
     }
-    practitionerMap.set(familyId, { familyName: famName, farm, school, park, fortress })
+    practitionerMap.set(familyId, {
+      familyName: famName,
+      activePopulation: pop,
+      farm,
+      school,
+      park,
+      fortress,
+    })
   }
 
   for (const e of entities) {
@@ -130,14 +157,17 @@ export function computeTribeDemographics(
   families.sort((a, b) => b.offspringCount - a.offspringCount || a.familyName.localeCompare(b.familyName))
 
   const practitionerByFamily: FamilyPractitionerStat[] = []
-  for (const [familyId, data] of practitionerMap) {
+  const allFamilyIds = new Set([...populationMap.keys(), ...practitionerMap.keys()])
+  for (const familyId of allFamilyIds) {
+    const data = practitionerMap.get(familyId)
     practitionerByFamily.push({
       familyId,
-      familyName: data.familyName,
-      farm: data.farm,
-      school: data.school,
-      park: data.park,
-      fortress: data.fortress,
+      familyName: data?.familyName ?? familyDisplayName(familyId),
+      activePopulation: populationMap.get(familyId) ?? 0,
+      farm: data?.farm ?? 0,
+      school: data?.school ?? 0,
+      park: data?.park ?? 0,
+      fortress: data?.fortress ?? 0,
     })
   }
   practitionerByFamily.sort((a, b) => a.familyName.localeCompare(b.familyName, 'zh-CN'))

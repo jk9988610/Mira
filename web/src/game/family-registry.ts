@@ -11,6 +11,7 @@ export interface DeceasedMemberRecord {
   generation: number
   birthGameTimeSec: number
   deathGameTimeSec: number
+  spouseId: number
   practitionerFarm: boolean
   practitionerSchool: boolean
   practitionerPark: boolean
@@ -60,6 +61,7 @@ export function recordDeceased(entity: CircleEntity, gameTimeSec: number): void 
     generation: entity.generation,
     birthGameTimeSec: entity.birthGameTimeSec,
     deathGameTimeSec: gameTimeSec,
+    spouseId: entity.spouseId,
     practitionerFarm: entity.practitionerFarm,
     practitionerSchool: entity.practitionerSchool,
     practitionerPark: entity.practitionerPark,
@@ -97,7 +99,7 @@ function memberFromDeceased(record: DeceasedMemberRecord): GenealogyMember {
     fatherId: record.fatherId,
     generation: record.generation,
     deceased: true,
-    spouseId: 0,
+    spouseId: record.spouseId,
     practitionerFarm: record.practitionerFarm,
     practitionerSchool: record.practitionerSchool,
     practitionerPark: record.practitionerPark,
@@ -157,7 +159,10 @@ export function buildFamilyGenealogies(
   return genealogies
 }
 
-export function formatGenealogyLine(member: GenealogyMember): string {
+export function formatGenealogyLine(
+  member: GenealogyMember,
+  nameById: ReadonlyMap<number, string>,
+): string {
   const gender = member.gender === 'male' ? '男' : '女'
   const status = member.deceased ? '已故' : '在世'
   const roles: string[] = []
@@ -166,11 +171,26 @@ export function formatGenealogyLine(member: GenealogyMember): string {
   if (member.practitionerPark) roles.push('乐园')
   if (member.practitionerFortress) roles.push('堡垒')
   const roleText = roles.length > 0 ? ` · ${roles.join('/')}化身者` : ''
+  const motherName =
+    member.motherId > 0 ? nameById.get(member.motherId) ?? `#${member.motherId}` : ''
+  const fatherName =
+    member.fatherId > 0 ? nameById.get(member.fatherId) ?? `#${member.fatherId}` : ''
   const parent =
     member.motherId > 0 || member.fatherId > 0
-      ? ` · 母${member.motherId || '—'} 父${member.fatherId || '—'}`
+      ? ` · 母·${motherName || '—'} 父·${fatherName || '—'}`
       : ''
-  const spouse =
-    member.spouseId > 0 ? ` · 配偶${member.spouseId}` : ''
+  const spouseName =
+    member.spouseId > 0 ? nameById.get(member.spouseId) ?? `#${member.spouseId}` : ''
+  const spouse = member.spouseId > 0 ? ` · 配偶·${spouseName}` : ''
   return `${member.name}（${gender}·${status}${roleText}${spouse}）${parent}`
+}
+
+export function buildGenealogyNameMap(genealogies: FamilyGenealogy[]): Map<number, string> {
+  const map = new Map<number, string>()
+  for (const genealogy of genealogies) {
+    for (const member of genealogy.members) {
+      map.set(member.id, member.name)
+    }
+  }
+  return map
 }

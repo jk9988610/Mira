@@ -32,7 +32,7 @@ import {
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
-import { isPractitioner, registerPractitioner } from './avatar-practitioner'
+import { isPractitioner, registerPractitioner, unregisterPractitioner } from './avatar-practitioner'
 import { recordDeceased } from './family-registry'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
@@ -528,7 +528,6 @@ function beginOrderService(
   worker: CircleEntity,
   order: { kind: TransformKind },
 ): void {
-  registerPractitioner(worker, order.kind)
   worker.orderServiceKind = order.kind
   worker.orderServiceTimer = ORDER_SERVICE_DURATION_SEC
   startEmitterBurst(worker)
@@ -602,7 +601,9 @@ export function tickOrderService(
     if (entity.orderServiceTimer > 0) continue
 
     if (entity.marketContractOrderId > 0) {
+      const order = findMarketOrder(entity.marketContractOrderId)
       fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
+      if (order) unregisterPractitioner(entity, order.kind)
     }
     entity.marketContractOrderId = 0
     entity.contractTargetX = 0

@@ -41,20 +41,29 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
 export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
   if (entity.productionStage === 'active') return '生产'
   if (entity.marketContractOrderId > 0) {
-    if (entity.orderServiceTimer > 0) return '履约·展开光环'
-    return '履约·前往订单'
+    if (entity.orderServiceTimer > 0) {
+      return `履约·展开光环 →(${Math.round(entity.x)},${Math.round(entity.y)}) ${entity.orderServiceTimer.toFixed(1)}s`
+    }
+    const eta =
+      entity.intentEtaSec > 0
+        ? ` ${entity.intentEtaSec.toFixed(1)}s`
+        : ''
+    return `履约·前往订单 →(${Math.round(entity.intentTargetX)},${Math.round(entity.intentTargetY)})${eta}`
   }
   if (entity.pendingAvatarKind !== 'none') {
     return entity.avatarTransformCooldown > 0 ? '等待·化身冷却' : '等待·化身'
   }
   if (entity.productionCooldown > 0) {
-    return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec))}`
+    return `冷却·${schedulePhaseLabel(currentSchedulePhase(entity, gameTimeSec, false))}`
   }
 
-  if (isPursuingMate(entity, gameTimeSec)) return '奔赴·求偶'
+  if (isPursuingMate(entity, gameTimeSec)) {
+    if (entity.spouseId > 0) return '奔赴·配偶'
+    return '奔赴·求偶'
+  }
 
   const seeking = isActivelySeekingMate(entity, gameTimeSec)
-  const phase = currentSchedulePhase(entity, gameTimeSec, seeking)
+  const phase = currentSchedulePhase(entity, gameTimeSec, seeking && entity.spouseId === 0)
   let base =
     phase === 'sleep'
       ? '睡觉'
@@ -68,11 +77,12 @@ export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
               ? '接收快乐光环'
               : schedulePhaseLabel(phase)
 
-  if (entity.intentEtaSec > 0 && (entity.aiIntent === 'eat' || entity.aiIntent === 'learn' || entity.aiIntent === 'play')) {
+  if (entity.intentEtaSec > 0) {
     base = `${base} →(${Math.round(entity.intentTargetX)},${Math.round(entity.intentTargetY)}) ${entity.intentEtaSec.toFixed(1)}s`
   }
 
   if (isJuvenile(entity, gameTimeSec)) return base
+  if (entity.spouseId > 0) return `配偶·${base}`
   if (seeking) return `求偶·${base}`
   return base
 }
@@ -177,7 +187,7 @@ export function updateNpcIntent(
   }
 
   const seeking = isActivelySeekingMate(entity, now)
-  let phase = currentSchedulePhase(entity, now, seeking)
+  let phase = currentSchedulePhase(entity, now, seeking && entity.spouseId === 0)
 
   if (phase === 'sleep') {
     entity.aiIntent = 'sleep'
