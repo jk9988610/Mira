@@ -10,6 +10,12 @@ const hostileToTarget = new Map<number, Set<number>>()
 
 const familyPressureTotals = new Map<number, number>()
 
+export interface PressureFieldSummary {
+  avgPressure: number
+  maxHostile: number
+  hostileFamilyPairs: number
+}
+
 function getFamilyId(entity: CircleEntity): number {
   return entity.familyId || entity.id
 }
@@ -49,14 +55,54 @@ export function resetPressureField(): void {
   hostileToTarget.clear()
 }
 
+function groupActiveByFamily(entities: CircleEntity[]): Map<number, CircleEntity[]> {
+  const byFamily = new Map<number, CircleEntity[]>()
+  for (const entity of entities) {
+    if (!isActive(entity)) continue
+    const fid = getFamilyId(entity)
+    let list = byFamily.get(fid)
+    if (!list) {
+      list = []
+      byFamily.set(fid, list)
+    }
+    list.push(entity)
+  }
+  return byFamily
+}
+
+export function summarizePressureField(entities: CircleEntity[]): PressureFieldSummary {
+  let totalPressure = 0
+  let count = 0
+  let maxHostile = 0
+  for (const entity of entities) {
+    if (!isActive(entity)) continue
+    totalPressure += entity.pressureFelt
+    if (entity.hostilePressureFelt > maxHostile) maxHostile = entity.hostilePressureFelt
+    count++
+  }
+  let hostileFamilyPairs = 0
+  for (const set of hostileToTarget.values()) {
+    hostileFamilyPairs += set.size
+  }
+  return {
+    avgPressure: count > 0 ? totalPressure / count : 0,
+    maxHostile,
+    hostileFamilyPairs,
+  }
+}
+
 export function tickPressureField(entities: CircleEntity[], _dt: number): void {
   familyPressureTotals.clear()
   hostileToTarget.clear()
 
-  for (const entity of entities) {
-    if (!isActive(entity)) continue
-    const fid = getFamilyId(entity)
-    familyPressureTotals.set(fid, (familyPressureTotals.get(fid) ?? 0) + circlePressureEmit(entity))
+  const byFamily = groupActiveByFamily(entities)
+
+  for (const [fid, members] of byFamily) {
+    let total = 0
+    for (const entity of members) {
+      total += circlePressureEmit(entity)
+    }
+    familyPressureTotals.set(fid, total)
   }
 
   for (const [fid, total] of familyPressureTotals) {
@@ -72,40 +118,23 @@ export function tickPressureField(entities: CircleEntity[], _dt: number): void {
     }
   }
 
-  for (const entity of entities) {
-    if (!isActive(entity)) continue
-    const myFid = getFamilyId(entity)
-    let felt = 0
-    let hostileFelt = 0
-    for (const other of entities) {
-      if (!isActive(other) || other.id === entity.id) continue
-      const otherFid = getFamilyId(other)
-      if (otherFid === myFid) continue
-      const strength = pressureSignalStrength(other, entity)
-      felt += strength
-      if (isHostileToFamily(myFid, otherFid)) {
-        hostileFelt += strength
+  for (const [myFid, myMembers] of byFamily) {
+    for (const entity of myMembers) {
+      let felt = 0
+      let hostileFelt = 0
+      for (const [otherFid, otherMembers] of byFamily) {
+        if (otherFid === myFid) continue
+        const hostile = isHostileToFamily(myFid, otherFid)
+        for (const other of otherMembers) {
+          const strength = pressureSignalStrength(other, entity)
+          felt += strength
+          if (hostile) hostileFelt += strength
+        }
       }
+      entity.pressureFelt = felt
+      entity.hostilePressureFelt = hostileFelt
     }
-    entity.pressureFelt = felt
-    entity.hostilePressureFelt = hostileFelt
   }
-}
-
-export function maxHostilePressureInFamily(
-  familyId: number,
-  centerX: number,
-  centerY: number,
-  radius: number,
-  entities: CircleEntity[],
-): number {
-  let max = 0
-  for (const w of entities) {
-    if (!isActive(w) || getFamilyId(w) !== familyId) continue
-    if (Math.hypot(w.x - centerX, w.y - centerY) > radius) continue
-    if (w.hostilePressureFelt > max) max = w.hostilePressureFelt
-  }
-  return max
 }
 
 export function findMostPressuredByHostiles(

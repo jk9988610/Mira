@@ -2,6 +2,7 @@ import type { App } from '../core/app'
 import type { Action, BindingMap } from '../input/actions'
 import { ACTION_LABELS, ALL_ACTIONS, formatBinding, saveBindings } from '../input/actions'
 import { FocusList } from '../input/focus-list'
+import { createPointerTapHandler } from '../input/touch-gestures'
 import { clearScreen, drawBindingRow, drawHint, drawTitle } from '../ui/draw'
 
 export function createBindingsScene(
@@ -13,6 +14,31 @@ export function createBindingsScene(
   const focus = new FocusList(ALL_ACTIONS.length + 1)
   let listening = false
   let working: BindingMap = { ...getBindings() }
+
+  const rowTop = (index: number) => 170 + index * 56
+  const doneTop = () => 170 + ALL_ACTIONS.length * 56 + 16
+
+  const handleTap = (x: number, y: number, width: number, _height: number) => {
+    const rowWidth = Math.min(560, width - 48)
+    const left = (width - rowWidth) / 2
+    const rowHeight = 48
+
+    for (let i = 0; i < ALL_ACTIONS.length; i++) {
+      const top = rowTop(i)
+      if (x >= left && x <= left + rowWidth && y >= top && y <= top + rowHeight) {
+        focus.setIndex(i)
+        listening = true
+        return
+      }
+    }
+
+    const doneY = doneTop()
+    if (x >= left && x <= left + rowWidth && y >= doneY && y <= doneY + rowHeight) {
+      go('menu')
+    }
+  }
+
+  const tapHandler = createPointerTapHandler(handleTap)
 
   return {
     enter() {
@@ -52,6 +78,8 @@ export function createBindingsScene(
         }
       }
     },
+    onPointerDown: tapHandler.onPointerDown,
+    onPointerUp: tapHandler.onPointerUp,
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
       clearScreen(ctx, width, height)
       drawTitle(ctx, width, '按键绑定', '选中一行后按确认键，再按下要绑定的键')
@@ -76,7 +104,7 @@ export function createBindingsScene(
         focus.getIndex() === ALL_ACTIONS.length,
         false,
       )
-      drawHint(ctx, width, height, '↑↓ 选择 · Enter/A 重绑 · Start 返回')
+      drawHint(ctx, width, height, '点击行重绑 · ↑↓ 选择 · Start 返回')
     },
   }
 }

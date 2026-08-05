@@ -96,6 +96,38 @@ export function clampStatsScroll(scrollY: number, contentHeight: number, viewpor
   return Math.max(0, Math.min(maxScroll, scrollY))
 }
 
+export function getStatsCloseButtonRect(width: number): { x: number; y: number; w: number; h: number } {
+  return { x: width - 56, y: 10, w: 44, h: 32 }
+}
+
+export function hitTestStatsClose(x: number, y: number, width: number): boolean {
+  const btn = getStatsCloseButtonRect(width)
+  return x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h
+}
+
+export function getStatsTabRects(
+  width: number,
+): Array<{ x: number; y: number; w: number; h: number }> {
+  const margin = Math.max(16, width * 0.04)
+  const contentW = width - margin * 2
+  const tabsY = 64
+  const tabW = Math.min(110, (contentW - 24) / STATS_PAGE_COUNT)
+  const rects: Array<{ x: number; y: number; w: number; h: number }> = []
+  for (let i = 0; i < STATS_PAGE_COUNT; i++) {
+    rects.push({ x: margin + i * (tabW + 8), y: tabsY, w: tabW, h: 28 })
+  }
+  return rects
+}
+
+export function hitTestStatsTab(x: number, y: number, width: number): number | null {
+  const rects = getStatsTabRects(width)
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i]
+    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return i
+  }
+  return null
+}
+
 export function drawStatsFullscreenOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -113,6 +145,18 @@ export function drawStatsFullscreenOverlay(
   const contentW = width - margin * 2
   const contentH = height - headerH - footerH
 
+  const closeBtn = getStatsCloseButtonRect(width)
+  ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
+  roundRect(ctx, closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h, 8)
+  ctx.fill()
+  ctx.strokeStyle = '#3d4f6e'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#8aa0c8'
+  ctx.font = '600 14px system-ui, sans-serif'
+  ctx.fillText('关闭', closeBtn.x + closeBtn.w / 2, closeBtn.y + 21)
+
   ctx.textAlign = 'center'
   ctx.fillStyle = '#e8f0ff'
   ctx.font = '600 22px system-ui, sans-serif'
@@ -127,10 +171,11 @@ export function drawStatsFullscreenOverlay(
     58,
   )
 
-  const tabsY = 64
-  const tabW = Math.min(110, (contentW - 24) / STATS_PAGE_COUNT)
+  const tabRects = getStatsTabRects(width)
   for (let i = 0; i < STATS_PAGE_COUNT; i++) {
-    const tabX = contentX + i * (tabW + 8)
+    const tabX = tabRects[i].x
+    const tabW = tabRects[i].w
+    const tabsY = tabRects[i].y
     const active = i === data.page
     ctx.fillStyle = active ? 'rgba(88, 166, 255, 0.28)' : 'rgba(8, 12, 20, 0.78)'
     roundRect(ctx, tabX, tabsY, tabW, 28, 8)
@@ -276,7 +321,7 @@ export function drawStatsFullscreenOverlay(
   ctx.textAlign = 'center'
   ctx.fillStyle = '#5f6d86'
   ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText('LB/RB 切换页面 · 摇杆/滚轮上下滚动 · Esc/B 关闭', width / 2, height - 14)
+  ctx.fillText('点击页签切换 · 上下滑动滚动 · 右上角关闭', width / 2, height - 14)
 }
 
 function drawLine(

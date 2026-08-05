@@ -6,6 +6,7 @@ import {
   INITIAL_FAMILY_FUNDS,
   KNOWLEDGE_CAP,
   JOY_CAP,
+  MAX_ACTIVE_ORDERS_PER_FAMILY,
   MAX_ORDER_HISTORY,
   ORDER_DEADLINE_SEC,
   ORDER_FULFILL_RADIUS,
@@ -135,8 +136,8 @@ function setEnrollmentBoost(rec: FamilyMarketRecord, kind: TransformKind): void 
   rec.enrollmentBoostKind = kind
 }
 
-function hasOpenOrder(rec: FamilyMarketRecord): boolean {
-  return rec.orders.some((o) => o.status === 'open' || o.status === 'assigned')
+function countActiveOrders(rec: FamilyMarketRecord): number {
+  return rec.orders.filter((o) => o.status === 'open' || o.status === 'assigned').length
 }
 
 function isIdlePractitioner(
@@ -212,7 +213,7 @@ function inspectMemberNeeds(
   entities: CircleEntity[],
   gameTimeSec: number,
 ): void {
-  if (hasOpenOrder(rec)) return
+  if (countActiveOrders(rec) >= MAX_ACTIVE_ORDERS_PER_FAMILY) return
   if (gameTimeSec < rec.orderPostCooldownUntil) return
   if (rec.funds < ORDER_POST_COST) return
 
