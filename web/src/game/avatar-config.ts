@@ -94,6 +94,10 @@ export const ORDER_FULFILL_RADIUS = 48
 export const FAMILY_SHARE_OF_REWARD = 0.5
 export const FAMILY_NEED_POST_THRESHOLD = 0.38
 export const MAX_ORDER_HISTORY = 5
+
+/** 成年圆成为化身者的掷骰概率（周期性检测） */
+export const AVATAR_PRACTITIONER_ROLL_CHANCE = 0.18
+export const AVATAR_PRACTITIONER_ROLL_INTERVAL_SEC = 6
 /** 每种颗粒（食物/知识/快乐）的初始数量 */
 export const AVATAR_INITIAL_PELLETS_PER_KIND = 18
 export const AVATAR_SPAWN_OFFSET = 100
@@ -117,13 +121,13 @@ export const TRANSFORM_REPEAT_PENALTY = 0.38
 export const FARM_TRANSFORM_WEIGHT = 4.2
 export const SCHOOL_TRANSFORM_WEIGHT = 0.35
 export const PARK_TRANSFORM_WEIGHT = 0.3
-/** 雄性产后化身为农场的额外权重倍率 */
+/** 雄性产后化身为农场的额外权重倍率 @deprecated 市场驱动，不再使用 */
 export const MALE_POST_PRODUCTION_FARM_MULT = 3.2
 
-/** 跳过化身的随机概率（越低越常化身） */
+/** 跳过化身的随机概率 @deprecated 市场驱动，不再使用 */
 export const TRANSFORM_SKIP_CHANCE = 0.18
 
-/** 资源射线：限时广播，不限量 */
+/** 资源光环：限时广播，不限量 */
 export const RESOURCE_BURST_SEC = 5
 export const RESOURCE_EMIT_INTERVAL_FARM_SEC = 1.6
 export const RESOURCE_EMIT_INTERVAL_SCHOOL_SEC = 1.8

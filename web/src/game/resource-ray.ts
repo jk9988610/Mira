@@ -76,7 +76,7 @@ export function isEmitterBursting(entity: CircleEntity): boolean {
   return isStructureEmitter(entity) || isOrderServiceEmitter(entity)
 }
 
-/** 到达后预计仍可接收的射线秒数 */
+/** 到达后预计仍可接收的光环秒数 */
 export function projectedEmissionRemaining(entity: CircleEntity, etaSec: number): number {
   if (!isStructureEmitter(entity)) return 0
   if (entity.emitBurstSec > 0) {
@@ -94,7 +94,7 @@ export function estimateTravelEta(entity: CircleEntity, targetX: number, targetY
   return dist / speed
 }
 
-/** 射线强度：随距离二次衰减，类似求偶信号 */
+/** 光环强度：随距离二次衰减，类似求偶信号 */
 export function resourceRayStrength(
   emitter: CircleEntity,
   receiver: CircleEntity,
@@ -196,7 +196,7 @@ function applyResourceToReceiver(
   }
 }
 
-/** 开始一轮限时射线发射 */
+/** 开始一轮限时光环发射 */
 export function startEmitterBurst(entity: CircleEntity): void {
   entity.emitBurstSec = RESOURCE_BURST_SEC
   entity.structureProduceCount++
@@ -210,7 +210,7 @@ export function tickEmitterBursts(entities: CircleEntity[], dt: number): void {
   }
 }
 
-/** 对所有移动圆应用当前活跃射线 */
+/** 对所有移动圆应用当前活跃光环 */
 export function tickResourceRays(entities: CircleEntity[], dt: number): void {
   const emitters = entities.filter((e) => isEmitterBursting(e))
   if (emitters.length === 0) return

@@ -97,15 +97,15 @@ export interface CircleEntity {
   intentTargetY: number
   /** 预计到达意图目标的秒数 */
   intentEtaSec: number
-  /** 当前追踪的射线发射源 id */
+  /** 当前追踪的光环发射源 id */
   aiEmitterTargetId: number
-  /** 射线发射剩余秒数（结构体限时广播） */
+  /** 光环发射剩余秒数（结构体限时广播） */
   emitBurstSec: number
   aiAnchorX: number
   aiAnchorY: number
   aiAnchorTimer: number
   aiMateTargetId: number
-  /** 出生后依恋母亲剩余秒数 */
+  /** 出生后依恋母亲剩余秒数 @deprecated 后代不再依恋母亲 */
   motherBondTimer: number
   /** 闲逛目标方向（单位向量） */
   wanderDirX: number
@@ -125,6 +125,10 @@ export interface CircleEntity {
   mateIntentCooldownSec: number
   /** 已完成求偶意图轮次（用于指数冷却） */
   mateIntentCycles: number
+  /** 已登记为化身者，可接单履约 */
+  isAvatarPractitioner: boolean
+  /** 化身者入册掷骰间隔计时 */
+  practitionerRollTimer: number
 }
 
 let nextId = 1
@@ -246,6 +250,8 @@ export function createCircle(
     mateIntentElapsedSec: 0,
     mateIntentCooldownSec: 0,
     mateIntentCycles: 0,
+    isAvatarPractitioner: false,
+    practitionerRollTimer: Math.random() * 4,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id

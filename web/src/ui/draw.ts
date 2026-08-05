@@ -533,11 +533,11 @@ function drawStatsPanel(
   const chartW = panelW - 28
   const chartH = 72
   let cy = y + 58
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'food', '#8fd3ff', '食物生产（颗粒数）')
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'food', '#8fd3ff', '食物光环（次数）')
   cy += chartH + 8
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'knowledge', '#82aaff', '知识生产（颗粒数）')
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'knowledge', '#82aaff', '知识光环（次数）')
   cy += chartH + 8
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'joy', '#ff96c8', '快乐生产（颗粒数）')
+  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'joy', '#ff96c8', '快乐光环（次数）')
 }
 
 export function drawAvatarStructure(

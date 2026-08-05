@@ -5,8 +5,7 @@ import {
   WANDER_INTERVAL_MAX_SEC,
   WANDER_INTERVAL_MIN_SEC,
 } from './avatar-config'
-import { avatarEntityRadius } from './avatar-radius'
-import { pickWeightedNeed, pickWeightedTransformKind, type NeedKind } from './avatar-needs'
+import { pickWeightedNeed, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
   isActivelySeekingMate,
@@ -19,42 +18,18 @@ import {
   type EmitterTarget,
 } from './resource-ray'
 import { clampAvatarEntityToWorld } from './avatar-radius'
-import { isFamilyChief } from './family-market'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isJuvenile } from './entity'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-function countStructures(entities: CircleEntity[]): { farm: number; school: number; park: number } {
-  let farm = 0
-  let school = 0
-  let park = 0
-  for (const e of entities) {
-    if (e.avatarRole === 'farm') farm++
-    if (e.avatarRole === 'school') school++
-    if (e.avatarRole === 'park') park++
-  }
-  return { farm, school, park }
-}
-
 export function decideNpcTransformKind(
-  entity: CircleEntity,
-  entities: CircleEntity[],
-  now = 0,
+  _entity: CircleEntity,
+  _entities: CircleEntity[],
+  _now = 0,
 ): TransformKind | null {
-  if (isFamilyChief(entity)) return null
-  if (isJuvenile(entity, now)) return null
-  if (entity.pendingAvatarKind !== 'none') return null
-  if (entity.avatarTransformCooldown > 0 || entity.productionStage !== 'none') return null
-  if (isPursuingMate(entity, now)) return null
-  return pickWeightedTransformKind(
-    entity,
-    countStructures(entities),
-    entity.id * 2.11 + now * 0.23 + entity.transformHistory.length,
-    now,
-    entities,
-  )
+  return null
 }
 
 export function recordTransformHistory(entity: CircleEntity, kind: TransformKind): void {
@@ -86,11 +61,11 @@ export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
       : phase === 'wander'
         ? '闲逛'
         : entity.aiIntent === 'eat'
-          ? '接收食物射线'
+          ? '接收食物光环'
           : entity.aiIntent === 'learn'
-            ? '接收知识射线'
+            ? '接收知识光环'
             : entity.aiIntent === 'play'
-              ? '接收快乐射线'
+              ? '接收快乐光环'
               : schedulePhaseLabel(phase)
 
   if (entity.intentEtaSec > 0 && (entity.aiIntent === 'eat' || entity.aiIntent === 'learn' || entity.aiIntent === 'play')) {
@@ -194,27 +169,6 @@ export function updateNpcIntent(
     return { moving: false, sleeping: false }
   }
 
-  if (entity.motherBondTimer > 0) {
-    entity.motherBondTimer = Math.max(0, entity.motherBondTimer - dt)
-    const mother = entities.find((e) => e.id === entity.motherId && isActive(e))
-    if (mother) {
-      const dx = mother.x - entity.x
-      const dy = mother.y - entity.y
-      const dist = Math.hypot(dx, dy)
-      const orbit = avatarEntityRadius(mother) + avatarEntityRadius(entity) + 26
-      entity.intentTargetX = mother.x
-      entity.intentTargetY = mother.y
-      entity.intentEtaSec = dist / Math.max(18, speedForMass(entity.mass))
-      if (dist > orbit) {
-        moveToward(entity, mother.x, mother.y, dt, 0.62, orbit)
-      } else {
-        wander(entity, dt * 0.4, false)
-      }
-      entity.aiIntent = 'wander'
-      return { moving: true, sleeping: false }
-    }
-  }
-
   if (isPursuingMate(entity, now)) {
     entity.aiIntent = 'wander'
     entity.intentEtaSec = 0
@@ -222,7 +176,6 @@ export function updateNpcIntent(
     return { moving: true, sleeping: false }
   }
 
-  const juvenile = isJuvenile(entity, now)
   const seeking = isActivelySeekingMate(entity, now)
   let phase = currentSchedulePhase(entity, now, seeking)
 
@@ -230,10 +183,6 @@ export function updateNpcIntent(
     entity.aiIntent = 'sleep'
     entity.intentEtaSec = 0
     return { moving: false, sleeping: true }
-  }
-
-  if (juvenile && phase === 'wander') {
-    phase = 'eat'
   }
 
   if (phase === 'wander') {
@@ -259,8 +208,8 @@ export function updateNpcIntent(
       return { moving: true, sleeping: false }
     }
     applyIntentTarget(entity, null, activeNeed)
-    if (!juvenile && phase === 'wander') wander(entity, dt * 0.5, seeking)
-    return { moving: !juvenile && phase === 'wander', sleeping: false }
+    if (phase === 'wander') wander(entity, dt * 0.5, seeking)
+    return { moving: phase === 'wander', sleeping: false }
   }
 
   entity.intentEtaSec = 0

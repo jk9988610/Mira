@@ -19,6 +19,7 @@ import {
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
+import { tickAvatarPractitionerEnrollment } from '../game/avatar-practitioner'
 import { ADULT_AGE_SEC, STARTER_OPTIMAL_MASS } from '../game/avatar-config'
 import {
   isPursuingMate,
@@ -217,6 +218,7 @@ export function createGameScene(
       tickProductionStats(dt, elapsed)
 
       tickFamilyMarkets(entities, elapsed, dt)
+      tickAvatarPractitionerEnrollment(entities, elapsed, dt)
 
       updateFarmStructures(entities, dt)
       updateSchoolStructures(entities, dt)

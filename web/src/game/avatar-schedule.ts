@@ -18,13 +18,13 @@ const ADULT_WEIGHTS: PhaseWeight[] = [
   { phase: 'wander', weight: 0.3 },
 ]
 
-/** 未成年：觅食为主，极少闲逛 */
+/** 未成年：与成年类似，可自由移动 */
 const JUVENILE_WEIGHTS: PhaseWeight[] = [
   { phase: 'sleep', weight: 0.14 },
-  { phase: 'eat', weight: 0.50 },
-  { phase: 'learn', weight: 0.18 },
-  { phase: 'play', weight: 0.16 },
-  { phase: 'wander', weight: 0.02 },
+  { phase: 'eat', weight: 0.28 },
+  { phase: 'learn', weight: 0.16 },
+  { phase: 'play', weight: 0.14 },
+  { phase: 'wander', weight: 0.28 },
 ]
 
 /** 求偶意图：更多闲逛时间 */
