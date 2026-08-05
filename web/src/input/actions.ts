@@ -8,14 +8,8 @@ export type Action =
   | 'CONFIRM'
   | 'BACK'
   | 'PAUSE'
-  | 'SPLIT'
-  | 'GATHER'
-  | 'SCHOOL'
-  | 'PARK'
-  | 'FORTRESS'
-  | 'CYCLE_VIEW_PREV'
-  | 'CYCLE_VIEW_NEXT'
-  | 'VIEW_SELF'
+  | 'STATS_PAGE_PREV'
+  | 'STATS_PAGE_NEXT'
 
 export const ALL_ACTIONS: Action[] = [
   'MOVE_UP',
@@ -25,14 +19,8 @@ export const ALL_ACTIONS: Action[] = [
   'CONFIRM',
   'BACK',
   'PAUSE',
-  'SPLIT',
-  'GATHER',
-  'SCHOOL',
-  'PARK',
-  'FORTRESS',
-  'CYCLE_VIEW_PREV',
-  'CYCLE_VIEW_NEXT',
-  'VIEW_SELF',
+  'STATS_PAGE_PREV',
+  'STATS_PAGE_NEXT',
 ]
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -43,14 +31,8 @@ export const ACTION_LABELS: Record<Action, string> = {
   CONFIRM: '确认',
   BACK: '返回',
   PAUSE: '暂停',
-  SPLIT: '农场',
-  GATHER: '生产',
-  SCHOOL: '校园',
-  PARK: '乐园',
-  FORTRESS: '堡垒',
-  CYCLE_VIEW_PREV: '视角←',
-  CYCLE_VIEW_NEXT: '视角→',
-  VIEW_SELF: '回到自己',
+  STATS_PAGE_PREV: '统计上一页',
+  STATS_PAGE_NEXT: '统计下一页',
 }
 
 export type BindingSource = 'keyboard' | 'gamepad-button' | 'gamepad-axis'
@@ -71,14 +53,8 @@ export const DEFAULT_BINDINGS: BindingMap = {
   CONFIRM: { source: 'keyboard', code: 'Enter' },
   BACK: { source: 'keyboard', code: 'Escape' },
   PAUSE: { source: 'keyboard', code: 'KeyP' },
-  SPLIT: { source: 'keyboard', code: 'KeyQ' },
-  GATHER: { source: 'keyboard', code: 'KeyE' },
-  SCHOOL: { source: 'keyboard', code: 'KeyZ' },
-  PARK: { source: 'keyboard', code: 'KeyX' },
-  FORTRESS: { source: 'keyboard', code: 'KeyC' },
-  CYCLE_VIEW_PREV: { source: 'keyboard', code: 'BracketLeft' },
-  CYCLE_VIEW_NEXT: { source: 'keyboard', code: 'BracketRight' },
-  VIEW_SELF: { source: 'keyboard', code: 'KeyV' },
+  STATS_PAGE_PREV: { source: 'keyboard', code: 'BracketLeft' },
+  STATS_PAGE_NEXT: { source: 'keyboard', code: 'BracketRight' },
 }
 
 export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
@@ -88,15 +64,11 @@ export const GAMEPAD_DEFAULT_BINDINGS: Partial<BindingMap> = {
   MOVE_RIGHT: { source: 'gamepad-button', code: '15' },
   CONFIRM: { source: 'gamepad-button', code: '0' },
   BACK: { source: 'gamepad-button', code: '1' },
-  SPLIT: { source: 'gamepad-button', code: '0' },
-  SCHOOL: { source: 'gamepad-button', code: '1' },
-  PARK: { source: 'gamepad-button', code: '2' },
-  FORTRESS: { source: 'gamepad-button', code: '3' },
-  CYCLE_VIEW_PREV: { source: 'gamepad-button', code: '4' },
-  CYCLE_VIEW_NEXT: { source: 'gamepad-button', code: '5' },
+  STATS_PAGE_PREV: { source: 'gamepad-button', code: '4' },
+  STATS_PAGE_NEXT: { source: 'gamepad-button', code: '5' },
 }
 
-const STORAGE_KEY = 'mira_bindings_v9'
+const STORAGE_KEY = 'mira_bindings_v10'
 
 function defaultBindingsForDevice(): BindingMap {
   if (isTouchDevice()) {
@@ -144,12 +116,8 @@ const KEYBOARD_LABELS: Record<string, string> = {
   KeyS: 'S',
   KeyD: 'D',
   KeyP: 'P',
-  KeyQ: 'Q',
-  KeyE: 'E',
-  KeyZ: 'Z',
-  KeyX: 'X',
-  KeyC: 'C',
-  KeyV: 'V',
+  BracketLeft: '[',
+  BracketRight: ']',
 }
 
 const GAMEPAD_BUTTON_LABELS: Record<string, string> = {
@@ -160,6 +128,7 @@ const GAMEPAD_BUTTON_LABELS: Record<string, string> = {
   '4': 'LB',
   '5': 'RB',
   '8': 'Select',
+  '9': 'Start',
   '12': 'D-Pad 上',
   '13': 'D-Pad 下',
   '14': 'D-Pad 左',

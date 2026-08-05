@@ -106,10 +106,11 @@ export function computeTribeDemographics(
 
   for (const e of entities) {
     if (!isActive(e)) continue
-    if (e.fatherId <= 0) continue
-    const prev = familyMap.get(e.fatherId)
+    if (e.fatherId <= 0 && e.motherId <= 0) continue
+    const familyId = e.familyId || e.fatherId || e.motherId
+    const prev = familyMap.get(familyId)
     if (!prev) continue
-    familyMap.set(e.fatherId, {
+    familyMap.set(familyId, {
       founderName: prev.founderName,
       offspringCount: prev.offspringCount + 1,
     })

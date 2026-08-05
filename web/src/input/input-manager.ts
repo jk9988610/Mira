@@ -19,18 +19,8 @@ export interface InputSnapshot {
   confirmPressed: boolean
   backPressed: boolean
   pausePressed: boolean
-  splitPressed: boolean
-  splitHeld: boolean
-  gatherHeld: boolean
-  gatherPressed: boolean
-  schoolPressed: boolean
-  parkPressed: boolean
-  fortressPressed: boolean
-  cycleViewPrevPressed: boolean
-  cycleViewNextPressed: boolean
-  viewSelfPressed: boolean
-  lbHeld: boolean
-  rbHeld: boolean
+  statsPagePrevPressed: boolean
+  statsPageNextPressed: boolean
   upPressed: boolean
   downPressed: boolean
   scrollDeltaY: number
@@ -197,14 +187,8 @@ export class InputManager {
 
     this.prevStickY = this.stickY
 
-    const lbHeld = this.isActionHeld('CYCLE_VIEW_PREV')
-    const rbHeld = this.isActionHeld('CYCLE_VIEW_NEXT')
-    const lbPressed = this.wasActionPressed('CYCLE_VIEW_PREV')
-    const rbPressed = this.wasActionPressed('CYCLE_VIEW_NEXT')
-    const viewSelfPressed =
-      (lbPressed && rbHeld) ||
-      (rbPressed && lbHeld) ||
-      this.wasActionPressed('VIEW_SELF')
+    const statsPagePrevPressed = this.wasActionPressed('STATS_PAGE_PREV')
+    const statsPageNextPressed = this.wasActionPressed('STATS_PAGE_NEXT')
 
     const scrollDeltaY = this.scrollDeltaY
     this.scrollDeltaY = 0
@@ -218,18 +202,8 @@ export class InputManager {
       confirmPressed: this.wasActionPressed('CONFIRM'),
       backPressed: this.wasActionPressed('BACK'),
       pausePressed: this.wasActionPressed('PAUSE'),
-      splitPressed: this.wasActionPressed('SPLIT'),
-      splitHeld: this.isActionHeld('SPLIT'),
-      gatherHeld: this.isActionHeld('GATHER'),
-      gatherPressed: this.wasActionPressed('GATHER'),
-      schoolPressed: this.wasActionPressed('SCHOOL'),
-      parkPressed: this.wasActionPressed('PARK'),
-      fortressPressed: this.wasActionPressed('FORTRESS'),
-      cycleViewPrevPressed: lbPressed && !viewSelfPressed,
-      cycleViewNextPressed: rbPressed && !viewSelfPressed,
-      viewSelfPressed,
-      lbHeld,
-      rbHeld,
+      statsPagePrevPressed,
+      statsPageNextPressed,
       upPressed,
       downPressed,
       scrollDeltaY,

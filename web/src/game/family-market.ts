@@ -54,6 +54,8 @@ export interface FamilyMarketRecord {
   patrolQueue: number[]
   patrolIndex: number
   patrolCooldown: number
+  /** 巡检或待接订单所缺的化身者类型，用于提高入册概率 */
+  enrollmentBoostKind: TransformKind | 'none'
 }
 
 const PATROL_MEMBER_INTERVAL_SEC = 1.1
@@ -114,6 +116,23 @@ function electChief(familyId: number, entities: CircleEntity[], gameTimeSec: num
     rec.chiefId = 0
     rec.chiefName = '—'
   }
+}
+
+function countFamilyPractitioners(
+  familyId: number,
+  kind: TransformKind,
+  entities: CircleEntity[],
+): number {
+  let count = 0
+  for (const w of entities) {
+    if (!isActive(w) || getFamilyId(w) !== familyId) continue
+    if (isPractitioner(w, kind)) count++
+  }
+  return count
+}
+
+function setEnrollmentBoost(rec: FamilyMarketRecord, kind: TransformKind): void {
+  rec.enrollmentBoostKind = kind
 }
 
 function hasOpenOrder(rec: FamilyMarketRecord): boolean {
@@ -190,6 +209,7 @@ function inspectMemberNeeds(
   rec: FamilyMarketRecord,
   chief: CircleEntity,
   member: CircleEntity,
+  entities: CircleEntity[],
   gameTimeSec: number,
 ): void {
   if (hasOpenOrder(rec)) return
@@ -197,6 +217,7 @@ function inspectMemberNeeds(
   if (rec.funds < ORDER_POST_COST) return
 
   if (member.hostilePressureFelt >= HOSTILE_PRESSURE_ORDER_THRESHOLD) {
+    setEnrollmentBoost(rec, 'fortress')
     postOrder(rec, chief, 'fortress', member.x, member.y, gameTimeSec)
     return
   }
@@ -221,6 +242,10 @@ function inspectMemberNeeds(
   }
   if (!kind) return
 
+  setEnrollmentBoost(rec, kind)
+  if (countFamilyPractitioners(rec.familyId, kind, entities) === 0) {
+    setEnrollmentBoost(rec, kind)
+  }
   postOrder(rec, chief, kind, member.x, member.y, gameTimeSec)
 }
 
@@ -249,7 +274,7 @@ function tickFamilyPatrol(
   const member = entities.find((w) => w.id === memberId && isActive(w))
   if (!member) return
 
-  inspectMemberNeeds(rec, chief, member, gameTimeSec)
+  inspectMemberNeeds(rec, chief, member, entities, gameTimeSec)
 }
 
 function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
@@ -270,7 +295,10 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
         bestWorker = w
       }
     }
-    if (!bestWorker) continue
+    if (!bestWorker) {
+      setEnrollmentBoost(rec, order.kind)
+      continue
+    }
 
     order.status = 'assigned'
     order.contractorId = bestWorker.id
@@ -317,6 +345,7 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       patrolQueue: [],
       patrolIndex: 0,
       patrolCooldown: 0.5,
+      enrollmentBoostKind: 'none',
     })
   }
 }
@@ -357,6 +386,7 @@ export function fulfillMarketOrder(orderId: number, contractorId: number, gameTi
     order.status = 'fulfilled'
     order.completedAt = gameTimeSec
     rec.funds += order.reward * FAMILY_SHARE_OF_REWARD
+    rec.enrollmentBoostKind = 'none'
   }
 }
 
@@ -379,6 +409,7 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
         patrolQueue: [],
         patrolIndex: 0,
         patrolCooldown: 1,
+        enrollmentBoostKind: 'none',
       })
     }
     electChief(fid, entities, gameTimeSec)
@@ -387,6 +418,16 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
     tryAssignContractors(fid, entities, gameTimeSec)
     expireOrders(fid, entities, gameTimeSec)
   }
+}
+
+export function getFamilyEnrollmentBoosts(): ReadonlyMap<number, TransformKind> {
+  const map = new Map<number, TransformKind>()
+  for (const rec of familyMarkets.values()) {
+    if (rec.enrollmentBoostKind !== 'none') {
+      map.set(rec.familyId, rec.enrollmentBoostKind)
+    }
+  }
+  return map
 }
 
 export function isAtContractTarget(entity: CircleEntity): boolean {

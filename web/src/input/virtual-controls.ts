@@ -41,10 +41,6 @@ export class VirtualControls {
       </div>
       <button type="button" class="vc-part vc-btn vc-btn-lb" data-part="btnLB" data-btn="4">LB</button>
       <button type="button" class="vc-part vc-btn vc-btn-rb" data-part="btnRB" data-btn="5">RB</button>
-      <button type="button" class="vc-part vc-btn vc-btn-y" data-part="btnY" data-btn="3" title="堡垒">Y</button>
-      <button type="button" class="vc-part vc-btn vc-btn-x" data-part="btnX" data-btn="2" title="乐园">X</button>
-      <button type="button" class="vc-part vc-btn vc-btn-b" data-part="btnB" data-btn="1" title="校园">B</button>
-      <button type="button" class="vc-part vc-btn vc-btn-a" data-part="btnA" data-btn="0" title="农场">A</button>
     `
     document.body.appendChild(this.root)
     this.gridOverlay = this.root.querySelector('.vc-grid-overlay')!

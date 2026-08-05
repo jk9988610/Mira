@@ -44,7 +44,6 @@ export function readStandardGamepad(
   const moveX = applyDeadzone(pad.axes[0] ?? 0)
   const moveY = applyDeadzone(pad.axes[1] ?? 0)
 
-  // 十字键作为按钮 12-15；部分手柄用 axes 2/3 表示十字键
   const dpadX = applyDeadzone(pad.axes[2] ?? 0)
   const dpadY = applyDeadzone(pad.axes[3] ?? 0)
   if (dpadX < -0.5) markButton(buttonsHeld, buttonsPressed, prevHeld, '14')
@@ -97,23 +96,14 @@ export const STANDARD_GAMEPAD_ACTIONS = {
   CONFIRM: ['0'],
   BACK: ['1'],
   PAUSE: ['9'],
-  SPLIT: ['0'],
-  GATHER: ['3'],
-  SCHOOL: ['1'],
-  PARK: ['2'],
-  FORTRESS: ['3'],
-  CYCLE_VIEW_PREV: ['4'],
-  CYCLE_VIEW_NEXT: ['5'],
+  STATS_PAGE_PREV: ['4'],
+  STATS_PAGE_NEXT: ['5'],
 } as const
 
 /** 虚拟按键码 → 游戏动作（按下边沿） */
 export const VIRTUAL_BUTTON_ACTIONS: Record<string, readonly Action[]> = {
-  '0': ['SPLIT'],
-  '1': ['SCHOOL'],
-  '2': ['PARK'],
-  '3': ['FORTRESS'],
-  '4': ['CYCLE_VIEW_PREV'],
-  '5': ['CYCLE_VIEW_NEXT'],
+  '4': ['STATS_PAGE_PREV'],
+  '5': ['STATS_PAGE_NEXT'],
   '9': ['PAUSE'],
 }
 
