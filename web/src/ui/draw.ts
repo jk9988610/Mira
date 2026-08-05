@@ -11,7 +11,11 @@ import type { ActiveHalo } from '../game/halo-status'
 import type { TribeDemographics } from '../game/tribe-stats'
 import type { FamilyMarketRecord } from '../game/family-market'
 import { ORDER_DEMAND_LABEL } from '../game/family-market'
-import type { OrderStatsSummary, ProductionSample } from '../game/production-stats'
+import type { FamilyGenealogy } from '../game/family-registry'
+import { formatGenealogyLine } from '../game/family-registry'
+import type { OrderStatsSummary } from '../game/production-stats'
+import { listAllOrders } from '../game/production-stats'
+import type { TransformKind } from '../game/entity'
 import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
 import { generationLabel } from '../game/naming'
@@ -173,7 +177,8 @@ export interface AvatarHudData {
   familyMarkets: FamilyMarketRecord[]
   entities: CircleEntity[]
   statsOpen: boolean
-  productionSamples: ProductionSample[]
+  statsScrollY: number
+  genealogies: FamilyGenealogy[]
   orderStats: OrderStatsSummary
   viewTargetName: string
   observingOther: boolean
@@ -230,8 +235,8 @@ export function drawAvatarEntityStats(
     `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
     `压力 ${entity.pressureFelt.toFixed(1)} · 敌压 ${entity.hostilePressureFelt.toFixed(1)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
-    `化身 农场${entity.countFarmTransforms} 校园${entity.countSchoolTransforms}`,
-    `      乐园${entity.countParkTransforms} 生产${entity.countProductionSessions}`,
+    `化身者注册 农场${entity.countFarmPractitionerRegs} 校园${entity.countSchoolPractitionerRegs}`,
+    `              乐园${entity.countParkPractitionerRegs} 堡垒${entity.countFortressPractitionerRegs}`,
   ]
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
@@ -332,7 +337,15 @@ export function drawAvatarHud(
 ): void {
   const demo = data.demographics
   const hint = `${data.farmHint} · ${data.produceHint} · ${data.schoolHint} · ${data.parkHint} · ${data.fortressHint}`
-  const tribe = `农场 ${data.farm} · 校园 ${data.school} · 乐园 ${data.park} · 堡垒 ${data.fortress} · 生产 ${data.producing} · 圆 ${data.circles}`
+  const practitionerLine = demo.practitionerByFamily
+    .map(
+      (fam) =>
+        `${fam.familyName} 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`,
+    )
+    .join(' · ')
+  const tribe = practitionerLine
+    ? `活跃化身者 ${practitionerLine}`
+    : `活跃化身者 农${demo.practitionerFarm} 校${demo.practitionerSchool} 乐${demo.practitionerPark} 堡${demo.practitionerFortress}`
   const demoLine = `成年 男${demo.adultMale} 女${demo.adultFemale} · 未成年 男${demo.juvenileMale} 女${demo.juvenileFemale}`
 
   ctx.textAlign = 'left'
@@ -473,56 +486,54 @@ export function drawMarketHud(
   }
 }
 
-function drawMiniLineChart(
+const STATS_PANEL_LINE_HEIGHT = 16
+
+export function getStatsPanelRect(
+  width: number,
+  height: number,
+): { x: number; y: number; w: number; h: number } {
+  const panelW = Math.min(420, width - 32)
+  const panelH = Math.min(420, height - 48)
+  return { x: width - panelW - 16, y: 52, w: panelW, h: panelH }
+}
+
+export function getStatsContentHeight(
+  data: Pick<AvatarHudData, 'demographics' | 'familyMarkets' | 'genealogies'>,
+): number {
+  const orders = listAllOrders(data.familyMarkets)
+  let lines = 6
+  lines += data.demographics.practitionerByFamily.length
+  lines += 5
+  lines += orders.length
+  for (const genealogy of data.genealogies) {
+    lines += 2 + genealogy.members.length
+  }
+  return lines * STATS_PANEL_LINE_HEIGHT + 48
+}
+
+export function clampStatsScroll(scrollY: number, contentHeight: number, panelHeight: number): number {
+  const maxScroll = Math.max(0, contentHeight - panelHeight + 24)
+  return Math.max(0, Math.min(maxScroll, scrollY))
+}
+
+function drawStatsSectionTitle(ctx: CanvasRenderingContext2D, x: number, y: number, title: string): number {
+  ctx.fillStyle = '#e8f0ff'
+  ctx.font = '600 13px system-ui, sans-serif'
+  ctx.fillText(title, x, y)
+  return y + STATS_PANEL_LINE_HEIGHT
+}
+
+function drawStatsLine(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  w: number,
-  h: number,
-  samples: ProductionSample[],
-  field: 'food' | 'knowledge' | 'joy',
-  color: string,
-  label: string,
-): void {
-  ctx.fillStyle = 'rgba(8, 12, 20, 0.88)'
-  roundRect(ctx, x, y, w, h, 8)
-  ctx.fill()
-
-  ctx.textAlign = 'left'
-  ctx.fillStyle = '#b8c4dc'
-  ctx.font = '11px system-ui, sans-serif'
-  ctx.fillText(label, x + 10, y + 16)
-
-  const plotX = x + 10
-  const plotY = y + 24
-  const plotW = w - 20
-  const plotH = h - 34
-
-  const values = samples.map((s) => s[field])
-  const maxVal = Math.max(1, ...values)
-  const total = values.reduce((a, b) => a + b, 0)
-  ctx.fillStyle = '#7f8ca3'
-  ctx.fillText(`合计 ${total}`, x + w - 70, y + 16)
-
-  if (samples.length < 2) {
-    ctx.strokeStyle = 'rgba(100, 120, 150, 0.35)'
-    ctx.beginPath()
-    ctx.moveTo(plotX, plotY + plotH / 2)
-    ctx.lineTo(plotX + plotW, plotY + plotH / 2)
-    ctx.stroke()
-    return
-  }
-
-  ctx.strokeStyle = color
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  for (let i = 0; i < samples.length; i++) {
-    const px = plotX + (i / (samples.length - 1)) * plotW
-    const py = plotY + plotH - (values[i] / maxVal) * plotH
-    if (i === 0) ctx.moveTo(px, py)
-    else ctx.lineTo(px, py)
-  }
-  ctx.stroke()
+  text: string,
+  color = '#8aa0c8',
+): number {
+  ctx.fillStyle = color
+  ctx.font = '12px system-ui, sans-serif'
+  ctx.fillText(text, x, y)
+  return y + STATS_PANEL_LINE_HEIGHT
 }
 
 function drawStatsPanel(
@@ -531,10 +542,10 @@ function drawStatsPanel(
   height: number,
   data: AvatarHudData,
 ): void {
-  const panelW = Math.min(420, width - 32)
-  const panelH = Math.min(360, height - 48)
-  const x = width - panelW - 16
-  const y = 52
+  const rect = getStatsPanelRect(width, height)
+  const { x, y, w: panelW, h: panelH } = rect
+  const contentHeight = getStatsContentHeight(data)
+  const scrollY = clampStatsScroll(data.statsScrollY, contentHeight, panelH)
 
   ctx.fillStyle = 'rgba(6, 10, 18, 0.92)'
   roundRect(ctx, x, y, panelW, panelH, 12)
@@ -543,28 +554,128 @@ function drawStatsPanel(
   ctx.lineWidth = 1.5
   ctx.stroke()
 
-  ctx.textAlign = 'left'
-  ctx.fillStyle = '#e8f0ff'
-  ctx.font = '600 14px system-ui, sans-serif'
-  ctx.fillText('生产与订单统计', x + 14, y + 24)
+  ctx.save()
+  ctx.beginPath()
+  roundRect(ctx, x, y, panelW, panelH, 12)
+  ctx.clip()
 
+  ctx.textAlign = 'left'
+  let cy = y + 20 - scrollY
+  const textX = x + 14
+  const textW = panelW - 28
+
+  cy = drawStatsSectionTitle(ctx, textX, cy, '化身者与订单统计')
   const os = data.orderStats
-  ctx.fillStyle = '#8aa0c8'
-  ctx.font = '12px system-ui, sans-serif'
-  ctx.fillText(
-    `订单 已完成 ${os.fulfilled} · 履约中 ${os.active} · 已失效 ${os.incomplete}`,
-    x + 14,
-    y + 44,
+  cy = drawStatsLine(
+    ctx,
+    textX,
+    cy,
+    `订单 完成${os.fulfilled} · 进行中${os.active} · 失效${os.incomplete}`,
   )
 
-  const chartW = panelW - 28
-  const chartH = 72
-  let cy = y + 58
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'food', '#8fd3ff', '食物光环（次数）')
-  cy += chartH + 8
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'knowledge', '#82aaff', '知识光环（次数）')
-  cy += chartH + 8
-  drawMiniLineChart(ctx, x + 14, cy, chartW, chartH, data.productionSamples, 'joy', '#ff96c8', '快乐光环（次数）')
+  cy = drawStatsSectionTitle(ctx, textX, cy + 6, '各类型订单统计')
+  const kindLabels: TransformKind[] = ['farm', 'school', 'park', 'fortress']
+  for (const kind of kindLabels) {
+    const stats = os.byKind[kind]
+    cy = drawStatsLine(
+      ctx,
+      textX,
+      cy,
+      `${ORDER_DEMAND_LABEL[kind]} 待${stats.open} 进行${stats.assigned} 完成${stats.fulfilled} 失效${stats.expired}`,
+    )
+  }
+
+  cy = drawStatsSectionTitle(ctx, textX, cy + 6, '各家族活跃化身者')
+  if (data.demographics.practitionerByFamily.length === 0) {
+    cy = drawStatsLine(ctx, textX, cy, '暂无注册化身者')
+  } else {
+    for (const fam of data.demographics.practitionerByFamily) {
+      cy = drawStatsLine(
+        ctx,
+        textX,
+        cy,
+        `${fam.familyName} 农场${fam.farm} 校园${fam.school} 乐园${fam.park} 堡垒${fam.fortress}`,
+      )
+    }
+  }
+
+  cy = drawStatsSectionTitle(ctx, textX, cy + 6, '订单列表')
+  const orders = listAllOrders(data.familyMarkets)
+  if (orders.length === 0) {
+    cy = drawStatsLine(ctx, textX, cy, '暂无订单记录')
+  } else {
+    for (const order of orders) {
+      const fam = data.demographics.families.find((f) => f.familyId === order.familyId)
+      const famName = fam?.familyName ?? `家族${order.familyId}`
+      const status = ORDER_STATUS_LABEL[order.status] ?? order.status
+      const color =
+        order.status === 'fulfilled'
+          ? '#7ddea8'
+          : order.status === 'expired' || order.status === 'cancelled'
+            ? '#ff9f9f'
+            : '#8aa0c8'
+      const remain = Math.max(0, order.deadline - data.gameTimeSec)
+      const timeLabel =
+        order.status === 'fulfilled'
+          ? `完成 ${formatGameTime(order.completedAt ?? data.gameTimeSec)}`
+          : `剩余 ${Math.ceil(remain)}s`
+      const line = `#${order.id} ${famName} · ${ORDER_DEMAND_LABEL[order.kind]} · ${status} · (${Math.round(order.x)},${Math.round(order.y)}) · ${timeLabel}`
+      ctx.fillStyle = color
+      ctx.font = '12px system-ui, sans-serif'
+      const chunks = wrapText(line, textW, ctx)
+      for (const chunk of chunks) {
+        ctx.fillText(chunk, textX, cy)
+        cy += STATS_PANEL_LINE_HEIGHT
+      }
+    }
+  }
+
+  cy = drawStatsSectionTitle(ctx, textX, cy + 6, '家族族谱与巡检')
+  for (const genealogy of data.genealogies) {
+    cy = drawStatsLine(
+      ctx,
+      textX,
+      cy,
+      `${genealogy.familyName} 化身者 农${genealogy.practitionerFarm} 校${genealogy.practitionerSchool} 乐${genealogy.practitionerPark} 堡${genealogy.practitionerFortress}`,
+      '#b8c4dc',
+    )
+    for (const member of genealogy.members) {
+      cy = drawStatsLine(ctx, textX + 8, cy, formatGenealogyLine(member))
+    }
+    cy += 4
+  }
+
+  ctx.restore()
+
+  const maxScroll = Math.max(0, contentHeight - panelH + 24)
+  if (maxScroll > 0) {
+    const trackX = x + panelW - 8
+    const trackY = y + 12
+    const trackH = panelH - 24
+    const thumbH = Math.max(24, (panelH / contentHeight) * trackH)
+    const thumbY = trackY + (scrollY / maxScroll) * (trackH - thumbH)
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.18)'
+    ctx.fillRect(trackX, trackY, 4, trackH)
+    ctx.fillStyle = 'rgba(88, 166, 255, 0.72)'
+    ctx.fillRect(trackX, thumbY, 4, thumbH)
+  }
+}
+
+function wrapText(text: string, maxWidth: number, ctx: CanvasRenderingContext2D): string[] {
+  if (ctx.measureText(text).width <= maxWidth) return [text]
+  const chunks: string[] = []
+  let current = ''
+  for (const ch of text) {
+    const next = current + ch
+    if (ctx.measureText(next).width > maxWidth && current.length > 0) {
+      chunks.push(current)
+      current = ch
+    } else {
+      current = next
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks.length > 0 ? chunks : [text]
 }
 
 export function drawAvatarStructure(

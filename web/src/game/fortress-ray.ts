@@ -19,7 +19,9 @@ function distanceBetween(a: CircleEntity, b: CircleEntity): number {
 }
 
 export function isFortressEmitter(entity: CircleEntity): boolean {
-  return entity.isFrozen && entity.avatarRole === 'fortress' && entity.emitBurstSec > 0
+  if (entity.emitBurstSec <= 0) return false
+  if (entity.isFrozen && entity.avatarRole === 'fortress') return true
+  return entity.orderServiceTimer > 0 && entity.orderServiceKind === 'fortress'
 }
 
 export function fortressHaloStrength(fortress: CircleEntity, target: CircleEntity): number {

@@ -126,14 +126,24 @@ export interface CircleEntity {
   mateIntentCooldownSec: number
   /** 已完成求偶意图轮次（用于指数冷却） */
   mateIntentCycles: number
-  /** 已登记为化身者，可接单履约 */
-  isAvatarPractitioner: boolean
-  /** 化身者入册掷骰间隔计时 */
-  practitionerRollTimer: number
-  /** 已登记为保卫者，可化身为堡垒 */
-  isDefender: boolean
-  /** 保卫者入册掷骰间隔计时 */
-  defenderRollTimer: number
+  /** 已登记为农场化身者 */
+  practitionerFarm: boolean
+  /** 已登记为校园化身者 */
+  practitionerSchool: boolean
+  /** 已登记为乐园化身者 */
+  practitionerPark: boolean
+  /** 已登记为堡垒化身者 */
+  practitionerFortress: boolean
+  /** 各类型化身者入册掷骰间隔 */
+  practitionerFarmRollTimer: number
+  practitionerSchoolRollTimer: number
+  practitionerParkRollTimer: number
+  practitionerFortressRollTimer: number
+  /** 各类型化身者累计注册次数 */
+  countFarmPractitionerRegs: number
+  countSchoolPractitionerRegs: number
+  countParkPractitionerRegs: number
+  countFortressPractitionerRegs: number
   /** 堡垒护甲光环缓冲（抵御敌对堡垒伤害） */
   fortressArmor: number
   /** 感受到的隐藏压力强度 */
@@ -262,10 +272,18 @@ export function createCircle(
     mateIntentElapsedSec: 0,
     mateIntentCooldownSec: 0,
     mateIntentCycles: 0,
-    isAvatarPractitioner: false,
-    practitionerRollTimer: Math.random() * 4,
-    isDefender: false,
-    defenderRollTimer: Math.random() * 5,
+    practitionerFarm: false,
+    practitionerSchool: false,
+    practitionerPark: false,
+    practitionerFortress: false,
+    practitionerFarmRollTimer: Math.random() * 4,
+    practitionerSchoolRollTimer: Math.random() * 4.5,
+    practitionerParkRollTimer: Math.random() * 5,
+    practitionerFortressRollTimer: Math.random() * 5.5,
+    countFarmPractitionerRegs: 0,
+    countSchoolPractitionerRegs: 0,
+    countParkPractitionerRegs: 0,
+    countFortressPractitionerRegs: 0,
     fortressArmor: 0,
     pressureFelt: 0,
     hostilePressureFelt: 0,

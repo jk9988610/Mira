@@ -20,8 +20,8 @@ import {
   updateParkStructures,
   updateSchoolStructures,
 } from '../game/avatar-system'
-import { tickDefenderEnrollment } from '../game/avatar-defender'
-import { tickAvatarPractitionerEnrollment } from '../game/avatar-practitioner'
+import { tickPractitionerEnrollment } from '../game/avatar-practitioner'
+import { buildFamilyGenealogies, resetFamilyRegistry } from '../game/family-registry'
 import { drawFortressHalos, tickFortressHalos } from '../game/fortress-ray'
 import { getActiveHalosOnEntity } from '../game/halo-status'
 import { resetPressureField, tickPressureField } from '../game/pressure-field'
@@ -49,10 +49,13 @@ import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
 import {
   clearScreen,
+  clampStatsScroll,
   drawAvatarCircle,
   drawAvatarHud,
   drawAvatarStructure,
   drawMarketHud,
+  getStatsContentHeight,
+  getStatsPanelRect,
   hitTestStatsButton,
 } from '../ui/draw'
 import { computeTribeDemographics } from '../game/tribe-stats'
@@ -63,7 +66,6 @@ import {
   tickFamilyMarkets,
 } from '../game/family-market'
 import {
-  getProductionSamples,
   resetProductionStats,
   summarizeOrders,
   tickProductionStats,
@@ -141,6 +143,9 @@ export function createGameScene(
   let prevSplitHeld = false
   let prevGatherHeld = false
   let statsOpen = false
+  let statsScrollY = 0
+  let lastCanvasWidth = 800
+  let lastCanvasHeight = 600
 
   const syncControlledId = () => {
     const controlled = getControlledEntity(entities, controlledId)
@@ -159,11 +164,13 @@ export function createGameScene(
   const reset = () => {
     resetAvatarState()
     resetFamilyMarkets()
+    resetFamilyRegistry()
     resetProductionStats()
     resetPressureField()
     resetResourceZones()
     generateResourceZones()
     statsOpen = false
+    statsScrollY = 0
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = STARTER_OFFSETS.map((offset, i) => {
@@ -214,6 +221,26 @@ export function createGameScene(
         viewTargetId = cycleViewTarget(entities, viewTargetId, -1)
       } else if (input.cycleViewNextPressed) {
         viewTargetId = cycleViewTarget(entities, viewTargetId, 1)
+      }
+
+      if (statsOpen) {
+        const demo = computeTribeDemographics(entities, elapsed)
+        const familyNames = new Map(demo.families.map((f) => [f.familyId, f.familyName]))
+        const genealogies = buildFamilyGenealogies(entities, familyNames)
+        const familyMarkets = getFamilyMarketRecords()
+        const panel = getStatsPanelRect(lastCanvasWidth, lastCanvasHeight)
+        const contentHeight = getStatsContentHeight({
+          demographics: demo,
+          familyMarkets,
+          genealogies,
+        })
+        if (input.scrollDeltaY !== 0) {
+          statsScrollY += input.scrollDeltaY * 0.45
+        }
+        if (Math.abs(input.moveY) > 0.12) {
+          statsScrollY += input.moveY * 260 * dt
+        }
+        statsScrollY = clampStatsScroll(statsScrollY, contentHeight, panel.h)
       }
 
       tickAvatarTransformCooldowns(entities, dt)
@@ -269,8 +296,7 @@ export function createGameScene(
 
       tickPressureField(entities, dt)
       tickFamilyMarkets(entities, elapsed, dt)
-      tickAvatarPractitionerEnrollment(entities, elapsed, dt)
-      tickDefenderEnrollment(entities, elapsed, dt)
+      tickPractitionerEnrollment(entities, elapsed, dt)
 
       tickResourceZones(entities, dt)
 
@@ -316,7 +342,7 @@ export function createGameScene(
         if (entity.productionStage !== 'none') movingIds.add(entity.id)
       }
 
-      entities = tickMobileAvatarVitality(entities, dt, movingIds)
+      entities = tickMobileAvatarVitality(entities, dt, movingIds, elapsed)
       syncControlledId()
 
       const controlled = getControlledEntity(entities, controlledId)
@@ -327,6 +353,8 @@ export function createGameScene(
       absorbFlash = Math.max(0, absorbFlash - dt)
     },
     render(ctx: CanvasRenderingContext2D, width: number, height: number) {
+      lastCanvasWidth = width
+      lastCanvasHeight = height
       clearScreen(ctx, width, height)
 
       const controlled = getControlledEntity(entities, controlledId)
@@ -373,8 +401,11 @@ export function createGameScene(
       const demo = computeTribeDemographics(entities, elapsed)
       const hints = getAvatarTransformHints(controlled, entities, elapsed)
       const familyMarkets = getFamilyMarketRecords()
+      const familyNames = new Map(demo.families.map((f) => [f.familyId, f.familyName]))
+      const genealogies = buildFamilyGenealogies(entities, familyNames)
       const viewHalos = viewTarget ? getActiveHalosOnEntity(viewTarget, entities) : []
       const observingOther = viewTargetId !== controlledId
+      const orderStats = summarizeOrders(familyMarkets)
       const hudData = {
         gameTimeSec: elapsed,
         zoom: cam.zoom,
@@ -393,8 +424,9 @@ export function createGameScene(
         familyMarkets,
         entities,
         statsOpen,
-        productionSamples: getProductionSamples(),
-        orderStats: summarizeOrders(familyMarkets),
+        statsScrollY,
+        genealogies,
+        orderStats,
         viewTargetName: viewTarget?.name ?? '—',
         observingOther,
         activeHalos: viewHalos,
@@ -405,6 +437,7 @@ export function createGameScene(
     onTap(x: number, y: number, width: number, _height: number) {
       if (hitTestStatsButton(x, y, width)) {
         statsOpen = !statsOpen
+        if (!statsOpen) statsScrollY = 0
       }
     },
   }

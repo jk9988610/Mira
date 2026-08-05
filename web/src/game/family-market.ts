@@ -1,6 +1,5 @@
 import {
   ADULT_AGE_SEC,
-  CHIEF_SURVEY_RADIUS,
   FAMILY_NEED_POST_THRESHOLD,
   FAMILY_SHARE_OF_REWARD,
   HOSTILE_PRESSURE_ORDER_THRESHOLD,
@@ -15,13 +14,7 @@ import {
   ORDER_REWARD,
   SATIETY_CAP,
 } from './avatar-config'
-import { registerDefender } from './avatar-defender'
-import { chooseAvatarKindToBuild } from './avatar-needs'
-import { registerAvatarPractitioner } from './avatar-practitioner'
-import {
-  findMostPressuredByHostiles,
-  maxHostilePressureInFamily,
-} from './pressure-field'
+import { isPractitioner, registerPractitioner } from './avatar-practitioner'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
@@ -58,7 +51,12 @@ export interface FamilyMarketRecord {
   chiefName: string
   orderPostCooldownUntil: number
   orders: MarketOrder[]
+  patrolQueue: number[]
+  patrolIndex: number
+  patrolCooldown: number
 }
+
+const PATROL_MEMBER_INTERVAL_SEC = 1.1
 
 let orderIdSeq = 1
 const familyMarkets = new Map<number, FamilyMarketRecord>()
@@ -87,33 +85,6 @@ function isInAvatarState(entity: CircleEntity): boolean {
     entity.avatarRole === 'park' ||
     entity.avatarRole === 'fortress'
   )
-}
-
-function surveyAroundPoint(
-  centerX: number,
-  centerY: number,
-  entities: CircleEntity[],
-  familyId: number,
-): {
-  food: number
-  knowledge: number
-  happiness: number
-} {
-  let food = 0
-  let knowledge = 0
-  let happiness = 0
-  let n = 0
-  for (const w of entities) {
-    if (!isActive(w) || getFamilyId(w) !== familyId) continue
-    const dist = Math.hypot(w.x - centerX, w.y - centerY)
-    if (dist > CHIEF_SURVEY_RADIUS) continue
-    food += w.satiety / SATIETY_CAP
-    knowledge += w.knowledge / KNOWLEDGE_CAP
-    happiness += w.joy / JOY_CAP
-    n++
-  }
-  if (n === 0) return { food: 0, knowledge: 0, happiness: 0 }
-  return { food: food / n, knowledge: knowledge / n, happiness: happiness / n }
 }
 
 function chiefScore(w: CircleEntity, gameTimeSec: number): number {
@@ -145,52 +116,19 @@ function electChief(familyId: number, entities: CircleEntity[], gameTimeSec: num
   }
 }
 
-function findNeediestNearby(
-  centerX: number,
-  centerY: number,
-  familyId: number,
-  entities: CircleEntity[],
-  kind: TransformKind,
-): CircleEntity | null {
-  let best: CircleEntity | null = null
-  let bestNeed = -1
-  for (const w of entities) {
-    if (!isActive(w) || getFamilyId(w) !== familyId) continue
-    const dist = Math.hypot(w.x - centerX, w.y - centerY)
-    if (dist > CHIEF_SURVEY_RADIUS) continue
-    let need = 0
-    if (kind === 'farm') need = 1 - w.satiety / SATIETY_CAP
-    else if (kind === 'school') need = 1 - w.knowledge / KNOWLEDGE_CAP
-    else if (kind === 'park') need = 1 - w.joy / JOY_CAP
-    else continue
-    if (need > bestNeed) {
-      bestNeed = need
-      best = w
-    }
-  }
-  return best
-}
-
 function hasOpenOrder(rec: FamilyMarketRecord): boolean {
   return rec.orders.some((o) => o.status === 'open' || o.status === 'assigned')
 }
 
-function isIdlePractitioner(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
+function isIdlePractitioner(
+  w: CircleEntity,
+  kind: TransformKind,
+  gameTimeSec: number,
+  chiefId: number,
+): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
   if (w.id === chiefId) return false
-  if (!w.isAvatarPractitioner) return false
-  if (isInAvatarState(w)) return false
-  if (w.productionStage !== 'none') return false
-  if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
-  if (w.orderServiceTimer > 0) return false
-  return true
-}
-
-function isIdleDefender(w: CircleEntity, gameTimeSec: number, chiefId: number): boolean {
-  if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
-  if (w.gender !== 'male') return false
-  if (!w.isDefender) return false
-  if (w.id === chiefId) return false
+  if (!isPractitioner(w, kind)) return false
   if (isInAvatarState(w)) return false
   if (w.productionStage !== 'none') return false
   if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
@@ -237,50 +175,81 @@ function postOrder(
   if (rec.orders.length > MAX_ORDER_HISTORY) rec.orders.length = MAX_ORDER_HISTORY
 }
 
-function tryPostOrder(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
-  const rec = familyMarkets.get(familyId)
-  if (!rec || gameTimeSec < rec.orderPostCooldownUntil) return
-  if (rec.funds < ORDER_POST_COST) return
+function rebuildPatrolQueue(familyId: number, entities: CircleEntity[], chiefId: number): number[] {
+  const ids: number[] = []
+  for (const w of entities) {
+    if (!isActive(w) || getFamilyId(w) !== familyId) continue
+    if (w.id === chiefId) continue
+    ids.push(w.id)
+  }
+  ids.sort((a, b) => a - b)
+  return ids
+}
+
+function inspectMemberNeeds(
+  rec: FamilyMarketRecord,
+  chief: CircleEntity,
+  member: CircleEntity,
+  gameTimeSec: number,
+): void {
   if (hasOpenOrder(rec)) return
+  if (gameTimeSec < rec.orderPostCooldownUntil) return
+  if (rec.funds < ORDER_POST_COST) return
+
+  if (member.hostilePressureFelt >= HOSTILE_PRESSURE_ORDER_THRESHOLD) {
+    postOrder(rec, chief, 'fortress', member.x, member.y, gameTimeSec)
+    return
+  }
+
+  const foodNeed = 1 - member.satiety / SATIETY_CAP
+  const knowledgeNeed = 1 - member.knowledge / KNOWLEDGE_CAP
+  const joyNeed = 1 - member.joy / JOY_CAP
+
+  let kind: TransformKind | null = null
+  let bestNeed = FAMILY_NEED_POST_THRESHOLD
+  if (foodNeed > bestNeed) {
+    kind = 'farm'
+    bestNeed = foodNeed
+  }
+  if (knowledgeNeed > bestNeed) {
+    kind = 'school'
+    bestNeed = knowledgeNeed
+  }
+  if (joyNeed > bestNeed) {
+    kind = 'park'
+    bestNeed = joyNeed
+  }
+  if (!kind) return
+
+  postOrder(rec, chief, kind, member.x, member.y, gameTimeSec)
+}
+
+function tickFamilyPatrol(
+  rec: FamilyMarketRecord,
+  entities: CircleEntity[],
+  gameTimeSec: number,
+  dt: number,
+): void {
+  rec.patrolCooldown -= dt
+  if (rec.patrolCooldown > 0) return
+  rec.patrolCooldown = PATROL_MEMBER_INTERVAL_SEC
+
+  if (rec.patrolQueue.length === 0 || rec.patrolIndex >= rec.patrolQueue.length) {
+    rec.patrolQueue = rebuildPatrolQueue(rec.familyId, entities, rec.chiefId)
+    rec.patrolIndex = 0
+    if (rec.patrolQueue.length === 0) return
+  }
+
+  const memberId = rec.patrolQueue[rec.patrolIndex]
+  rec.patrolIndex++
 
   const chief = entities.find((w) => w.id === rec.chiefId && isActive(w))
   if (!chief) return
 
-  const hostilePressure = maxHostilePressureInFamily(
-    familyId,
-    chief.x,
-    chief.y,
-    CHIEF_SURVEY_RADIUS,
-    entities,
-  )
-  if (hostilePressure >= HOSTILE_PRESSURE_ORDER_THRESHOLD) {
-    const pressured = findMostPressuredByHostiles(
-      chief.x,
-      chief.y,
-      familyId,
-      CHIEF_SURVEY_RADIUS,
-      entities,
-    )
-    if (pressured) {
-      postOrder(rec, chief, 'fortress', pressured.x, pressured.y, gameTimeSec)
-      return
-    }
-  }
+  const member = entities.find((w) => w.id === memberId && isActive(w))
+  if (!member) return
 
-  const survey = surveyAroundPoint(chief.x, chief.y, entities, familyId)
-  const kind = chooseAvatarKindToBuild(survey.food, survey.knowledge, survey.happiness)
-  if (!kind) return
-
-  let triggerNeed = 0
-  if (kind === 'farm') triggerNeed = 1 - survey.food
-  else if (kind === 'school') triggerNeed = 1 - survey.knowledge
-  else triggerNeed = 1 - survey.happiness
-  if (triggerNeed < FAMILY_NEED_POST_THRESHOLD) return
-
-  const needy = findNeediestNearby(chief.x, chief.y, familyId, entities, kind)
-  if (!needy) return
-
-  postOrder(rec, chief, kind, needy.x, needy.y, gameTimeSec)
+  inspectMemberNeeds(rec, chief, member, gameTimeSec)
 }
 
 function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
@@ -294,11 +263,7 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
     let bestDist = Infinity
     for (const w of entities) {
       if (!isActive(w) || getFamilyId(w) !== familyId) continue
-      const eligible =
-        order.kind === 'fortress'
-          ? isIdleDefender(w, gameTimeSec, rec.chiefId)
-          : isIdlePractitioner(w, gameTimeSec, rec.chiefId)
-      if (!eligible) continue
+      if (!isIdlePractitioner(w, order.kind, gameTimeSec, rec.chiefId)) continue
       const dist = Math.hypot(w.x - order.x, w.y - order.y)
       if (dist < bestDist) {
         bestDist = dist
@@ -309,11 +274,7 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
 
     order.status = 'assigned'
     order.contractorId = bestWorker.id
-    if (order.kind === 'fortress') {
-      registerDefender(bestWorker)
-    } else {
-      registerAvatarPractitioner(bestWorker)
-    }
+    registerPractitioner(bestWorker, order.kind)
     bestWorker.marketContractOrderId = order.id
     bestWorker.contractTargetX = order.x
     bestWorker.contractTargetY = order.y
@@ -353,6 +314,9 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       chiefName: w.name,
       orderPostCooldownUntil: 2,
       orders: [],
+      patrolQueue: [],
+      patrolIndex: 0,
+      patrolCooldown: 0.5,
     })
   }
 }
@@ -396,7 +360,7 @@ export function fulfillMarketOrder(orderId: number, contractorId: number, gameTi
   }
 }
 
-export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number, _dt: number): void {
+export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number, dt: number): void {
   const familyIds = new Set<number>()
   for (const w of entities) {
     if (!isActive(w)) continue
@@ -412,10 +376,14 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
         chiefName: '—',
         orderPostCooldownUntil: gameTimeSec + 5,
         orders: [],
+        patrolQueue: [],
+        patrolIndex: 0,
+        patrolCooldown: 1,
       })
     }
     electChief(fid, entities, gameTimeSec)
-    tryPostOrder(fid, entities, gameTimeSec)
+    const rec = familyMarkets.get(fid)!
+    tickFamilyPatrol(rec, entities, gameTimeSec, dt)
     tryAssignContractors(fid, entities, gameTimeSec)
     expireOrders(fid, entities, gameTimeSec)
   }

@@ -32,8 +32,8 @@ import {
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
 import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
-import { registerAvatarPractitioner } from './avatar-practitioner'
-import { registerDefender } from './avatar-defender'
+import { isPractitioner, registerPractitioner } from './avatar-practitioner'
+import { recordDeceased } from './family-registry'
 import { recordPelletProduction } from './production-stats'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
@@ -176,7 +176,7 @@ export function canBeginAvatarTransform(
 ): boolean {
   if (!entity || !isActive(entity)) return false
   if (isFamilyChief(entity)) return false
-  if (_kind === 'fortress' && (entity.gender !== 'male' || !entity.isDefender)) return false
+  if (_kind === 'fortress' && !isPractitioner(entity, 'fortress')) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false
   if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') return false
@@ -389,12 +389,14 @@ export function completeAvatarTransform(
   if (kind === 'park') entity.countParkTransforms++
   if (kind === 'fortress') {
     entity.countFortressTransforms++
-    registerDefender(entity)
+    registerPractitioner(entity, 'fortress')
   }
   entity.absorptionPaused = false
   recordTransformHistory(entity, kind)
 
-  registerAvatarPractitioner(entity)
+  if (kind !== 'fortress') {
+    registerPractitioner(entity, kind)
+  }
 
   if (entity.marketContractOrderId > 0) {
     fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
@@ -557,7 +559,7 @@ function beginOrderService(
   worker: CircleEntity,
   order: { kind: TransformKind },
 ): void {
-  registerAvatarPractitioner(worker)
+  registerPractitioner(worker, order.kind)
   worker.orderServiceKind = order.kind
   worker.orderServiceTimer = ORDER_SERVICE_DURATION_SEC
   startEmitterBurst(worker)
@@ -607,8 +609,8 @@ function updateMarketContract(
   }
 
   if (order.kind === 'fortress') {
-    const result = completeAvatarTransform(entities, ally, 'fortress', _now)
-    return result
+    beginOrderService(ally, order)
+    return { entities }
   }
 
   beginOrderService(ally, order)
@@ -742,12 +744,14 @@ export function tickMobileAvatarVitality(
   entities: CircleEntity[],
   dt: number,
   movingIds: ReadonlySet<number>,
+  gameTimeSec = 0,
 ): CircleEntity[] {
   const next: CircleEntity[] = []
   for (const entity of entities) {
     if (isStructureRole(entity.avatarRole)) {
       tickAvatarTransformLifespan(entity, dt)
       if (!isAvatarLifeExpired(entity)) next.push(entity)
+      else recordDeceased(entity, gameTimeSec)
       continue
     }
     if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') {
@@ -760,6 +764,7 @@ export function tickMobileAvatarVitality(
     }
     tickAvatarMetabolism(entity, dt, movingIds.has(entity.id))
     if (!isAvatarLifeExpired(entity)) next.push(entity)
+    else recordDeceased(entity, gameTimeSec)
   }
   return next
 }
@@ -878,12 +883,9 @@ export function getAvatarTransformHints(
     }
   }
 
-  const fortressHint =
-    entity.gender !== 'male'
-      ? 'C 堡垒(需男性保卫者)'
-      : !entity.isDefender
-        ? 'C 堡垒(需保卫者)'
-        : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
+  const fortressHint = !isPractitioner(entity, 'fortress')
+    ? 'C 堡垒(需堡垒化身者)'
+    : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
 
   return {
     farmHint: transformHint(entity, entities, 'farm', 'Q', '农场', gameTimeSec),
