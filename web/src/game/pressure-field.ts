@@ -1,4 +1,15 @@
-import { PRESSURE_EMIT_RANGE_RATIO, PRESSURE_FAMILY_RELEASE_THRESHOLD } from './avatar-config'
+import {
+  JOY_CAP,
+  PRESSURE_EMIT_RANGE_RATIO,
+  PRESSURE_FAMILY_RELEASE_THRESHOLD,
+  PRESSURE_RELIEF_JOY_WEIGHT,
+  PRESSURE_RELIEF_MATING_ACTIVE,
+  PRESSURE_RELIEF_MAX,
+  PRESSURE_RELIEF_POST_MATE,
+  PRESSURE_RELIEF_SATIETY_WEIGHT,
+  PRODUCTION_COOLDOWN_SEC,
+  SATIETY_CAP,
+} from './avatar-config'
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
 import { WORLD_WIDTH } from './world'
@@ -24,9 +35,25 @@ function distanceBetween(a: CircleEntity, b: CircleEntity): number {
   return Math.hypot(b.x - a.x, b.y - a.y)
 }
 
-/** 每个圆释放的压力等于其质量 */
+/** 饱食、快乐与交配可降低压力释放 */
+export function computePressureRelief(entity: CircleEntity): number {
+  const satietyRatio = Math.min(1, Math.max(0, entity.satiety / SATIETY_CAP))
+  const joyRatio = Math.min(1, Math.max(0, entity.joy / JOY_CAP))
+  let relief =
+    satietyRatio * PRESSURE_RELIEF_SATIETY_WEIGHT + joyRatio * PRESSURE_RELIEF_JOY_WEIGHT
+  if (entity.productionStage === 'active') {
+    relief += PRESSURE_RELIEF_MATING_ACTIVE
+  } else if (entity.productionCooldown > 0) {
+    relief +=
+      PRESSURE_RELIEF_POST_MATE * (entity.productionCooldown / PRODUCTION_COOLDOWN_SEC)
+  }
+  return Math.min(PRESSURE_RELIEF_MAX, relief)
+}
+
+/** 每个圆释放的压力 = 质量 × (1 - 减压系数) */
 export function circlePressureEmit(entity: CircleEntity): number {
-  return Math.max(0, entity.mass)
+  const relief = computePressureRelief(entity)
+  return Math.max(0, entity.mass * (1 - relief))
 }
 
 /** 隐藏压力辐射强度（二次衰减，类似求偶信号） */

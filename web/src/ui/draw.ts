@@ -329,38 +329,51 @@ export function drawAvatarHud(
   data: AvatarHudData,
 ): void {
   const demo = data.demographics
-  const practitionerLine = demo.practitionerByFamily
-    .map(
-      (fam) =>
-        `${fam.familyName} 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`,
-    )
-    .join(' · ')
-  const tribe = practitionerLine
-    ? `活跃化身者 ${practitionerLine}`
-    : `活跃化身者 农${demo.practitionerFarm} 校${demo.practitionerSchool} 乐${demo.practitionerPark} 堡${demo.practitionerFortress}`
+  const practitionerLines =
+    demo.practitionerByFamily.length > 0
+      ? demo.practitionerByFamily.map(
+          (fam) =>
+            `${fam.familyName} 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`,
+        )
+      : [
+          `全局 农${demo.practitionerFarm} 校${demo.practitionerSchool} 乐${demo.practitionerPark} 堡${demo.practitionerFortress}`,
+        ]
 
   ctx.textAlign = 'left'
   ctx.font = '12px system-ui, sans-serif'
 
   let y = 16
-  const drawPanel = (text: string, h = 24) => {
+  const maxPanelW = Math.min(width - 120, 420)
+  const lineHeight = 14
+  const padX = 10
+  const padY = 7
+
+  const drawLinesPanel = (lines: string[]) => {
+    const panelH = lines.length * lineHeight + padY * 2
+    let contentW = 0
+    for (const line of lines) {
+      contentW = Math.max(contentW, ctx.measureText(line).width)
+    }
+    const panelW = Math.min(contentW + padX * 2, maxPanelW)
     ctx.fillStyle = 'rgba(8, 12, 20, 0.78)'
-    roundRect(ctx, 16, y, Math.min(ctx.measureText(text).width + 20, width - 120), h, 8)
+    roundRect(ctx, 16, y, panelW, panelH, 8)
     ctx.fill()
     ctx.fillStyle = '#8aa0c8'
-    ctx.fillText(text, 26, y + 16)
-    y += h + 6
+    lines.forEach((line, i) => {
+      ctx.fillText(line, 26, y + padY + 11 + i * lineHeight)
+    })
+    y += panelH + 6
   }
 
-  drawPanel(`时间 ${formatGameTime(data.gameTimeSec)} · 观察者模式`)
-  drawPanel(`视角 (${data.cameraX}, ${data.cameraY}) · 触屏拖拽平移`)
+  drawLinesPanel([`时间 ${formatGameTime(data.gameTimeSec)} · 观察者模式`])
+  drawLinesPanel([`视角 (${data.cameraX}, ${data.cameraY}) · 触屏拖拽平移`])
   if (data.pressureSummary) {
     const p = data.pressureSummary
-    drawPanel(
+    drawLinesPanel([
       `压力 均${p.avgPressure.toFixed(1)} · 敌压峰${p.maxHostile.toFixed(1)} · 敌对族${p.hostileFamilyPairs}`,
-    )
+    ])
   }
-  drawPanel(tribe)
+  drawLinesPanel(['活跃化身者', ...practitionerLines])
 }
 
 export function drawAvatarStructure(
