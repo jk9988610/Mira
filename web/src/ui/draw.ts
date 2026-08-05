@@ -10,6 +10,7 @@ import { avatarEntityRadius } from '../game/avatar-radius'
 import type { ActiveHalo } from '../game/halo-status'
 import type { TribeDemographics } from '../game/tribe-stats'
 import type { FamilyMarketRecord } from '../game/family-market'
+import { ORDER_DEMAND_LABEL } from '../game/family-market'
 import type { OrderStatsSummary, ProductionSample } from '../game/production-stats'
 import { formatGameTime } from '../game/game-clock'
 import { formatLatLng } from '../game/geo'
@@ -227,6 +228,7 @@ export function drawAvatarEntityStats(
     `知识 ${Math.round(entity.knowledge)} (${knowledgeEvalLabel(entity.knowledge)})`,
     `快乐 ${Math.round(entity.joy)} (${happinessEvalLabel(entity.joy)})`,
     `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
+    `压力 ${entity.pressureFelt.toFixed(1)} · 敌压 ${entity.hostilePressureFelt.toFixed(1)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
     `化身 农场${entity.countFarmTransforms} 校园${entity.countSchoolTransforms}`,
     `      乐园${entity.countParkTransforms} 生产${entity.countProductionSessions}`,
@@ -348,9 +350,9 @@ export function drawAvatarHud(
 
   drawPanel(`时间 ${formatGameTime(data.gameTimeSec)} · 玩家 蓝天`)
   if (data.observingOther) {
-    drawPanel(`观察视角 · ${data.viewTargetName}（V 切换）`, 28)
+    drawPanel(`观察视角 · ${data.viewTargetName}（LB/RB 切换 · LB+RB 回自己）`, 28)
   } else {
-    drawPanel(`视角 · ${data.viewTargetName}（V 切换观察其他圆）`, 28)
+    drawPanel(`视角 · ${data.viewTargetName}（LB/RB 切换 · LB+RB 回自己）`, 28)
   }
   const haloText =
     data.activeHalos.length > 0
@@ -433,7 +435,10 @@ export function drawMarketHud(
   for (const market of data.familyMarkets) {
     const fam = data.demographics.families.find((f) => f.familyId === market.familyId)
     const famName = fam?.familyName ?? `家族${market.familyId}`
-    const needLine = `需求 饱${(market.surveyFood * 100).toFixed(0)}% 知${(market.surveyKnowledge * 100).toFixed(0)}% 乐${(market.surveyHappiness * 100).toFixed(0)}%`
+    const activeOrder = market.orders.find((o) => o.status === 'open' || o.status === 'assigned')
+    const needLine = activeOrder
+      ? `需求：${ORDER_DEMAND_LABEL[activeOrder.kind] ?? activeOrder.kind}`
+      : '暂无订单需求'
     drawRightPanel(`${famName} · ${needLine}`, 28)
 
     const cooldown = Math.max(0, market.orderPostCooldownUntil - data.gameTimeSec)
@@ -455,7 +460,11 @@ export function drawMarketHud(
         order.status === 'fulfilled'
           ? `完成于 ${formatGameTime(order.completedAt ?? data.gameTimeSec)}`
           : `截止 ${Math.ceil(remain)}s`
-      drawRightPanel(`#${order.id} ${kind} · ${status} · ${timeLabel} · 赏${order.reward}`, 28, color)
+      drawRightPanel(
+        `#${order.id} ${ORDER_DEMAND_LABEL[order.kind] ?? kind} · ${status} · ${timeLabel} · 赏${order.reward}`,
+        28,
+        color,
+      )
     }
   }
 
@@ -543,7 +552,7 @@ function drawStatsPanel(
   ctx.fillStyle = '#8aa0c8'
   ctx.font = '12px system-ui, sans-serif'
   ctx.fillText(
-    `订单 已完成 ${os.fulfilled} · 进行中 ${os.active} · 未完成 ${os.incomplete}`,
+    `订单 已完成 ${os.fulfilled} · 履约中 ${os.active} · 已失效 ${os.incomplete}`,
     x + 14,
     y + 44,
   )

@@ -8,12 +8,13 @@ function hash01(seed: number): number {
   return x - Math.floor(x)
 }
 
-/** 将圆登记为保卫者（可化身为堡垒） */
+/** 将圆登记为保卫者（仅本族成年男性可担任） */
 export function registerDefender(entity: CircleEntity): void {
+  if (entity.gender !== 'male') return
   entity.isDefender = true
 }
 
-/** 成年圆周期性掷骰，有一定概率成为保卫者 */
+/** 本族成年男性周期性掷骰，有一定概率成为保卫者 */
 export function tickDefenderEnrollment(
   entities: CircleEntity[],
   gameTimeSec: number,
@@ -21,6 +22,7 @@ export function tickDefenderEnrollment(
 ): void {
   for (const entity of entities) {
     if (!isActive(entity) || !isAdult(entity, gameTimeSec)) continue
+    if (entity.gender !== 'male') continue
     if (entity.isDefender || isFamilyChief(entity)) continue
 
     entity.defenderRollTimer -= dt

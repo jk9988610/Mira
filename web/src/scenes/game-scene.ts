@@ -208,7 +208,11 @@ export function createGameScene(
         return
       }
 
-      if (input.cycleViewPressed) {
+      if (input.viewSelfPressed) {
+        viewTargetId = controlledId
+      } else if (input.cycleViewPrevPressed) {
+        viewTargetId = cycleViewTarget(entities, viewTargetId, -1)
+      } else if (input.cycleViewNextPressed) {
         viewTargetId = cycleViewTarget(entities, viewTargetId, 1)
       }
 

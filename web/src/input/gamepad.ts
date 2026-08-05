@@ -97,16 +97,23 @@ export const STANDARD_GAMEPAD_ACTIONS = {
   CONFIRM: ['0'],
   BACK: ['1'],
   PAUSE: ['9'],
-  SPLIT: ['2'],
+  SPLIT: ['0'],
   GATHER: ['3'],
+  SCHOOL: ['1'],
+  PARK: ['2'],
+  FORTRESS: ['3'],
+  CYCLE_VIEW_PREV: ['4'],
+  CYCLE_VIEW_NEXT: ['5'],
 } as const
 
 /** 虚拟按键码 → 游戏动作（按下边沿） */
 export const VIRTUAL_BUTTON_ACTIONS: Record<string, readonly Action[]> = {
-  '0': ['CONFIRM'],
-  '1': ['BACK'],
-  '2': ['SPLIT'],
-  '3': ['GATHER'],
+  '0': ['SPLIT'],
+  '1': ['SCHOOL'],
+  '2': ['PARK'],
+  '3': ['FORTRESS'],
+  '4': ['CYCLE_VIEW_PREV'],
+  '5': ['CYCLE_VIEW_NEXT'],
   '9': ['PAUSE'],
 }
 
