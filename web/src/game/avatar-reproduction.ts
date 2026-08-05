@@ -55,6 +55,8 @@ function canMatePair(a: CircleEntity, b: CircleEntity, gameTimeSec = 0): boolean
   const male = a.gender === 'male' ? a : b
   const female = a.gender === 'female' ? a : b
   if (areKin(male, female)) return false
+  if (male.spouseId > 0 && male.spouseId !== female.id) return false
+  if (female.spouseId > 0 && female.spouseId !== male.id) return false
   return isSeekingMate(male, gameTimeSec) && isSeekingMate(female, gameTimeSec)
 }
 
@@ -83,6 +85,15 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
 
     let bestMale: CircleEntity | null = null
     let bestStrength = MATE_SIGNAL_MIN_STRENGTH
+
+    if (female.spouseId > 0) {
+      const spouse = entities.find((m) => m.id === female.spouseId && isActive(m))
+      if (spouse && spouse.gender === 'male' && isActivelySeekingMate(spouse, now) && canMatePair(spouse, female, now)) {
+        female.aiMateTargetId = spouse.id
+        continue
+      }
+    }
+
     for (const male of entities) {
       if (!isActive(male) || male.gender !== 'male') continue
       if (!isActivelySeekingMate(male, now)) continue
@@ -203,15 +214,19 @@ export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
   if (entity.productionCooldown > 0) return false
   if (entity.mateIntentCooldownSec > 0) return false
   if (entity.mateIntentElapsedSec >= MATE_INTENT_WINDOW_SEC) return false
+  if (entity.marketContractOrderId > 0 || entity.orderServiceTimer > 0) return false
   return true
 }
 
-/** 求偶意愿：冷却结束也不必然立刻求偶，由个体意愿与随机波动决定 */
+/** 求偶意愿：已婚者极大降低；未婚者由个体意愿与随机波动决定 */
 export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
   if (!isSeekingMate(entity, now)) return false
   const elder = elderMateFactor(entity, now)
   if (elder < 0.08) return false
   const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
+  if (entity.spouseId > 0) {
+    return roll < 0.035 * elder
+  }
   return roll < (0.28 + entity.mateSeekUrge * 0.62) * elder
 }
 

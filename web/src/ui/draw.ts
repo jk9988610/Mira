@@ -158,6 +158,7 @@ export interface AvatarHudData {
   cameraY: number
   demographics: TribeDemographics
   pressureSummary?: PressureFieldSummary
+  familyFunds?: ReadonlyMap<number, number>
 }
 
 export function getStatsButtonRect(width: number): { x: number; y: number; w: number; h: number } {
@@ -331,10 +332,11 @@ export function drawAvatarHud(
   const demo = data.demographics
   const practitionerLines =
     demo.practitionerByFamily.length > 0
-      ? demo.practitionerByFamily.map(
-          (fam) =>
-            `${fam.familyName} 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`,
-        )
+      ? demo.practitionerByFamily.map((fam) => {
+          const funds = data.familyFunds?.get(fam.familyId)
+          const fundsLabel = funds !== undefined ? ` 资金${funds}` : ''
+          return `${fam.familyName} 人口${fam.activePopulation}${fundsLabel} · 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`
+        })
       : [
           `全局 农${demo.practitionerFarm} 校${demo.practitionerSchool} 乐${demo.practitionerPark} 堡${demo.practitionerFortress}`,
         ]

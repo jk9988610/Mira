@@ -1,5 +1,5 @@
 import type { FamilyGenealogy } from '../game/family-registry'
-import { formatGenealogyLine } from '../game/family-registry'
+import { buildGenealogyNameMap, formatGenealogyLine } from '../game/family-registry'
 import type { FamilyMarketRecord } from '../game/family-market'
 import { ORDER_DEMAND_LABEL } from '../game/family-market'
 import type { OrderStatsSummary } from '../game/production-stats'
@@ -70,9 +70,9 @@ export function getStatsPageContentHeight(
 
   if (page === 0) {
     lines += Math.max(1, data.demographics.practitionerByFamily.length)
-    lines += 4
-  } else if (page === 1) {
     lines += 5
+  } else if (page === 1) {
+    lines += 6
     const orders = listAllOrders(data.familyMarkets)
     for (const order of orders) {
       const fam = data.demographics.families.find((f) => f.familyId === order.familyId)
@@ -214,12 +214,12 @@ export function drawStatsFullscreenOverlay(
     } else {
       for (const fam of data.demographics.practitionerByFamily) {
         const market = data.familyMarkets.find((m) => m.familyId === fam.familyId)
-        const funds = market ? ` · 资金 ${Math.floor(market.funds)}` : ''
+        const funds = market ? ` · 资金${Math.floor(market.funds)}` : ''
         cy = drawLine(
           ctx,
           contentX,
           cy,
-          `${fam.familyName}${funds} — 农场${fam.farm} 校园${fam.school} 乐园${fam.park} 堡垒${fam.fortress}`,
+          `${fam.familyName} 人口${fam.activePopulation}${funds} — 当前化身 农${fam.farm} 校${fam.school} 乐${fam.park} 堡${fam.fortress}`,
         )
       }
     }
@@ -237,8 +237,15 @@ export function drawStatsFullscreenOverlay(
       ctx,
       contentX,
       cy,
-      `总计 完成${os.fulfilled} · 进行中${os.active} · 失效${os.incomplete}`,
+      `本页 完成${os.fulfilled} · 进行中${os.active} · 失效${os.incomplete}`,
       '#b8c4dc',
+    )
+    cy = drawLine(
+      ctx,
+      contentX,
+      cy,
+      `累计 发单${os.lifetimePosted} · 完成${os.lifetimeFulfilled} · 失效${os.lifetimeExpired}（资金为历史累计，每完成一单净+14）`,
+      '#7f8ca3',
     )
     cy += 6
     const kinds: TransformKind[] = ['farm', 'school', 'park', 'fortress']
@@ -285,16 +292,17 @@ export function drawStatsFullscreenOverlay(
       }
     }
   } else {
+    const nameById = buildGenealogyNameMap(data.genealogies)
     for (const genealogy of data.genealogies) {
       cy = drawLine(
         ctx,
         contentX,
         cy,
-        `${genealogy.familyName} — 化身者 农${genealogy.practitionerFarm} 校${genealogy.practitionerSchool} 乐${genealogy.practitionerPark} 堡${genealogy.practitionerFortress}`,
+        `${genealogy.familyName} — 当前化身 农${genealogy.practitionerFarm} 校${genealogy.practitionerSchool} 乐${genealogy.practitionerPark} 堡${genealogy.practitionerFortress}`,
         '#b8c4dc',
       )
       for (const member of genealogy.members) {
-        cy = drawLine(ctx, contentX + 12, cy, formatGenealogyLine(member))
+        cy = drawLine(ctx, contentX + 12, cy, formatGenealogyLine(member, nameById))
       }
       cy += 6
     }

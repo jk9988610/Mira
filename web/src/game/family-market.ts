@@ -15,7 +15,7 @@ import {
   ORDER_REWARD,
   SATIETY_CAP,
 } from './avatar-config'
-import { isPractitioner, registerPractitioner } from './avatar-practitioner'
+import { isPractitioner, registerPractitioner, unregisterPractitioner } from './avatar-practitioner'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
@@ -55,8 +55,13 @@ export interface FamilyMarketRecord {
   patrolQueue: number[]
   patrolIndex: number
   patrolCooldown: number
-  /** 巡检或待接订单所缺的化身者类型，用于提高入册概率 */
   enrollmentBoostKind: TransformKind | 'none'
+  /** 累计发单数 */
+  totalPosted: number
+  /** 累计完成数 */
+  totalFulfilled: number
+  /** 累计失效数 */
+  totalExpired: number
 }
 
 const PATROL_MEMBER_INTERVAL_SEC = 1.1
@@ -76,9 +81,6 @@ function getFamilyId(entity: CircleEntity): number {
   return entity.familyId || entity.id
 }
 
-function isFounderMale(entity: CircleEntity): boolean {
-  return entity.motherId === 0 && entity.gender === 'male'
-}
 
 function isInAvatarState(entity: CircleEntity): boolean {
   return (
@@ -156,7 +158,8 @@ function isIdlePractitioner(
   return true
 }
 
-function clearWorkerContract(worker: CircleEntity): void {
+function clearWorkerContract(worker: CircleEntity, kind?: TransformKind): void {
+  if (kind) unregisterPractitioner(worker, kind)
   worker.marketContractOrderId = 0
   worker.pendingAvatarKind = 'none'
   worker.contractTargetX = 0
@@ -193,6 +196,7 @@ function postOrder(
   }
   rec.orders.unshift(order)
   if (rec.orders.length > MAX_ORDER_HISTORY) rec.orders.length = MAX_ORDER_HISTORY
+  rec.totalPosted++
 }
 
 function rebuildPatrolQueue(familyId: number, entities: CircleEntity[], chiefId: number): number[] {
@@ -320,12 +324,13 @@ function expireOrders(familyId: number, entities: CircleEntity[], gameTimeSec: n
 
     if (order.status === 'assigned' && order.contractorId) {
       const worker = entities.find((w) => w.id === order.contractorId)
-      if (worker) clearWorkerContract(worker)
+      if (worker) clearWorkerContract(worker, order.kind)
       order.status = 'expired'
       order.contractorId = undefined
     } else {
       order.status = 'expired'
     }
+    rec.totalExpired++
   }
 }
 
@@ -333,13 +338,13 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
   familyMarkets.clear()
   orderIdSeq = 1
   for (const w of entities) {
-    if (!isFounderMale(w)) continue
+    if (w.motherId !== 0 || w.fatherId !== 0) continue
     const fid = getFamilyId(w)
     if (familyMarkets.has(fid)) continue
     familyMarkets.set(fid, {
       familyId: fid,
       funds: INITIAL_FAMILY_FUNDS,
-      chiefId: w.id,
+      chiefId: w.gender === 'male' ? w.id : 0,
       chiefName: w.name,
       orderPostCooldownUntil: 2,
       orders: [],
@@ -347,6 +352,9 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       patrolIndex: 0,
       patrolCooldown: 0.5,
       enrollmentBoostKind: 'none',
+      totalPosted: 0,
+      totalFulfilled: 0,
+      totalExpired: 0,
     })
   }
 }
@@ -388,6 +396,7 @@ export function fulfillMarketOrder(orderId: number, contractorId: number, gameTi
     order.completedAt = gameTimeSec
     rec.funds += order.reward * FAMILY_SHARE_OF_REWARD
     rec.enrollmentBoostKind = 'none'
+    rec.totalFulfilled++
   }
 }
 
@@ -411,6 +420,9 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
         patrolIndex: 0,
         patrolCooldown: 1,
         enrollmentBoostKind: 'none',
+        totalPosted: 0,
+        totalFulfilled: 0,
+        totalExpired: 0,
       })
     }
     electChief(fid, entities, gameTimeSec)

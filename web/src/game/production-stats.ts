@@ -9,9 +9,14 @@ export interface OrderKindStats {
 }
 
 export interface OrderStatsSummary {
+  /** 当前保留订单列表中的完成数 */
   fulfilled: number
   incomplete: number
   active: number
+  /** 各家族累计完成 */
+  lifetimeFulfilled: number
+  lifetimePosted: number
+  lifetimeExpired: number
   byKind: Record<TransformKind, OrderKindStats>
 }
 
@@ -42,8 +47,14 @@ export function summarizeOrders(markets: FamilyMarketRecord[]): OrderStatsSummar
   let fulfilled = 0
   let incomplete = 0
   let active = 0
+  let lifetimeFulfilled = 0
+  let lifetimePosted = 0
+  let lifetimeExpired = 0
   const byKind = emptyByKind()
   for (const rec of markets) {
+    lifetimeFulfilled += rec.totalFulfilled
+    lifetimePosted += rec.totalPosted
+    lifetimeExpired += rec.totalExpired
     for (const order of rec.orders) {
       bumpKindStats(byKind[order.kind], order)
       if (order.status === 'fulfilled') fulfilled++
@@ -51,7 +62,15 @@ export function summarizeOrders(markets: FamilyMarketRecord[]): OrderStatsSummar
       else incomplete++
     }
   }
-  return { fulfilled, incomplete, active, byKind }
+  return {
+    fulfilled,
+    incomplete,
+    active,
+    lifetimeFulfilled,
+    lifetimePosted,
+    lifetimeExpired,
+    byKind,
+  }
 }
 
 export function listAllOrders(markets: FamilyMarketRecord[]): MarketOrder[] {
