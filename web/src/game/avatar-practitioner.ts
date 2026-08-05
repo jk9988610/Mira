@@ -15,6 +15,9 @@ export const PRACTITIONER_KIND_LABEL: Record<TransformKind, string> = {
   fortress: '堡垒化身者',
 }
 
+const PATROL_BOOST_MULT = 3.4
+const PATROL_BOOST_CAP = 0.82
+
 const PRACTITIONER_FLAGS: Record<TransformKind, keyof CircleEntity> = {
   farm: 'practitionerFarm',
   school: 'practitionerSchool',
@@ -43,6 +46,10 @@ function hash01(seed: number): number {
   return x - Math.floor(x)
 }
 
+function getFamilyId(entity: CircleEntity): number {
+  return entity.familyId || entity.id
+}
+
 export function isPractitioner(entity: CircleEntity, kind: TransformKind): boolean {
   return Boolean(entity[PRACTITIONER_FLAGS[kind]])
 }
@@ -65,15 +72,19 @@ function rollChance(kind: TransformKind): number {
   return kind === 'fortress' ? FORTRESS_PRACTITIONER_ROLL_CHANCE : AVATAR_PRACTITIONER_ROLL_CHANCE
 }
 
-/** 成年圆周期性掷骰，按类型分别入册化身者 */
+/** 成年圆周期性掷骰，按类型分别入册化身者；巡检缺口会提高对应类型入册概率 */
 export function tickPractitionerEnrollment(
   entities: CircleEntity[],
   gameTimeSec: number,
   dt: number,
+  familyBoosts: ReadonlyMap<number, TransformKind> = new Map(),
 ): void {
   for (const entity of entities) {
     if (!isActive(entity) || !isAdult(entity, gameTimeSec)) continue
     if (isFamilyChief(entity)) continue
+
+    const familyId = getFamilyId(entity)
+    const boostKind = familyBoosts.get(familyId)
 
     for (const kind of ENROLLMENT_KINDS) {
       if (isPractitioner(entity, kind)) continue
@@ -88,21 +99,19 @@ export function tickPractitionerEnrollment(
       ;(entity[timerKey] as number) = rollInterval(kind)
 
       const interval = rollInterval(kind)
+      let chance = rollChance(kind)
+      if (boostKind === kind) {
+        chance = Math.min(PATROL_BOOST_CAP, chance * PATROL_BOOST_MULT)
+      }
+
       const roll = hash01(
         entity.id * (kind === 'fortress' ? 5.17 : 7.31) +
           Math.floor(gameTimeSec / interval) +
           ENROLLMENT_KINDS.indexOf(kind) * 1.9,
       )
-      if (roll < rollChance(kind)) {
+      if (roll < chance) {
         registerPractitioner(entity, kind)
       }
     }
   }
-}
-
-/** @deprecated 使用 registerPractitioner(entity, kind) */
-export function registerAvatarPractitioner(entity: CircleEntity): void {
-  registerPractitioner(entity, 'farm')
-  registerPractitioner(entity, 'school')
-  registerPractitioner(entity, 'park')
 }

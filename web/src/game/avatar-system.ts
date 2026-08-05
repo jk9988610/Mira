@@ -8,7 +8,7 @@ import {
 } from './avatar-vitality'
 import { canAbsorbPellet, clampPelletPosition, createPellet, type Pellet } from './pellet'
 import type { CircleEntity, TransformKind } from './entity'
-import { isActive, isAdult, isJuvenile } from './entity'
+import { isActive, isJuvenile } from './entity'
 import {
   AVATAR_SEEK_CACHE_SEC,
   AVATAR_SEEK_FAIL_CACHE_SEC,
@@ -34,7 +34,6 @@ import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from 
 import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
 import { isPractitioner, registerPractitioner } from './avatar-practitioner'
 import { recordDeceased } from './family-registry'
-import { recordPelletProduction } from './production-stats'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
 import { syncEntityGeo } from './geo'
@@ -54,16 +53,6 @@ export function resetAvatarState(): void {
 }
 
 export { avatarEntityRadius } from './avatar-radius'
-
-export function getControlledEntity(
-  entities: CircleEntity[],
-  controlledId: number,
-): CircleEntity | null {
-  const direct = entities.find((e) => e.id === controlledId && e.isPlayer && isActive(e)) ?? null
-  if (direct) return direct
-  return entities.find((e) => e.isPlayer && isActive(e)) ?? null
-}
-
 
 function structureLabel(kind: TransformKind, builderName: string): string {
   switch (kind) {
@@ -314,19 +303,6 @@ function moveEntityToward(entity: CircleEntity, targetX: number, targetY: number
   syncEntityGeo(entity)
 }
 
-function tryAllyTransform(
-  ally: CircleEntity,
-  entities: CircleEntity[],
-  kind: TransformKind,
-  gameTimeSec = 0,
-  forceMarket = false,
-): { entities: CircleEntity[] } {
-  if (!canBeginAvatarTransform(ally, kind, entities, gameTimeSec, forceMarket)) {
-    return { entities }
-  }
-  return completeAvatarTransform(entities, ally, kind, gameTimeSec)
-}
-
 /** @deprecated 使用 decideNpcTransformKind */
 export function decideAllyTransformKind(
   ally: CircleEntity,
@@ -503,16 +479,14 @@ function tickStructureTimer(entity: CircleEntity, dt: number): boolean {
 function tickStructureEmit(
   entity: CircleEntity,
   intervalSec: number,
-  kind: 'food' | 'knowledge' | 'joy',
-  unitCount: number,
+  _kind: 'food' | 'knowledge' | 'joy',
+  _unitCount: number,
   dt: number,
 ): void {
   entity.pelletSpawnTimer -= dt
   if (entity.pelletSpawnTimer > 0) return
   entity.pelletSpawnTimer = intervalSec
   startEmitterBurst(entity)
-  const count = Math.max(2, Math.round(unitCount * workEfficiency(entity)))
-  recordPelletProduction(kind, count)
 }
 
 export function updateFarmStructures(entities: CircleEntity[], dt: number): void {
@@ -548,11 +522,6 @@ export function updateFortressStructures(entities: CircleEntity[], dt: number): 
     entity.pelletSpawnTimer = FORTRESS_EMIT_INTERVAL_SEC
     startEmitterBurst(entity)
   }
-}
-
-function atTransformSpot(entity: CircleEntity, x: number, y: number): boolean {
-  const arrive = Math.max(10, avatarEntityRadius(entity) * 0.55)
-  return Math.hypot(x - entity.x, y - entity.y) <= arrive
 }
 
 function beginOrderService(
@@ -643,59 +612,6 @@ export function tickOrderService(
   }
 }
 
-function updatePendingAvatarTransform(
-  ally: CircleEntity,
-  entities: CircleEntity[],
-  dt: number,
-  now: number,
-): { entities: CircleEntity[] } | null {
-  if (ally.pendingAvatarKind === 'none') return null
-
-  const kind = ally.pendingAvatarKind
-  ally.aiIntent = ally.avatarTransformCooldown > 0 ? 'wait' : 'wander'
-
-  const useContractSpot = ally.marketContractOrderId > 0
-  const spot = useContractSpot
-    ? null
-    : findNearestAvatarTransformSpot(ally, kind, entities, now)
-
-  if (!spot) {
-    ally.pendingAvatarKind = 'none'
-    return null
-  }
-
-  ally.aiAnchorX = spot.x
-  ally.aiAnchorY = spot.y
-  ally.intentTargetX = spot.x
-  ally.intentTargetY = spot.y
-
-  const arriveDist = useContractSpot
-    ? Math.max(12, ORDER_FULFILL_RADIUS * 0.45)
-    : Math.max(10, avatarEntityRadius(ally) * 0.55)
-
-  if (!atTransformSpot(ally, spot.x, spot.y) && Math.hypot(spot.x - ally.x, spot.y - ally.y) > arriveDist) {
-    moveEntityToward(ally, spot.x, spot.y, dt)
-    ally.intentEtaSec = Math.hypot(spot.x - ally.x, spot.y - ally.y) / Math.max(18, speedForMass(ally.mass))
-    clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
-    syncEntityGeo(ally)
-    return { entities }
-  }
-
-  if (ally.avatarTransformCooldown > 0) {
-    return { entities }
-  }
-
-  const forceMarket = useContractSpot
-  if (!canBeginAvatarTransform(ally, kind, entities, now, forceMarket)) {
-    return { entities }
-  }
-
-  const result = tryAllyTransform(ally, entities, kind, now, forceMarket)
-  ally.pendingAvatarKind = 'none'
-  ally.intentEtaSec = 0
-  return result
-}
-
 export function updateAlly(
   ally: CircleEntity,
   entities: CircleEntity[],
@@ -708,9 +624,6 @@ export function updateAlly(
 
   const contract = updateMarketContract(ally, entities, dt, now)
   if (contract) return contract
-
-  const pending = updatePendingAvatarTransform(ally, entities, dt, now)
-  if (pending) return pending
 
   const intent = updateNpcIntent(ally, entities, dt, now)
 
@@ -773,142 +686,6 @@ export { decideNpcTransformKind } from './avatar-ai'
 export { initOptimalAvatarState, satietyLabel } from './avatar-vitality'
 export { healthLabel } from './avatar-mass'
 export { traitLabel } from './avatar-traits'
-
-function transformHint(
-  entity: CircleEntity,
-  entities: CircleEntity[],
-  kind: TransformKind,
-  key: string,
-  label: string,
-  gameTimeSec = 0,
-): string {
-  if (isJuvenile(entity, gameTimeSec)) return `${key} 未成年禁化身`
-  if (entity.avatarRole === kind) return `${key} 化身${label}中`
-  if (entity.avatarTransformCooldown > 0) return `${key} 冷却(${Math.ceil(entity.avatarTransformCooldown)}s)`
-  if (!canPlaceAvatarTransform(entity, kind, entities)) return `${key} ${label}(位置被占)`
-  return `${key} 化身${label}`
-}
-
-export interface AvatarTransformHints {
-  farmHint: string
-  produceHint: string
-  schoolHint: string
-  parkHint: string
-  fortressHint: string
-  canFarm: boolean
-  canMate: boolean
-  canSchool: boolean
-  canPark: boolean
-  canFortress: boolean
-  farmCount: number
-  schoolCount: number
-  parkCount: number
-  fortressCount: number
-}
-
-export function getAvatarTransformHints(
-  entity: CircleEntity | null,
-  entities: CircleEntity[],
-  gameTimeSec = 0,
-): AvatarTransformHints {
-  const farmCount = countFarmStructures(entities)
-  const schoolCount = countSchoolStructures(entities)
-  const parkCount = countParkStructures(entities)
-  const fortressCount = countFortressStructures(entities)
-
-  if (!entity) {
-    return {
-      farmHint: 'Q 农场',
-      produceHint: 'E 生产',
-      schoolHint: 'Z 校园',
-      parkHint: 'X 乐园',
-      fortressHint: 'C 堡垒',
-      canFarm: false,
-      canMate: false,
-      canSchool: false,
-      canPark: false,
-      canFortress: false,
-      farmCount,
-      schoolCount,
-      parkCount,
-      fortressCount,
-    }
-  }
-
-  const canFarm = canBeginAvatarTransform(entity, 'farm', entities, gameTimeSec)
-  const canSchool = canBeginAvatarTransform(entity, 'school', entities, gameTimeSec)
-  const canPark = canBeginAvatarTransform(entity, 'park', entities, gameTimeSec)
-  const canFortress = canBeginAvatarTransform(entity, 'fortress', entities, gameTimeSec)
-  const canMate =
-    !isJuvenile(entity, gameTimeSec) &&
-    entity.productionStage === 'none' &&
-    !entity.isFrozen &&
-    isAdult(entity, gameTimeSec)
-
-  if (isJuvenile(entity, gameTimeSec)) {
-    return {
-      farmHint: 'Q 未成年禁化身',
-      produceHint: 'E 未成年禁生产',
-      schoolHint: 'Z 未成年禁化身',
-      parkHint: 'X 未成年禁化身',
-      fortressHint: 'C 未成年禁化身',
-      canFarm: false,
-      canMate: false,
-      canSchool: false,
-      canPark: false,
-      canFortress: false,
-      farmCount,
-      schoolCount,
-      parkCount,
-      fortressCount,
-    }
-  }
-
-  if (isStructureRole(entity.avatarRole)) {
-    return {
-      farmHint: entity.avatarRole === 'farm' ? 'Q 化身农场中' : 'Q 化身中',
-      produceHint: entity.productionStage !== 'none' ? 'E 生产中' : 'E 生产',
-      schoolHint: entity.avatarRole === 'school' ? 'Z 化身校园中' : 'Z 化身中',
-      parkHint: entity.avatarRole === 'park' ? 'X 化身乐园中' : 'X 化身中',
-      fortressHint: entity.avatarRole === 'fortress' ? 'C 化身堡垒中' : 'C 化身中',
-      canFarm,
-      canMate,
-      canSchool,
-      canPark,
-      canFortress,
-      farmCount,
-      schoolCount,
-      parkCount,
-      fortressCount,
-    }
-  }
-
-  const fortressHint = !isPractitioner(entity, 'fortress')
-    ? 'C 堡垒(需堡垒化身者)'
-    : transformHint(entity, entities, 'fortress', 'C', '堡垒', gameTimeSec)
-
-  return {
-    farmHint: transformHint(entity, entities, 'farm', 'Q', '农场', gameTimeSec),
-    produceHint:
-      entity.productionStage !== 'none'
-        ? 'E 生产中'
-        : canMate
-          ? 'E 生产'
-          : 'E 生产(需成年异性)',
-    schoolHint: transformHint(entity, entities, 'school', 'Z', '校园', gameTimeSec),
-    parkHint: transformHint(entity, entities, 'park', 'X', '乐园', gameTimeSec),
-    fortressHint,
-    canFarm,
-    canMate,
-    canSchool,
-    canPark,
-    canFortress,
-    farmCount,
-    schoolCount,
-    parkCount,
-    fortressCount,
-  }
-}
 
 export function countTribeStructures(entities: CircleEntity[]): {
   farm: number
