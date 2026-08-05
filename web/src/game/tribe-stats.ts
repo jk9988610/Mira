@@ -1,5 +1,7 @@
 import type { CircleEntity } from './entity'
 import { isActive, isAdult, isJuvenile } from './entity'
+import { familyDisplayName } from './family-colors'
+import { nameSurname } from './naming'
 
 export interface FamilyOffspringStat {
   familyId: number
@@ -67,17 +69,18 @@ export function computeTribeDemographics(
     }
 
     const familyId = e.familyId || e.id
-    if (e.motherId === 0 && e.gender === 'male') {
-      familyMap.set(familyId, {
-        founderName: e.builderName || e.name,
-        offspringCount: 0,
-      })
+    if (e.motherId === 0 && e.fatherId === 0) {
+      const surname = nameSurname(e.builderName || e.name)
+      if (!familyMap.has(familyId)) {
+        familyMap.set(familyId, {
+          founderName: surname,
+          offspringCount: 0,
+        })
+      }
     }
 
     if (!isAdult(e, gameTimeSec)) continue
-    const famName = familyMap.get(familyId)?.founderName
-      ? `${familyMap.get(familyId)!.founderName}家族`
-      : `家族${familyId}`
+    const famName = familyDisplayName(familyId)
     const prev =
       practitionerMap.get(familyId) ??
       ({ familyName: famName, farm: 0, school: 0, park: 0, fortress: 0 } as const)
@@ -120,7 +123,7 @@ export function computeTribeDemographics(
   for (const [familyId, data] of familyMap) {
     families.push({
       familyId,
-      familyName: `${data.founderName}家族`,
+      familyName: familyDisplayName(familyId),
       offspringCount: data.offspringCount,
     })
   }

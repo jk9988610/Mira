@@ -25,6 +25,7 @@ export interface GenealogyMember {
   fatherId: number
   generation: number
   deceased: boolean
+  spouseId: number
   practitionerFarm: boolean
   practitionerSchool: boolean
   practitionerPark: boolean
@@ -79,6 +80,7 @@ function memberFromEntity(entity: CircleEntity): GenealogyMember {
     fatherId: entity.fatherId,
     generation: entity.generation,
     deceased: false,
+    spouseId: entity.spouseId,
     practitionerFarm: entity.practitionerFarm,
     practitionerSchool: entity.practitionerSchool,
     practitionerPark: entity.practitionerPark,
@@ -95,6 +97,7 @@ function memberFromDeceased(record: DeceasedMemberRecord): GenealogyMember {
     fatherId: record.fatherId,
     generation: record.generation,
     deceased: true,
+    spouseId: 0,
     practitionerFarm: record.practitionerFarm,
     practitionerSchool: record.practitionerSchool,
     practitionerPark: record.practitionerPark,
@@ -167,5 +170,7 @@ export function formatGenealogyLine(member: GenealogyMember): string {
     member.motherId > 0 || member.fatherId > 0
       ? ` · 母${member.motherId || '—'} 父${member.fatherId || '—'}`
       : ''
-  return `${member.name}（${gender}·${status}${roleText}）${parent}`
+  const spouse =
+    member.spouseId > 0 ? ` · 配偶${member.spouseId}` : ''
+  return `${member.name}（${gender}·${status}${roleText}${spouse}）${parent}`
 }

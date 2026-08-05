@@ -14,6 +14,11 @@ import {
   updateSchoolStructures,
 } from '../game/avatar-system'
 import { tickPractitionerEnrollment } from '../game/avatar-practitioner'
+import {
+  paletteFromFamilySeed,
+  registerFamily,
+  resetFamilyColors,
+} from '../game/family-colors'
 import { buildFamilyGenealogies, resetFamilyRegistry } from '../game/family-registry'
 import { drawFortressHalos, tickFortressHalos } from '../game/fortress-ray'
 import { resetPressureField, summarizePressureField, tickPressureField } from '../game/pressure-field'
@@ -31,9 +36,8 @@ import {
   updateProductionPairs,
 } from '../game/avatar-reproduction'
 import { computeCamera } from '../game/camera'
-import { createCircle, isActive, type CircleEntity, type Gender } from '../game/entity'
+import { createCircle, isActive, type CircleEntity } from '../game/entity'
 import { allyUpdateStride } from '../game/perf-config'
-import { AI_ROSTER } from '../game/roster'
 import { computeViewBounds, isInView } from '../game/viewport'
 import { drawWorld } from '../game/world-draw'
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../game/world'
@@ -65,6 +69,7 @@ import {
 import { summarizeOrders } from '../game/production-stats'
 import { drawResourceRays, tickEmitterBursts, tickResourceRays } from '../game/resource-ray'
 import { initOptimalAvatarState } from '../game/avatar-vitality'
+import { nameSurname, randomFounderName, randomGender } from '../game/naming'
 import { createPointerTapHandler, isTap, type PointerPoint } from '../input/touch-gestures'
 
 type PauseBridge = { fn: (() => void) | null }
@@ -72,33 +77,21 @@ type PauseBridge = { fn: (() => void) | null }
 const CAMERA_PAN_SPEED = 400
 const TOUCH_PAN_SCALE = 1.35
 
-const STARTER_OFFSETS = [
-  { x: 0, y: 0 },
-  { x: 272, y: -152 },
-  { x: -248, y: 136 },
-  { x: 200, y: 176 },
-  { x: -420, y: -240 },
-  { x: 440, y: -200 },
-  { x: -380, y: 260 },
-  { x: 400, y: 300 },
-  { x: -140, y: -340 },
-  { x: 180, y: 360 },
-]
+const STARTER_COUNT = 20
 
-const STARTER_GENDERS: Gender[] = [
-  'male',
-  'male',
-  'female',
-  'female',
-  'male',
-  'female',
-  'male',
-  'female',
-  'male',
-  'female',
-]
+function buildStarterOffsets(count: number): Array<{ x: number; y: number }> {
+  const result: Array<{ x: number; y: number }> = []
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  const radius = 520
+  for (let i = 0; i < count; i++) {
+    const r = radius * Math.sqrt((i + 0.5) / count)
+    const angle = i * golden
+    result.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r })
+  }
+  return result
+}
 
-const STARTER_ROSTER_INDICES = [0, 9, 1, 2, 3, 4, 5, 6, 7]
+const STARTER_OFFSETS = buildStarterOffsets(STARTER_COUNT)
 
 function isNpcMobile(entity: CircleEntity): boolean {
   return (
@@ -165,6 +158,7 @@ export function createGameScene(
     resetAvatarState()
     resetFamilyMarkets()
     resetFamilyRegistry()
+    resetFamilyColors()
     resetPressureField()
     resetResourceZones()
     generateResourceZones()
@@ -180,15 +174,18 @@ export function createGameScene(
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = STARTER_OFFSETS.map((offset, i) => {
-      const roster = AI_ROSTER[STARTER_ROSTER_INDICES[i] ?? i % AI_ROSTER.length]
+      const seed = i * 7919 + 1337
+      const founderName = randomFounderName(seed)
+      const palette = paletteFromFamilySeed(seed)
       const circle = createCircle(
         cx + offset.x,
         cy + offset.y,
         STARTER_OPTIMAL_MASS,
         false,
-        roster,
-        { gender: STARTER_GENDERS[i], generation: 1, birthGameTimeSec: -ADULT_AGE_SEC },
+        { name: founderName, ...palette },
+        { gender: randomGender(), generation: 1, birthGameTimeSec: -ADULT_AGE_SEC },
       )
+      registerFamily(circle.id, nameSurname(founderName), palette)
       initOptimalAvatarState(circle, -ADULT_AGE_SEC)
       return circle
     })

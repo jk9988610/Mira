@@ -150,6 +150,8 @@ export interface CircleEntity {
   pressureFelt: number
   /** 来自敌族圆的压力强度 */
   hostilePressureFelt: number
+  /** 配偶 id（首次交配结为夫妻） */
+  spouseId: number
 }
 
 let nextId = 1
@@ -287,6 +289,7 @@ export function createCircle(
     fortressArmor: 0,
     pressureFelt: 0,
     hostilePressureFelt: 0,
+    spouseId: 0,
   }
   syncEntityGeo(entity)
   if (!entity.familyId) entity.familyId = entity.id

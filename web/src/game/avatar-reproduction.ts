@@ -10,10 +10,10 @@ import {
 } from './avatar-config'
 import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import { initAvatarVitality } from './avatar-vitality'
-import { inheritPalette } from './color-genetics'
+import { applyFamilyPalette, getFamilyPalette, paletteFromFamilySeed } from './family-colors'
 import { areKin } from './kinship'
 import { syncEntityGeo } from './geo'
-import { offspringName } from './naming'
+import { nameGiven, nameSurname, offspringName } from './naming'
 import type { CircleEntity, Gender } from './entity'
 import { createCircle, entityAgeSec, isActive, isAdult } from './entity'
 import { PLAYER_START_MASS } from './physics'
@@ -138,6 +138,24 @@ function releaseTransformForProduction(entity: CircleEntity): void {
   entity.avatarTransformTimer = 0
 }
 
+/** 妻子脱离原家族，加入丈夫家族并改用家族色 */
+function transferWifeToHusbandFamily(wife: CircleEntity, husband: CircleEntity): void {
+  const husbandFamilyId = husband.familyId || husband.id
+  wife.familyId = husbandFamilyId
+  const husbandSurname = nameSurname(husband.name)
+  wife.name = husbandSurname + nameGiven(wife.name)
+  wife.builderName = wife.name
+  applyFamilyPalette(wife)
+}
+
+/** 首次交配：雌性成为妻子，迁入丈夫家族 */
+function establishMarriage(male: CircleEntity, female: CircleEntity): void {
+  if (male.spouseId > 0 || female.spouseId > 0) return
+  male.spouseId = female.id
+  female.spouseId = male.id
+  transferWifeToHusbandFamily(female, male)
+}
+
 /** 双向奔赴；moveSelf=false 时仅检测接触（用于玩家手动移动） */
 export function updateMatePursuit(
   entity: CircleEntity,
@@ -242,6 +260,7 @@ export function canStartProduction(
 export function beginProductionPair(male: CircleEntity, female: CircleEntity): void {
   releaseTransformForProduction(male)
   releaseTransformForProduction(female)
+  establishMarriage(male, female)
   male.productionStage = 'active'
   female.productionStage = 'active'
   male.productionTimer = PRODUCTION_DURATION_SEC
@@ -272,12 +291,10 @@ function spawnChild(
   birthGameTimeSec: number,
 ): CircleEntity[] {
   const gender: Gender = Math.random() < 0.5 ? 'male' : 'female'
-  const childName = offspringName(father.name, mother.name, gender)
-  const palette = inheritPalette(
-    { colorLight: father.colorLight, colorDark: father.colorDark, strokeColor: father.strokeColor },
-    { colorLight: mother.colorLight, colorDark: mother.colorDark, strokeColor: mother.strokeColor },
-    mother.id * 1000 + father.id + Math.floor(birthGameTimeSec),
-  )
+  const familyId = father.familyId || father.id
+  const nameSeed = father.id * 1000 + mother.id + Math.floor(birthGameTimeSec * 10)
+  const childName = offspringName(father.name, nameSeed)
+  const palette = getFamilyPalette(familyId) ?? paletteFromFamilySeed(familyId)
   const angle = Math.random() * Math.PI * 2
   const dist = avatarEntityRadius(mother) + 40
   const child = createCircle(
@@ -291,7 +308,7 @@ function spawnChild(
       generation: mother.generation + 1,
       motherId: mother.id,
       fatherId: father.id,
-      familyId: mother.familyId || mother.id,
+      familyId,
       birthGameTimeSec,
       paternalDna: father.dnaFingerprint,
       maternalDna: mother.dnaFingerprint,
