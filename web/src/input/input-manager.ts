@@ -33,6 +33,7 @@ export interface InputSnapshot {
   rbHeld: boolean
   upPressed: boolean
   downPressed: boolean
+  scrollDeltaY: number
 }
 
 export interface GamepadStatus {
@@ -62,9 +63,17 @@ export class InputManager {
   private prevVirtualButtonsDown = new Set<string>()
   private virtualPressPulse = new Set<string>()
   private virtualActionPresses = new Set<Action>()
+  private scrollDeltaY = 0
 
   constructor(bindings: Record<Action, Binding>) {
     this.bindings = bindings
+    window.addEventListener(
+      'wheel',
+      (e) => {
+        this.scrollDeltaY += e.deltaY
+      },
+      { passive: true },
+    )
     window.addEventListener('keydown', (e) => {
       this.keysDown.add(e.code)
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
@@ -197,6 +206,9 @@ export class InputManager {
       (rbPressed && lbHeld) ||
       this.wasActionPressed('VIEW_SELF')
 
+    const scrollDeltaY = this.scrollDeltaY
+    this.scrollDeltaY = 0
+
     return {
       moveX,
       moveY,
@@ -220,6 +232,7 @@ export class InputManager {
       rbHeld,
       upPressed,
       downPressed,
+      scrollDeltaY,
     }
   }
 
