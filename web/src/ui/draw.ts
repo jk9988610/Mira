@@ -1,4 +1,4 @@
-import { SATIETY_CAP } from '../game/avatar-config'
+import { SATIETY_CAP, HEALTH_CAP, KNOWLEDGE_CAP, JOY_CAP } from '../game/avatar-config'
 import { intentLabel } from '../game/avatar-ai'
 import { formatCitizenId } from '../game/citizen-id'
 import { formatDnaFingerprint } from '../game/dna'
@@ -194,7 +194,24 @@ function avatarRoleStatus(role: AvatarRole, isFrozen: boolean, productionStage: 
   if (isFrozen && role === 'school') return '化身·校园'
   if (isFrozen && role === 'park') return '化身·乐园'
   if (isFrozen && role === 'fortress') return '化身·堡垒'
-  if (role === 'ally') return '后代'
+  return null
+}
+
+function formatAttrLine(value: number, cap: number, evalLabel: string): string {
+  return `${Math.round(value)}/${Math.round(cap)} (${evalLabel})`
+}
+
+function destinationLine(entity: CircleEntity): string | null {
+  if (entity.marketContractOrderId > 0) {
+    if (entity.orderServiceTimer > 0) {
+      return `目的地 (${Math.round(entity.x)},${Math.round(entity.y)}) · 服务${entity.orderServiceTimer.toFixed(1)}s`
+    }
+    const eta = entity.intentEtaSec > 0 ? ` · 约${entity.intentEtaSec.toFixed(1)}s` : ''
+    return `目的地 (${Math.round(entity.contractTargetX)},${Math.round(entity.contractTargetY)})${eta}`
+  }
+  if (entity.intentEtaSec > 0 && (entity.aiIntent === 'eat' || entity.aiIntent === 'learn' || entity.aiIntent === 'play')) {
+    return `目的地 (${Math.round(entity.intentTargetX)},${Math.round(entity.intentTargetY)}) · 约${entity.intentEtaSec.toFixed(1)}s`
+  }
   return null
 }
 
@@ -223,10 +240,10 @@ export function drawAvatarEntityStats(
     `出生地 (${Math.round(entity.birthX)}, ${Math.round(entity.birthY)})`,
     `位置 ${formatLatLng(entity.lat, entity.lng)}`,
     `质量 ${Math.round(entity.mass)} (${massLabel(entity.mass)})`,
-    `饱食 ${Math.round(entity.satiety)}/${Math.round(SATIETY_CAP)} (${satietyEvalLabel(entity)})`,
-    `知识 ${Math.round(entity.knowledge)} (${knowledgeEvalLabel(entity.knowledge)})`,
-    `快乐 ${Math.round(entity.joy)} (${happinessEvalLabel(entity.joy)})`,
-    `健康 ${Math.round(entity.health)} ${healthLabel(entity.health)}`,
+    `饱食 ${formatAttrLine(entity.satiety, SATIETY_CAP, satietyEvalLabel(entity))}`,
+    `知识 ${formatAttrLine(entity.knowledge, KNOWLEDGE_CAP, knowledgeEvalLabel(entity.knowledge))}`,
+    `快乐 ${formatAttrLine(entity.joy, JOY_CAP, happinessEvalLabel(entity.joy))}`,
+    `健康 ${formatAttrLine(entity.health, HEALTH_CAP, healthLabel(entity.health))}`,
     `压力 ${entity.pressureFelt.toFixed(1)} · 敌压 ${entity.hostilePressureFelt.toFixed(1)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}s`,
     `化身者注册 农场${entity.countFarmPractitionerRegs} 校园${entity.countSchoolPractitionerRegs}`,
@@ -234,6 +251,8 @@ export function drawAvatarEntityStats(
   ]
   const countdown = getAvatarTransformCountdownSec(entity)
   if (countdown !== null) lines.push(`结束化身 ${Math.ceil(countdown)}s`)
+  const dest = destinationLine(entity)
+  if (dest) lines.push(dest)
   if (roleStatus) lines.push(roleStatus)
   if (entity.avatarRole === 'none' || entity.avatarRole === 'ally') {
     lines.push(`意图 ${intentLabel(entity, gameTimeSec)}`)
@@ -254,7 +273,11 @@ export function drawAvatarEntityStats(
   ctx.textBaseline = 'top'
   ctx.font = '11px system-ui, sans-serif'
   lines.forEach((line, index) => {
-    const isHighlight = index <= 3 || line.startsWith('意图') || line.startsWith('结束化身')
+    const isHighlight =
+      index <= 3 ||
+      line.startsWith('意图') ||
+      line.startsWith('目的地') ||
+      line.startsWith('结束化身')
     ctx.fillStyle = isHighlight ? '#8fd3ff' : '#b8c4dc'
     ctx.fillText(line, entity.x, y + 4 + index * lineHeight)
   })

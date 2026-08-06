@@ -1,11 +1,11 @@
 import type { FamilyGenealogy } from '../game/family-registry'
 import { buildGenealogyNameMap, formatGenealogyLine } from '../game/family-registry'
 import type { FamilyMarketRecord } from '../game/family-market'
-import { ORDER_DEMAND_LABEL } from '../game/family-market'
+import { formatOrderDetailLine, ORDER_DEMAND_LABEL } from '../game/family-market'
 import type { OrderStatsSummary } from '../game/production-stats'
 import { listAllOrders } from '../game/production-stats'
 import type { TribeDemographics } from '../game/tribe-stats'
-import type { TransformKind } from '../game/entity'
+import type { CircleEntity, TransformKind } from '../game/entity'
 import { formatGameTime } from '../game/game-clock'
 
 export const STATS_PAGE_COUNT = 3
@@ -20,6 +20,7 @@ export interface StatsOverlayData {
   familyMarkets: FamilyMarketRecord[]
   genealogies: FamilyGenealogy[]
   orderStats: OrderStatsSummary
+  entities: CircleEntity[]
 }
 
 const LINE_HEIGHT = 18
@@ -75,10 +76,13 @@ export function getStatsPageContentHeight(
     lines += 6
     const orders = listAllOrders(data.familyMarkets)
     for (const order of orders) {
+      const rec = data.familyMarkets.find((m) => m.familyId === order.familyId)
       const fam = data.demographics.families.find((f) => f.familyId === order.familyId)
       const famName = fam?.familyName ?? `家族${order.familyId}`
-      const line = `#${order.id} ${famName} · ${ORDER_DEMAND_LABEL[order.kind]} · (${Math.round(order.x)},${Math.round(order.y)})`
-      lines += wrapText(line, contentWidth, ctx).length
+      const detail = rec
+        ? formatOrderDetailLine(order, rec, data.gameTimeSec, data.entities)
+        : `#${order.id} ${famName}`
+      lines += wrapText(detail, contentWidth, ctx).length
     }
     if (orders.length === 0) lines += 1
   } else {
@@ -237,14 +241,14 @@ export function drawStatsFullscreenOverlay(
       ctx,
       contentX,
       cy,
-      `本页 完成${os.fulfilled} · 进行中${os.active} · 失效${os.incomplete}`,
+      `本页 完成${os.fulfilled} · 待接/进行${os.active}`,
       '#b8c4dc',
     )
     cy = drawLine(
       ctx,
       contentX,
       cy,
-      `累计 发单${os.lifetimePosted} · 完成${os.lifetimeFulfilled} · 失效${os.lifetimeExpired}（资金为历史累计，每完成一单净+14）`,
+      `累计 发单${os.lifetimePosted} · 完成${os.lifetimeFulfilled}（无截止时限，资金为历史累计）`,
       '#7f8ca3',
     )
     cy += 6
@@ -255,7 +259,7 @@ export function drawStatsFullscreenOverlay(
         ctx,
         contentX,
         cy,
-        `${ORDER_DEMAND_LABEL[kind]} 待${stats.open} 进行${stats.assigned} 完成${stats.fulfilled} 失效${stats.expired}`,
+        `${ORDER_DEMAND_LABEL[kind]} 待${stats.open} 进行${stats.assigned} 完成${stats.fulfilled}`,
       )
     }
     cy += 8
@@ -264,29 +268,17 @@ export function drawStatsFullscreenOverlay(
       cy = drawLine(ctx, contentX, cy, '暂无订单记录')
     } else {
       for (const order of orders) {
-        const fam = data.demographics.families.find((f) => f.familyId === order.familyId)
-        const famName = fam?.familyName ?? `家族${order.familyId}`
-        const status =
-          order.status === 'fulfilled'
-            ? '已完成'
-            : order.status === 'assigned'
-              ? '进行中'
-              : order.status === 'open'
-                ? '待接单'
-                : '已失效'
+        const rec = data.familyMarkets.find((m) => m.familyId === order.familyId)
+        const detail = rec
+          ? formatOrderDetailLine(order, rec, data.gameTimeSec, data.entities)
+          : `#${order.id}`
         const color =
           order.status === 'fulfilled'
             ? '#7ddea8'
-            : order.status === 'expired' || order.status === 'cancelled'
-              ? '#ff9f9f'
+            : order.status === 'assigned'
+              ? '#8fd3ff'
               : '#8aa0c8'
-        const remain = Math.max(0, order.deadline - data.gameTimeSec)
-        const timeLabel =
-          order.status === 'fulfilled'
-            ? `完成 ${formatGameTime(order.completedAt ?? data.gameTimeSec)}`
-            : `剩余 ${Math.ceil(remain)}s`
-        const line = `#${order.id} ${famName} · ${ORDER_DEMAND_LABEL[order.kind]} · ${status} · 地点(${Math.round(order.x)},${Math.round(order.y)}) · ${timeLabel} · 赏${order.reward}`
-        for (const chunk of wrapText(line, contentW, ctx)) {
+        for (const chunk of wrapText(detail, contentW, ctx)) {
           cy = drawLine(ctx, contentX, cy, chunk, color)
         }
       }

@@ -8,19 +8,20 @@ import {
   JOY_CAP,
   MAX_ACTIVE_ORDERS_PER_FAMILY,
   MAX_ORDER_HISTORY,
-  ORDER_DEADLINE_SEC,
   ORDER_FULFILL_RADIUS,
   ORDER_POST_COOLDOWN_SEC,
   ORDER_POST_COST,
   ORDER_REWARD,
+  ORDER_SERVICE_DURATION_SEC,
   SATIETY_CAP,
 } from './avatar-config'
-import { isPractitioner, registerPractitioner, unregisterPractitioner } from './avatar-practitioner'
+import { isPractitioner, registerPractitioner } from './avatar-practitioner'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
+import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
-export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled' | 'expired'
+export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled'
 
 export const ORDER_DEMAND_LABEL: Record<TransformKind, string> = {
   farm: '食物服务',
@@ -38,11 +39,15 @@ export interface MarketOrder {
   reward: number
   cost: number
   postedAt: number
-  deadline: number
   status: OrderStatus
   posterId: number
   contractorId?: number
   completedAt?: number
+  /** 接单人当前位置（每帧更新） */
+  contractorX?: number
+  contractorY?: number
+  /** 预计到达并发服务还需秒数 */
+  contractorEtaSec?: number
 }
 
 export interface FamilyMarketRecord {
@@ -50,21 +55,11 @@ export interface FamilyMarketRecord {
   funds: number
   chiefId: number
   chiefName: string
-  orderPostCooldownUntil: number
   orders: MarketOrder[]
-  patrolQueue: number[]
-  patrolIndex: number
-  patrolCooldown: number
   enrollmentBoostKind: TransformKind | 'none'
-  /** 累计发单数 */
   totalPosted: number
-  /** 累计完成数 */
   totalFulfilled: number
-  /** 累计失效数 */
-  totalExpired: number
 }
-
-const PATROL_MEMBER_INTERVAL_SEC = 1.1
 
 let orderIdSeq = 1
 const familyMarkets = new Map<number, FamilyMarketRecord>()
@@ -80,7 +75,6 @@ function clampOrderPoint(x: number, y: number): { x: number; y: number } {
 function getFamilyId(entity: CircleEntity): number {
   return entity.familyId || entity.id
 }
-
 
 function isInAvatarState(entity: CircleEntity): boolean {
   return (
@@ -142,6 +136,12 @@ function countActiveOrders(rec: FamilyMarketRecord): number {
   return rec.orders.filter((o) => o.status === 'open' || o.status === 'assigned').length
 }
 
+function posterHasActiveOrder(rec: FamilyMarketRecord, posterId: number): boolean {
+  return rec.orders.some(
+    (o) => o.posterId === posterId && (o.status === 'open' || o.status === 'assigned'),
+  )
+}
+
 function isIdlePractitioner(
   w: CircleEntity,
   kind: TransformKind,
@@ -158,20 +158,9 @@ function isIdlePractitioner(
   return true
 }
 
-function clearWorkerContract(worker: CircleEntity, kind?: TransformKind): void {
-  if (kind) unregisterPractitioner(worker, kind)
-  worker.marketContractOrderId = 0
-  worker.pendingAvatarKind = 'none'
-  worker.contractTargetX = 0
-  worker.contractTargetY = 0
-  worker.orderServiceKind = 'none'
-  worker.orderServiceTimer = 0
-  worker.emitBurstSec = 0
-}
-
 function postOrder(
   rec: FamilyMarketRecord,
-  chief: CircleEntity,
+  poster: CircleEntity,
   kind: TransformKind,
   anchorX: number,
   anchorY: number,
@@ -179,7 +168,7 @@ function postOrder(
 ): void {
   const anchor = clampOrderPoint(anchorX, anchorY)
   rec.funds -= ORDER_POST_COST
-  rec.orderPostCooldownUntil = gameTimeSec + ORDER_POST_COOLDOWN_SEC
+  poster.selfOrderPostCooldownUntil = gameTimeSec + ORDER_POST_COOLDOWN_SEC
 
   const order: MarketOrder = {
     id: orderIdSeq++,
@@ -190,42 +179,16 @@ function postOrder(
     reward: ORDER_REWARD,
     cost: ORDER_POST_COST,
     postedAt: gameTimeSec,
-    deadline: gameTimeSec + ORDER_DEADLINE_SEC,
     status: 'open',
-    posterId: chief.id,
+    posterId: poster.id,
   }
   rec.orders.unshift(order)
   if (rec.orders.length > MAX_ORDER_HISTORY) rec.orders.length = MAX_ORDER_HISTORY
   rec.totalPosted++
 }
 
-function rebuildPatrolQueue(familyId: number, entities: CircleEntity[], chiefId: number): number[] {
-  const ids: number[] = []
-  for (const w of entities) {
-    if (!isActive(w) || getFamilyId(w) !== familyId) continue
-    if (w.id === chiefId) continue
-    ids.push(w.id)
-  }
-  ids.sort((a, b) => a - b)
-  return ids
-}
-
-function inspectMemberNeeds(
-  rec: FamilyMarketRecord,
-  chief: CircleEntity,
-  member: CircleEntity,
-  entities: CircleEntity[],
-  gameTimeSec: number,
-): void {
-  if (countActiveOrders(rec) >= MAX_ACTIVE_ORDERS_PER_FAMILY) return
-  if (gameTimeSec < rec.orderPostCooldownUntil) return
-  if (rec.funds < ORDER_POST_COST) return
-
-  if (member.hostilePressureFelt >= HOSTILE_PRESSURE_ORDER_THRESHOLD) {
-    setEnrollmentBoost(rec, 'fortress')
-    postOrder(rec, chief, 'fortress', member.x, member.y, gameTimeSec)
-    return
-  }
+function detectSelfOrderKind(member: CircleEntity): TransformKind | null {
+  if (member.hostilePressureFelt >= HOSTILE_PRESSURE_ORDER_THRESHOLD) return 'fortress'
 
   const foodNeed = 1 - member.satiety / SATIETY_CAP
   const knowledgeNeed = 1 - member.knowledge / KNOWLEDGE_CAP
@@ -245,50 +208,52 @@ function inspectMemberNeeds(
     kind = 'park'
     bestNeed = joyNeed
   }
+  return kind
+}
+
+function trySelfPostOrder(
+  member: CircleEntity,
+  rec: FamilyMarketRecord,
+  entities: CircleEntity[],
+  gameTimeSec: number,
+): void {
+  if (!isActive(member) || !isAdult(member, gameTimeSec)) return
+  if (member.marketContractOrderId > 0 || member.orderServiceTimer > 0) return
+  if (posterHasActiveOrder(rec, member.id)) return
+  if (countActiveOrders(rec) >= MAX_ACTIVE_ORDERS_PER_FAMILY) return
+  if (gameTimeSec < member.selfOrderPostCooldownUntil) return
+  if (rec.funds < ORDER_POST_COST) return
+
+  const kind = detectSelfOrderKind(member)
   if (!kind) return
 
   setEnrollmentBoost(rec, kind)
   if (countFamilyPractitioners(rec.familyId, kind, entities) === 0) {
     setEnrollmentBoost(rec, kind)
   }
-  postOrder(rec, chief, kind, member.x, member.y, gameTimeSec)
+  postOrder(rec, member, kind, member.x, member.y, gameTimeSec)
 }
 
-function tickFamilyPatrol(
+function tickSelfPostedOrders(
   rec: FamilyMarketRecord,
   entities: CircleEntity[],
   gameTimeSec: number,
-  dt: number,
 ): void {
-  rec.patrolCooldown -= dt
-  if (rec.patrolCooldown > 0) return
-  rec.patrolCooldown = PATROL_MEMBER_INTERVAL_SEC
-
-  if (rec.patrolQueue.length === 0 || rec.patrolIndex >= rec.patrolQueue.length) {
-    rec.patrolQueue = rebuildPatrolQueue(rec.familyId, entities, rec.chiefId)
-    rec.patrolIndex = 0
-    if (rec.patrolQueue.length === 0) return
+  for (const member of entities) {
+    if (!isActive(member) || getFamilyId(member) !== rec.familyId) continue
+    trySelfPostOrder(member, rec, entities, gameTimeSec)
   }
-
-  const memberId = rec.patrolQueue[rec.patrolIndex]
-  rec.patrolIndex++
-
-  const chief = entities.find((w) => w.id === rec.chiefId && isActive(w))
-  if (!chief) return
-
-  const member = entities.find((w) => w.id === memberId && isActive(w))
-  if (!member) return
-
-  inspectMemberNeeds(rec, chief, member, entities, gameTimeSec)
 }
 
 function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
   const rec = familyMarkets.get(familyId)
   if (!rec) return
 
-  for (const order of rec.orders) {
-    if (order.status !== 'open') continue
+  const openOrders = rec.orders
+    .filter((o) => o.status === 'open')
+    .sort((a, b) => a.postedAt - b.postedAt)
 
+  for (const order of openOrders) {
     let bestWorker: CircleEntity | null = null
     let bestDist = Infinity
     for (const w of entities) {
@@ -307,31 +272,81 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
 
     order.status = 'assigned'
     order.contractorId = bestWorker.id
+    order.contractorX = bestWorker.x
+    order.contractorY = bestWorker.y
     registerPractitioner(bestWorker, order.kind)
     bestWorker.marketContractOrderId = order.id
     bestWorker.contractTargetX = order.x
     bestWorker.contractTargetY = order.y
+    updateOrderContractorTelemetry(order, entities)
   }
 }
 
-function expireOrders(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
-  const rec = familyMarkets.get(familyId)
-  if (!rec) return
-
-  for (const order of rec.orders) {
-    if (order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired') continue
-    if (gameTimeSec <= order.deadline) continue
-
-    if (order.status === 'assigned' && order.contractorId) {
-      const worker = entities.find((w) => w.id === order.contractorId)
-      if (worker) clearWorkerContract(worker, order.kind)
-      order.status = 'expired'
-      order.contractorId = undefined
-    } else {
-      order.status = 'expired'
-    }
-    rec.totalExpired++
+export function updateOrderContractorTelemetry(order: MarketOrder, entities: CircleEntity[]): void {
+  if (order.status !== 'assigned' || !order.contractorId) {
+    order.contractorX = undefined
+    order.contractorY = undefined
+    order.contractorEtaSec = undefined
+    return
   }
+  const worker = entities.find((w) => w.id === order.contractorId && isActive(w))
+  if (!worker) return
+
+  order.contractorX = worker.x
+  order.contractorY = worker.y
+
+  if (worker.orderServiceTimer > 0) {
+    order.contractorEtaSec = worker.orderServiceTimer
+    return
+  }
+
+  const dist = Math.hypot(order.x - worker.x, order.y - worker.y)
+  const arriveDist = Math.max(12, ORDER_FULFILL_RADIUS * 0.45)
+  if (dist <= arriveDist) {
+    order.contractorEtaSec = ORDER_SERVICE_DURATION_SEC
+    return
+  }
+  const speed = Math.max(18, speedForMass(worker.mass))
+  order.contractorEtaSec = dist / speed + ORDER_SERVICE_DURATION_SEC
+}
+
+export function getOpenQueuePosition(order: MarketOrder, rec: FamilyMarketRecord): number {
+  const open = rec.orders
+    .filter((o) => o.status === 'open')
+    .sort((a, b) => a.postedAt - b.postedAt)
+  const idx = open.findIndex((o) => o.id === order.id)
+  return idx >= 0 ? idx + 1 : 0
+}
+
+export function formatOrderDetailLine(
+  order: MarketOrder,
+  rec: FamilyMarketRecord,
+  gameTimeSec: number,
+  entities: CircleEntity[],
+): string {
+  updateOrderContractorTelemetry(order, entities)
+  const waitSec = Math.max(0, Math.floor(gameTimeSec - order.postedAt))
+  const kindLabel = ORDER_DEMAND_LABEL[order.kind]
+
+  if (order.status === 'fulfilled') {
+    return `#${order.id} ${kindLabel} · 已完成 · 排队${waitSec}s后发单`
+  }
+
+  if (order.status === 'open') {
+    const queuePos = getOpenQueuePosition(order, rec)
+    const openCount = rec.orders.filter((o) => o.status === 'open').length
+    return `#${order.id} ${kindLabel} · 排队${queuePos}/${openCount} · 已等${waitSec}s · 待接单`
+  }
+
+  if (order.status === 'assigned') {
+    const cx = order.contractorX !== undefined ? Math.round(order.contractorX) : '?'
+    const cy = order.contractorY !== undefined ? Math.round(order.contractorY) : '?'
+    const eta =
+      order.contractorEtaSec !== undefined ? `${Math.ceil(order.contractorEtaSec)}s` : '—'
+    return `#${order.id} ${kindLabel} · 已接单 · 接单人@(${cx},${cy}) · 约${eta}到达 · 已等${waitSec}s`
+  }
+
+  return `#${order.id} ${kindLabel} · 已取消`
 }
 
 export function initFamilyMarkets(entities: CircleEntity[]): void {
@@ -346,15 +361,10 @@ export function initFamilyMarkets(entities: CircleEntity[]): void {
       funds: INITIAL_FAMILY_FUNDS,
       chiefId: w.gender === 'male' ? w.id : 0,
       chiefName: w.name,
-      orderPostCooldownUntil: 2,
       orders: [],
-      patrolQueue: [],
-      patrolIndex: 0,
-      patrolCooldown: 0.5,
       enrollmentBoostKind: 'none',
       totalPosted: 0,
       totalFulfilled: 0,
-      totalExpired: 0,
     })
   }
 }
@@ -394,13 +404,14 @@ export function fulfillMarketOrder(orderId: number, contractorId: number, gameTi
 
     order.status = 'fulfilled'
     order.completedAt = gameTimeSec
+    order.contractorEtaSec = 0
     rec.funds += order.reward * FAMILY_SHARE_OF_REWARD
     rec.enrollmentBoostKind = 'none'
     rec.totalFulfilled++
   }
 }
 
-export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number, dt: number): void {
+export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number, _dt: number): void {
   const familyIds = new Set<number>()
   for (const w of entities) {
     if (!isActive(w)) continue
@@ -414,22 +425,19 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
         funds: INITIAL_FAMILY_FUNDS * 0.6,
         chiefId: 0,
         chiefName: '—',
-        orderPostCooldownUntil: gameTimeSec + 5,
         orders: [],
-        patrolQueue: [],
-        patrolIndex: 0,
-        patrolCooldown: 1,
         enrollmentBoostKind: 'none',
         totalPosted: 0,
         totalFulfilled: 0,
-        totalExpired: 0,
       })
     }
     electChief(fid, entities, gameTimeSec)
     const rec = familyMarkets.get(fid)!
-    tickFamilyPatrol(rec, entities, gameTimeSec, dt)
+    tickSelfPostedOrders(rec, entities, gameTimeSec)
     tryAssignContractors(fid, entities, gameTimeSec)
-    expireOrders(fid, entities, gameTimeSec)
+    for (const order of rec.orders) {
+      if (order.status === 'assigned') updateOrderContractorTelemetry(order, entities)
+    }
   }
 }
 

@@ -2,8 +2,6 @@ import {
   NPC_ARRIVE_DIST,
   NPC_JITTER_DIST,
   NPC_TARGET_CACHE_SEC,
-  WANDER_INTERVAL_MAX_SEC,
-  WANDER_INTERVAL_MIN_SEC,
 } from './avatar-config'
 import { pickWeightedNeed, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
@@ -37,7 +35,6 @@ export function recordTransformHistory(entity: CircleEntity, kind: TransformKind
   if (entity.transformHistory.length > 12) entity.transformHistory.splice(0, entity.transformHistory.length - 12)
 }
 
-
 export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
   if (entity.productionStage === 'active') return '生产'
   if (entity.marketContractOrderId > 0) {
@@ -67,15 +64,13 @@ export function intentLabel(entity: CircleEntity, gameTimeSec = 0): string {
   let base =
     phase === 'sleep'
       ? '睡觉'
-      : phase === 'wander'
-        ? '闲逛'
-        : entity.aiIntent === 'eat'
-          ? '接收食物光环'
-          : entity.aiIntent === 'learn'
-            ? '接收知识光环'
-            : entity.aiIntent === 'play'
-              ? '接收快乐光环'
-              : schedulePhaseLabel(phase)
+      : entity.aiIntent === 'eat'
+        ? '接收食物光环'
+        : entity.aiIntent === 'learn'
+          ? '接收知识光环'
+          : entity.aiIntent === 'play'
+            ? '接收快乐光环'
+            : schedulePhaseLabel(phase)
 
   if (entity.intentEtaSec > 0) {
     base = `${base} →(${Math.round(entity.intentTargetX)},${Math.round(entity.intentTargetY)}) ${entity.intentEtaSec.toFixed(1)}s`
@@ -102,30 +97,6 @@ function moveToward(
   const speed = speedForMass(entity.mass) * mult
   entity.x += (dx / dist) * speed * dt
   entity.y += (dy / dist) * speed * dt
-  clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
-  syncEntityGeo(entity)
-}
-
-function wander(entity: CircleEntity, dt: number, seekingMate = false): void {
-  entity.wanderTimer -= dt
-  if (entity.wanderTimer <= 0) {
-    const angle = Math.random() * Math.PI * 2
-    const newDirX = Math.cos(angle)
-    const newDirY = Math.sin(angle)
-    const blend = 0.38
-    entity.wanderDirX = entity.wanderDirX * (1 - blend) + newDirX * blend
-    entity.wanderDirY = entity.wanderDirY * (1 - blend) + newDirY * blend
-    const len = Math.hypot(entity.wanderDirX, entity.wanderDirY) || 1
-    entity.wanderDirX /= len
-    entity.wanderDirY /= len
-    const span = WANDER_INTERVAL_MAX_SEC - WANDER_INTERVAL_MIN_SEC
-    entity.wanderTimer =
-      WANDER_INTERVAL_MIN_SEC + Math.random() * span + (seekingMate ? 0.8 : 0)
-  }
-
-  const speed = speedForMass(entity.mass) * (seekingMate ? 0.42 : 0.35)
-  entity.x += entity.wanderDirX * speed * dt
-  entity.y += entity.wanderDirY * speed * dt
   clampAvatarEntityToWorld(entity, WORLD_WIDTH, WORLD_HEIGHT)
   syncEntityGeo(entity)
 }
@@ -165,6 +136,26 @@ function pickEmitterTarget(
   return target
 }
 
+function pursueScheduleNeed(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  need: NeedKind,
+  dt: number,
+): boolean {
+  const emitter = pickEmitterTarget(entity, entities, need)
+  if (!emitter) {
+    applyIntentTarget(entity, null, need)
+    return false
+  }
+  applyIntentTarget(entity, emitter, need)
+  const arrive = emitterArriveRadius(
+    entities.find((e) => e.id === emitter.emitterId) ?? entity,
+  )
+  moveToward(entity, emitter.x, emitter.y, dt, 0.92, arrive)
+  entity.intentEtaSec = Math.max(0, entity.intentEtaSec - dt)
+  return true
+}
+
 export function updateNpcIntent(
   entity: CircleEntity,
   entities: CircleEntity[],
@@ -180,52 +171,35 @@ export function updateNpcIntent(
   }
 
   if (isPursuingMate(entity, now)) {
-    entity.aiIntent = 'wander'
+    entity.aiIntent = 'wait'
     entity.intentEtaSec = 0
     updateMatePursuit(entity, entities, dt, now)
     return { moving: true, sleeping: false }
   }
 
   const seeking = isActivelySeekingMate(entity, now)
-  let phase = currentSchedulePhase(entity, now, seeking && entity.spouseId === 0)
+  const phase = currentSchedulePhase(entity, now, seeking && entity.spouseId === 0)
 
   if (phase === 'sleep') {
     entity.aiIntent = 'sleep'
     entity.intentEtaSec = 0
+    entity.intentTargetX = entity.x
+    entity.intentTargetY = entity.y
     return { moving: false, sleeping: true }
   }
 
-  if (phase === 'wander') {
-    entity.aiIntent = 'wander'
-    entity.intentEtaSec = 0
-    wander(entity, dt, seeking)
-  } else if (phase === 'eat' || phase === 'learn' || phase === 'play') {
-    entity.aiIntent = phase
-  } else if (entity.aiPelletTargetTimer <= 0.05) {
-    entity.aiIntent = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4), now)
+  let activeNeed: NeedKind
+  if (phase === 'eat' || phase === 'learn' || phase === 'play') {
+    activeNeed = phase
+  } else {
+    activeNeed = pickWeightedNeed(entity, entity.id * 1.31 + Math.floor(now * 0.4), now)
   }
+  entity.aiIntent = activeNeed
 
-  const activeNeed = entity.aiIntent
-  if (activeNeed === 'eat' || activeNeed === 'learn' || activeNeed === 'play') {
-    const emitter = pickEmitterTarget(entity, entities, activeNeed)
-    if (emitter) {
-      applyIntentTarget(entity, emitter, activeNeed)
-      const arrive = emitterArriveRadius(
-        entities.find((e) => e.id === emitter.emitterId) ?? entity,
-      )
-      moveToward(entity, emitter.x, emitter.y, dt, 0.92, arrive)
-      entity.intentEtaSec = Math.max(0, entity.intentEtaSec - dt)
-      return { moving: true, sleeping: false }
-    }
-    applyIntentTarget(entity, null, activeNeed)
-    if (phase === 'wander') wander(entity, dt * 0.5, seeking)
-    return { moving: phase === 'wander', sleeping: false }
-  }
-
-  entity.intentEtaSec = 0
-  if (activeNeed === 'wander') {
+  if (pursueScheduleNeed(entity, entities, activeNeed, dt)) {
     return { moving: true, sleeping: false }
   }
 
+  entity.intentEtaSec = 0
   return { moving: false, sleeping: false }
 }

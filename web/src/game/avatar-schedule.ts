@@ -2,38 +2,34 @@ import { SCHEDULE_DAY_SEC } from './avatar-config'
 import type { CircleEntity } from './entity'
 import { isJuvenile } from './entity'
 
-export type SchedulePhase = 'sleep' | 'eat' | 'learn' | 'play' | 'wander'
+export type SchedulePhase = 'sleep' | 'eat' | 'learn' | 'play'
 
 interface PhaseWeight {
   phase: SchedulePhase
   weight: number
 }
 
-/** 成年圆默认日程 */
+/** 成年圆默认日程（已移除闲逛） */
 const ADULT_WEIGHTS: PhaseWeight[] = [
-  { phase: 'sleep', weight: 0.16 },
-  { phase: 'eat', weight: 0.34 },
-  { phase: 'learn', weight: 0.1 },
-  { phase: 'play', weight: 0.1 },
-  { phase: 'wander', weight: 0.3 },
+  { phase: 'sleep', weight: 0.2 },
+  { phase: 'eat', weight: 0.38 },
+  { phase: 'learn', weight: 0.14 },
+  { phase: 'play', weight: 0.28 },
 ]
 
-/** 未成年：与成年类似，可自由移动 */
 const JUVENILE_WEIGHTS: PhaseWeight[] = [
-  { phase: 'sleep', weight: 0.14 },
-  { phase: 'eat', weight: 0.28 },
-  { phase: 'learn', weight: 0.16 },
-  { phase: 'play', weight: 0.14 },
-  { phase: 'wander', weight: 0.28 },
+  { phase: 'sleep', weight: 0.18 },
+  { phase: 'eat', weight: 0.32 },
+  { phase: 'learn', weight: 0.18 },
+  { phase: 'play', weight: 0.32 },
 ]
 
-/** 求偶意图：更多闲逛时间 */
+/** 求偶意图：提高觅食与吸收快乐权重以便移动相遇 */
 const SEEKING_MATE_WEIGHTS: PhaseWeight[] = [
   { phase: 'sleep', weight: 0.12 },
-  { phase: 'eat', weight: 0.2 },
-  { phase: 'learn', weight: 0.06 },
-  { phase: 'play', weight: 0.06 },
-  { phase: 'wander', weight: 0.56 },
+  { phase: 'eat', weight: 0.34 },
+  { phase: 'learn', weight: 0.08 },
+  { phase: 'play', weight: 0.46 },
 ]
 
 function buildCumulative(weights: PhaseWeight[]): { phase: SchedulePhase; end: number }[] {
@@ -55,7 +51,7 @@ function phaseFromCumulative(
   for (const entry of cumulative) {
     if (t < entry.end) return entry.phase
   }
-  return 'wander'
+  return 'eat'
 }
 
 export function currentSchedulePhase(
@@ -80,12 +76,10 @@ export function schedulePhaseLabel(phase: SchedulePhase): string {
       return '吸收知识'
     case 'play':
       return '吸收快乐'
-    case 'wander':
-      return '闲逛'
   }
 }
 
 /** 可尝试化身的日程时段 */
 export function isTransformPhase(phase: SchedulePhase): boolean {
-  return phase === 'wander' || phase === 'eat'
+  return phase === 'eat'
 }

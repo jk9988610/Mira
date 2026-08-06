@@ -90,7 +90,7 @@ export interface CircleEntity {
   productionPartnerId: number
   mateSeekUrge: number
   scheduleOffsetSec: number
-  aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wander' | 'wait'
+  aiIntent: 'eat' | 'learn' | 'play' | 'sleep' | 'wait'
   aiPelletTargetId: number
   aiPelletTargetTimer: number
   /** 意图目标坐标 */
@@ -98,6 +98,8 @@ export interface CircleEntity {
   intentTargetY: number
   /** 预计到达意图目标的秒数 */
   intentEtaSec: number
+  /** 自发单冷却截止 */
+  selfOrderPostCooldownUntil: number
   /** 当前追踪的光环发射源 id */
   aiEmitterTargetId: number
   /** 光环发射剩余秒数（结构体限时广播） */
@@ -249,12 +251,13 @@ export function createCircle(
     productionTimer: 0,
     productionCooldown: 0,
     productionPartnerId: 0,
-    aiIntent: 'wander',
+    aiIntent: 'wait',
     aiPelletTargetId: 0,
     aiPelletTargetTimer: 0,
     intentTargetX: 0,
     intentTargetY: 0,
     intentEtaSec: 0,
+    selfOrderPostCooldownUntil: 0,
     aiEmitterTargetId: 0,
     emitBurstSec: 0,
     aiAnchorX: x,
