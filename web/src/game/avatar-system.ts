@@ -31,7 +31,7 @@ import {
   FORTRESS_EMIT_INTERVAL_SEC,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
-import { findMarketOrder, fulfillMarketOrder, isFamilyChief } from './family-market'
+import { findMarketOrder, fulfillMarketOrder } from './family-market'
 import { isPractitioner, registerPractitioner, unregisterPractitioner } from './avatar-practitioner'
 import { recordDeceased } from './family-registry'
 import { startEmitterBurst } from './resource-ray'
@@ -164,7 +164,6 @@ export function canBeginAvatarTransform(
   forceMarket = false,
 ): boolean {
   if (!entity || !isActive(entity)) return false
-  if (isFamilyChief(entity)) return false
   if (_kind === 'fortress' && !isPractitioner(entity, 'fortress')) return false
   if (isJuvenile(entity, gameTimeSec)) return false
   if (entity.isFrozen) return false

@@ -8,6 +8,7 @@ import {
   JOY_CAP,
   KNOWLEDGE_CAP,
   LIFESPAN_AVATAR_TRANS_THRESHOLD,
+  LIFESPAN_CAP_SEC,
   LIFESPAN_EVAL_INTERVAL_SEC,
   LOW_MASS_PENALTY_SEC,
   PRODUCTION_COOLDOWN_SEC,
@@ -39,6 +40,7 @@ import { tickTraitDigestion } from './avatar-traits'
 export function initAvatarVitality(entity: CircleEntity, birthGameTimeSec = 0): void {
   initEntityMass(entity, entity.mass, HEALTH_CAP * 0.85)
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
+  entity.lifespanCapSec = LIFESPAN_CAP_SEC
   entity.satiety = SATIETY_CAP * 0.55
   entity.absorptionPaused = false
   entity.structureProduceCount = 0
@@ -65,6 +67,7 @@ export function initOptimalAvatarState(entity: CircleEntity, birthGameTimeSec = 
   initAvatarVitality(entity, birthGameTimeSec)
   entity.satiety = SATIETY_CAP * 0.62
   entity.lifespanSec = CIRCLE_LIFESPAN_SEC
+  entity.lifespanCapSec = LIFESPAN_CAP_SEC
   entity.feedRegularity = 0.85
   entity.health = HEALTH_CAP * 0.9
   entity.knowledge = PLAYER_START_MASS * 0.7
@@ -173,7 +176,7 @@ function evaluateLifespanWindow(entity: CircleEntity): void {
   }
   const excessTransforms = entity.avatarTransformCount - LIFESPAN_AVATAR_TRANS_THRESHOLD
   if (excessTransforms > 0) delta -= excessTransforms * 8
-  entity.lifespanSec = Math.max(20, Math.min(720, entity.lifespanSec + delta))
+  entity.lifespanSec = Math.max(20, Math.min(entity.lifespanCapSec, entity.lifespanSec + delta))
   entity.lowSatietySec = 0
   entity.restSec = 0
   entity.workSec = 0

@@ -18,11 +18,15 @@ export interface CircleInitOptions {
   birthGameTimeSec?: number
   paternalDna?: number
   maternalDna?: number
+  parentFatherName?: string
+  parentMotherName?: string
 }
 
 export interface CircleEntity {
   id: number
   name: string
+  parentFatherName: string
+  parentMotherName: string
   x: number
   y: number
   lat: number
@@ -67,6 +71,7 @@ export interface CircleEntity {
   joy: number
   joyIntake: number
   lifespanSec: number
+  lifespanCapSec: number
   satiety: number
   absorptionPaused: boolean
   structureProduceCount: number
@@ -186,6 +191,8 @@ export function createCircle(
   const entity: CircleEntity = {
     id: nextId++,
     name: roster.name,
+    parentFatherName: options.parentFatherName ?? '',
+    parentMotherName: options.parentMotherName ?? '',
     x,
     y,
     lat: 0,
@@ -230,6 +237,7 @@ export function createCircle(
     joy: PLAYER_START_MASS * 0.6,
     joyIntake: 0,
     lifespanSec: 0,
+    lifespanCapSec: 0,
     satiety: PLAYER_START_MASS * 1.8,
     absorptionPaused: false,
     structureProduceCount: 0,

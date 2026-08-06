@@ -1,5 +1,4 @@
 import {
-  ADULT_AGE_SEC,
   FAMILY_NEED_POST_THRESHOLD,
   FAMILY_SHARE_OF_REWARD,
   HOSTILE_PRESSURE_ORDER_THRESHOLD,
@@ -88,9 +87,7 @@ function isInAvatarState(entity: CircleEntity): boolean {
 
 function chiefScore(w: CircleEntity, gameTimeSec: number): number {
   if (w.gender !== 'male' || !isAdult(w, gameTimeSec)) return -1
-  const age = entityAgeSec(w, gameTimeSec)
-  if (age < ADULT_AGE_SEC) return -1
-  return w.knowledge * 2.2 + w.joy * 0.6 + age * 0.35
+  return entityAgeSec(w, gameTimeSec)
 }
 
 function electChief(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
@@ -146,10 +143,8 @@ function isIdlePractitioner(
   w: CircleEntity,
   kind: TransformKind,
   gameTimeSec: number,
-  chiefId: number,
 ): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
-  if (w.id === chiefId) return false
   if (!isPractitioner(w, kind)) return false
   if (isInAvatarState(w)) return false
   if (w.productionStage !== 'none') return false
@@ -258,7 +253,7 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
     let bestDist = Infinity
     for (const w of entities) {
       if (!isActive(w) || getFamilyId(w) !== familyId) continue
-      if (!isIdlePractitioner(w, order.kind, gameTimeSec, rec.chiefId)) continue
+      if (!isIdlePractitioner(w, order.kind, gameTimeSec)) continue
       const dist = Math.hypot(w.x - order.x, w.y - order.y)
       if (dist < bestDist) {
         bestDist = dist
@@ -328,22 +323,28 @@ export function formatOrderDetailLine(
   const waitSec = Math.max(0, Math.floor(gameTimeSec - order.postedAt))
   const kindLabel = ORDER_DEMAND_LABEL[order.kind]
 
+  const orderAddr = `下单@(${Math.round(order.x)},${Math.round(order.y)})`
+
   if (order.status === 'fulfilled') {
-    return `#${order.id} ${kindLabel} · 已完成 · 排队${waitSec}s后发单`
+    return `#${order.id} ${kindLabel} · ${orderAddr} · 已完成 · 已等${waitSec}s`
   }
 
   if (order.status === 'open') {
     const queuePos = getOpenQueuePosition(order, rec)
     const openCount = rec.orders.filter((o) => o.status === 'open').length
-    return `#${order.id} ${kindLabel} · 排队${queuePos}/${openCount} · 已等${waitSec}s · 待接单`
+    return `#${order.id} ${kindLabel} · ${orderAddr} · 排队${queuePos}/${openCount} · 已等${waitSec}s · 待接单`
   }
 
   if (order.status === 'assigned') {
     const cx = order.contractorX !== undefined ? Math.round(order.contractorX) : '?'
     const cy = order.contractorY !== undefined ? Math.round(order.contractorY) : '?'
+    const distToTarget =
+      order.contractorX !== undefined && order.contractorY !== undefined
+        ? Math.round(Math.hypot(order.x - order.contractorX, order.y - order.contractorY))
+        : '?'
     const eta =
       order.contractorEtaSec !== undefined ? `${Math.ceil(order.contractorEtaSec)}s` : '—'
-    return `#${order.id} ${kindLabel} · 已接单 · 接单人@(${cx},${cy}) · 约${eta}到达 · 已等${waitSec}s`
+    return `#${order.id} ${kindLabel} · ${orderAddr} · 已接单 · 接单人@(${cx},${cy}) · 距目标${distToTarget} · 约${eta}到达 · 已等${waitSec}s`
   }
 
   return `#${order.id} ${kindLabel} · 已取消`

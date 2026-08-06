@@ -154,7 +154,7 @@ function transferWifeToHusbandFamily(wife: CircleEntity, husband: CircleEntity):
   const husbandFamilyId = husband.familyId || husband.id
   wife.familyId = husbandFamilyId
   const husbandSurname = nameSurname(husband.name)
-  wife.name = husbandSurname + nameGiven(wife.name)
+  wife.name = `${husbandSurname} ${nameGiven(wife.name)}`
   wife.builderName = wife.name
   applyFamilyPalette(wife)
 }
