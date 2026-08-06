@@ -20,8 +20,8 @@ export const SATIETY_GAIN_PER_MASS = 0.38
 export const SATIETY_PER_INTAKE_MASS = 0.35
 export const SATIETY_ABSORB_BATCH_RATIO = 0.72
 
-export const TRAIT_IDLE_DECAY = PLAYER_START_MASS * 0.0025
-export const TRAIT_SLEEP_DECAY = PLAYER_START_MASS * 0.001
+export const TRAIT_IDLE_DECAY = PLAYER_START_MASS * 0.00055
+export const TRAIT_SLEEP_DECAY = PLAYER_START_MASS * 0.00022
 export const TRAIT_LOW_THRESHOLD = PLAYER_START_MASS * 0.3
 export const TRAIT_DIGEST_RATE = PLAYER_START_MASS * 0.28
 export const HEALTH_DECAY_LOW_TRAIT = PLAYER_START_MASS * 0.006
@@ -86,6 +86,10 @@ export const WANDER_STEER = 2.8
 
 /** 家族市场 */
 export const INITIAL_FAMILY_FUNDS = 90
+/** 新婚家庭初始资金 */
+export const INITIAL_HOUSEHOLD_FUNDS = 90
+/** 优先自行前往地块而非下单的最大距离 */
+export const ZONE_PREFER_MAX_DIST = 420
 export const ORDER_POST_COST = 14
 export const ORDER_POST_COOLDOWN_SEC = 1
 export const ORDER_SERVICE_DURATION_SEC = 5

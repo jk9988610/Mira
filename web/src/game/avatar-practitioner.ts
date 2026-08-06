@@ -4,6 +4,7 @@ import {
   FORTRESS_PRACTITIONER_ROLL_CHANCE,
   FORTRESS_PRACTITIONER_ROLL_INTERVAL_SEC,
 } from './avatar-config'
+import { hasHousehold } from './household'
 import type { CircleEntity, TransformKind } from './entity'
 import { isActive, isAdult } from './entity'
 
@@ -86,6 +87,7 @@ export function tickPractitionerEnrollment(
 ): void {
   for (const entity of entities) {
     if (!isActive(entity) || !isAdult(entity, gameTimeSec)) continue
+    if (!hasHousehold(entity)) continue
     if (entity.marketContractOrderId > 0 || entity.orderServiceTimer > 0) continue
 
     const familyId = getFamilyId(entity)

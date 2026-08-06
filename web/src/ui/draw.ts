@@ -1,6 +1,7 @@
 import { SATIETY_CAP, HEALTH_CAP, KNOWLEDGE_CAP, JOY_CAP, LIFESPAN_CAP_SEC } from '../game/avatar-config'
 import { getMassCaps } from '../game/avatar-mass'
 import { isFamilyChief } from '../game/family-market'
+import { getEntityHouseholdFunds } from '../game/household'
 import { intentLabel } from '../game/avatar-ai'
 import { formatCitizenId } from '../game/citizen-id'
 import { formatDnaFingerprint } from '../game/dna'
@@ -272,6 +273,7 @@ export function drawAvatarEntityStats(
     `健康 ${formatAttrLine(entity.health, HEALTH_CAP, healthLabel(entity.health))}`,
     `压力 ${entity.pressureFelt.toFixed(1)} · 敌压 ${entity.hostilePressureFelt.toFixed(1)}`,
     `寿命 ${Math.ceil(entity.lifespanSec)}/${Math.ceil(lifespanCap)}s`,
+    `家庭资金 ${Math.floor(getEntityHouseholdFunds(entity))}`,
     targetDestinationLine(entity),
     `化身者注册 农场${entity.countFarmPractitionerRegs} 校园${entity.countSchoolPractitionerRegs}`,
     `              乐园${entity.countParkPractitionerRegs} 堡垒${entity.countFortressPractitionerRegs}`,
