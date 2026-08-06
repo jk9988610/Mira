@@ -13,6 +13,7 @@ import {
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
 import type { ViewBounds } from './viewport'
+import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type ZoneKind = 'food' | 'knowledge' | 'joy'
@@ -127,6 +128,38 @@ export function pointInZone(zone: ResourceZone, x: number, y: number): boolean {
 
 export function zonesAtPoint(x: number, y: number): ResourceZone[] {
   return zones.filter((z) => pointInZone(z, x, y))
+}
+
+export function zoneCenter(zone: ResourceZone): { x: number; y: number } {
+  return { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 }
+}
+
+export function findNearestActiveZone(
+  kind: ZoneKind,
+  x: number,
+  y: number,
+): { zone: ResourceZone; dist: number; cx: number; cy: number } | null {
+  let best: { zone: ResourceZone; dist: number; cx: number; cy: number } | null = null
+  for (const zone of zones) {
+    if (zone.kind !== kind) continue
+    const center = zoneCenter(zone)
+    const dist = Math.hypot(center.x - x, center.y - y)
+    if (!best || dist < best.dist) {
+      best = { zone, dist, cx: center.x, cy: center.y }
+    }
+  }
+  return best
+}
+
+export function estimateZoneTravelSec(
+  fromX: number,
+  fromY: number,
+  zone: ResourceZone,
+  mass: number,
+): number {
+  const center = zoneCenter(zone)
+  const dist = Math.hypot(center.x - fromX, center.y - fromY)
+  return dist / Math.max(18, speedForMass(mass))
 }
 
 function respawnZone(zone: ResourceZone, seed: number): void {

@@ -31,9 +31,10 @@ import {
   FORTRESS_EMIT_INTERVAL_SEC,
 } from './avatar-config'
 import { decideNpcTransformKind, recordTransformHistory, updateNpcIntent } from './avatar-ai'
-import { findMarketOrder, fulfillMarketOrder } from './family-market'
+import { findMarketOrder, fulfillMarketOrder, creditContractorHousehold, estimateContractTravelSec } from './family-market'
 import { isPractitioner, registerPractitioner, unregisterPractitioner } from './avatar-practitioner'
 import { recordDeceased } from './family-registry'
+import { distributeFundsOnDeath } from './household'
 import { startEmitterBurst } from './resource-ray'
 import { isPursuingMate } from './avatar-reproduction'
 import { syncEntityGeo } from './geo'
@@ -290,11 +291,17 @@ export function findNearestAvatarTransformSpot(
   return null
 }
 
-function moveEntityToward(entity: CircleEntity, targetX: number, targetY: number, dt: number): void {
+function moveEntityToward(
+  entity: CircleEntity,
+  targetX: number,
+  targetY: number,
+  dt: number,
+  arriveDist = 1,
+): void {
   const dx = targetX - entity.x
   const dy = targetY - entity.y
   const dist = Math.hypot(dx, dy)
-  if (dist <= 1) return
+  if (dist <= arriveDist) return
   const speed = speedForMass(entity.mass)
   entity.x += (dx / dist) * speed * dt
   entity.y += (dy / dist) * speed * dt
@@ -565,11 +572,12 @@ function updateMarketContract(
 
   ally.intentTargetX = tx
   ally.intentTargetY = ty
-  ally.intentEtaSec = Math.hypot(tx - ally.x, ty - ally.y) / Math.max(18, speedForMass(ally.mass))
+  const travelSec = estimateContractTravelSec(ally.x, ally.y, tx, ty, ally.mass)
+  ally.intentEtaSec = travelSec + (ally.orderServiceTimer > 0 ? ally.orderServiceTimer : 0)
 
   if (Math.hypot(tx - ally.x, ty - ally.y) > arriveDist) {
     ally.aiIntent = 'wait'
-    moveEntityToward(ally, tx, ty, dt)
+    moveEntityToward(ally, tx, ty, dt, arriveDist)
     clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
     syncEntityGeo(ally)
     return { entities }
@@ -602,7 +610,10 @@ export function tickOrderService(
     if (entity.marketContractOrderId > 0) {
       const order = findMarketOrder(entity.marketContractOrderId)
       fulfillMarketOrder(entity.marketContractOrderId, entity.id, gameTimeSec)
-      if (order) unregisterPractitioner(entity, order.kind)
+      if (order) {
+        creditContractorHousehold(entity, order.reward)
+        unregisterPractitioner(entity, order.kind)
+      }
     }
     entity.marketContractOrderId = 0
     entity.contractTargetX = 0
@@ -664,7 +675,10 @@ export function tickMobileAvatarVitality(
     if (isStructureRole(entity.avatarRole)) {
       tickAvatarTransformLifespan(entity, dt)
       if (!isAvatarLifeExpired(entity)) next.push(entity)
-      else recordDeceased(entity, gameTimeSec)
+      else {
+        distributeFundsOnDeath(entity, entities)
+        recordDeceased(entity, gameTimeSec)
+      }
       continue
     }
     if (entity.avatarRole !== 'none' && entity.avatarRole !== 'ally') {
@@ -677,7 +691,10 @@ export function tickMobileAvatarVitality(
     }
     tickAvatarMetabolism(entity, dt, movingIds.has(entity.id))
     if (!isAvatarLifeExpired(entity)) next.push(entity)
-    else recordDeceased(entity, gameTimeSec)
+    else {
+      distributeFundsOnDeath(entity, entities)
+      recordDeceased(entity, gameTimeSec)
+    }
   }
   return next
 }

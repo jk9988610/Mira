@@ -66,6 +66,7 @@ import {
   resetFamilyMarkets,
   tickFamilyMarkets,
 } from '../game/family-market'
+import { resetHouseholds, sumHouseholdFundsByClanFamily } from '../game/household'
 import { summarizeOrders } from '../game/production-stats'
 import { drawResourceRays, tickEmitterBursts, tickResourceRays } from '../game/resource-ray'
 import { initOptimalAvatarState } from '../game/avatar-vitality'
@@ -163,6 +164,7 @@ export function createGameScene(
   const reset = () => {
     resetAvatarState()
     resetFamilyMarkets()
+    resetHouseholds()
     resetFamilyRegistry()
     resetFamilyColors()
     resetPressureField()
@@ -425,8 +427,9 @@ export function createGameScene(
 
       const demo = computeTribeDemographics(entities, elapsed)
       const pressure = summarizePressureField(entities)
-      const familyMarkets = getFamilyMarketRecords()
-      const familyFunds = new Map(familyMarkets.map((m) => [m.familyId, Math.floor(m.funds)]))
+      const familyFunds = new Map(
+        demo.families.map((f) => [f.familyId, Math.floor(sumHouseholdFundsByClanFamily(f.familyId, entities))]),
+      )
       drawAvatarHud(ctx, width, height, {
         gameTimeSec: elapsed,
         cameraX: Math.round(cameraX),

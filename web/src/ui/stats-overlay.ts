@@ -4,6 +4,7 @@ import type { FamilyMarketRecord } from '../game/family-market'
 import { formatOrderDetailLine, ORDER_DEMAND_LABEL } from '../game/family-market'
 import type { OrderStatsSummary } from '../game/production-stats'
 import { listAllOrders } from '../game/production-stats'
+import { sumHouseholdFundsByClanFamily } from '../game/household'
 import type { TribeDemographics } from '../game/tribe-stats'
 import type { CircleEntity, TransformKind } from '../game/entity'
 import { formatGameTime } from '../game/game-clock'
@@ -218,7 +219,9 @@ export function drawStatsFullscreenOverlay(
     } else {
       for (const fam of data.demographics.practitionerByFamily) {
         const market = data.familyMarkets.find((m) => m.familyId === fam.familyId)
-        const funds = market ? ` · 资金${Math.floor(market.funds)}` : ''
+        const funds = market
+          ? ` · 家庭资金${Math.floor(sumHouseholdFundsByClanFamily(fam.familyId, data.entities))}`
+          : ''
         cy = drawLine(
           ctx,
           contentX,

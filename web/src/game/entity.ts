@@ -27,6 +27,10 @@ export interface CircleEntity {
   name: string
   parentFatherName: string
   parentMotherName: string
+  /** 家庭 id（丈夫妻子与子女共享） */
+  householdId: number
+  /** 继承/个人资金 */
+  personalFunds: number
   x: number
   y: number
   lat: number
@@ -193,6 +197,8 @@ export function createCircle(
     name: roster.name,
     parentFatherName: options.parentFatherName ?? '',
     parentMotherName: options.parentMotherName ?? '',
+    householdId: 0,
+    personalFunds: 0,
     x,
     y,
     lat: 0,

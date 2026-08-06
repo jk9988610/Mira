@@ -13,11 +13,19 @@ import {
   ORDER_REWARD,
   ORDER_SERVICE_DURATION_SEC,
   SATIETY_CAP,
+  ZONE_PREFER_MAX_DIST,
 } from './avatar-config'
 import { isPractitioner, registerPractitioner } from './avatar-practitioner'
 import type { CircleEntity, TransformKind } from './entity'
 import { entityAgeSec, isActive, isAdult } from './entity'
+import {
+  getEntityHouseholdFunds,
+  hasHousehold,
+  withdrawHousehold,
+  depositHousehold,
+} from './household'
 import { speedForMass } from './movement'
+import { findNearestActiveZone, type ZoneKind } from './resource-zones'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled'
@@ -145,12 +153,40 @@ function isIdlePractitioner(
   gameTimeSec: number,
 ): boolean {
   if (!isActive(w) || !isAdult(w, gameTimeSec)) return false
-  if (!isPractitioner(w, kind)) return false
+  if (!hasHousehold(w)) return false
+  if (kind === 'fortress' && !isPractitioner(w, 'fortress')) return false
   if (isInAvatarState(w)) return false
   if (w.productionStage !== 'none') return false
   if (w.marketContractOrderId > 0 || w.pendingAvatarKind !== 'none') return false
   if (w.orderServiceTimer > 0) return false
   return true
+}
+
+function zoneKindForOrder(kind: TransformKind): ZoneKind {
+  if (kind === 'farm') return 'food'
+  if (kind === 'school') return 'knowledge'
+  return 'joy'
+}
+
+function shouldPreferZoneOverOrder(member: CircleEntity, kind: TransformKind): boolean {
+  if (kind === 'fortress') return false
+  const zoneHit = findNearestActiveZone(zoneKindForOrder(kind), member.x, member.y)
+  if (!zoneHit) return false
+  return zoneHit.dist <= ZONE_PREFER_MAX_DIST
+}
+
+export function estimateContractTravelSec(
+  workerX: number,
+  workerY: number,
+  targetX: number,
+  targetY: number,
+  mass: number,
+): number {
+  const arriveDist = Math.max(12, ORDER_FULFILL_RADIUS * 0.45)
+  const dist = Math.hypot(targetX - workerX, targetY - workerY)
+  const travelDist = Math.max(0, dist - arriveDist)
+  const speed = Math.max(18, speedForMass(mass))
+  return travelDist / speed
 }
 
 function postOrder(
@@ -162,7 +198,8 @@ function postOrder(
   gameTimeSec: number,
 ): void {
   const anchor = clampOrderPoint(anchorX, anchorY)
-  rec.funds -= ORDER_POST_COST
+  if (!hasHousehold(poster)) return
+  if (!withdrawHousehold(poster.householdId, ORDER_POST_COST)) return
   poster.selfOrderPostCooldownUntil = gameTimeSec + ORDER_POST_COOLDOWN_SEC
 
   const order: MarketOrder = {
@@ -213,14 +250,16 @@ function trySelfPostOrder(
   gameTimeSec: number,
 ): void {
   if (!isActive(member) || !isAdult(member, gameTimeSec)) return
+  if (!hasHousehold(member)) return
   if (member.marketContractOrderId > 0 || member.orderServiceTimer > 0) return
   if (posterHasActiveOrder(rec, member.id)) return
   if (countActiveOrders(rec) >= MAX_ACTIVE_ORDERS_PER_FAMILY) return
   if (gameTimeSec < member.selfOrderPostCooldownUntil) return
-  if (rec.funds < ORDER_POST_COST) return
+  if (getEntityHouseholdFunds(member) < ORDER_POST_COST) return
 
   const kind = detectSelfOrderKind(member)
   if (!kind) return
+  if (shouldPreferZoneOverOrder(member, kind)) return
 
   setEnrollmentBoost(rec, kind)
   if (countFamilyPractitioners(rec.familyId, kind, entities) === 0) {
@@ -240,10 +279,7 @@ function tickSelfPostedOrders(
   }
 }
 
-function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTimeSec: number): void {
-  const rec = familyMarkets.get(familyId)
-  if (!rec) return
-
+function tryAssignContractors(rec: FamilyMarketRecord, entities: CircleEntity[], gameTimeSec: number): void {
   const openOrders = rec.orders
     .filter((o) => o.status === 'open')
     .sort((a, b) => a.postedAt - b.postedAt)
@@ -252,7 +288,7 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
     let bestWorker: CircleEntity | null = null
     let bestDist = Infinity
     for (const w of entities) {
-      if (!isActive(w) || getFamilyId(w) !== familyId) continue
+      if (!isActive(w)) continue
       if (!isIdlePractitioner(w, order.kind, gameTimeSec)) continue
       const dist = Math.hypot(w.x - order.x, w.y - order.y)
       if (dist < bestDist) {
@@ -269,7 +305,9 @@ function tryAssignContractors(familyId: number, entities: CircleEntity[], gameTi
     order.contractorId = bestWorker.id
     order.contractorX = bestWorker.x
     order.contractorY = bestWorker.y
-    registerPractitioner(bestWorker, order.kind)
+    if (!isPractitioner(bestWorker, order.kind)) {
+      registerPractitioner(bestWorker, order.kind)
+    }
     bestWorker.marketContractOrderId = order.id
     bestWorker.contractTargetX = order.x
     bestWorker.contractTargetY = order.y
@@ -301,8 +339,8 @@ export function updateOrderContractorTelemetry(order: MarketOrder, entities: Cir
     order.contractorEtaSec = ORDER_SERVICE_DURATION_SEC
     return
   }
-  const speed = Math.max(18, speedForMass(worker.mass))
-  order.contractorEtaSec = dist / speed + ORDER_SERVICE_DURATION_SEC
+  const travelSec = estimateContractTravelSec(worker.x, worker.y, order.x, order.y, worker.mass)
+  order.contractorEtaSec = travelSec + ORDER_SERVICE_DURATION_SEC
 }
 
 export function getOpenQueuePosition(order: MarketOrder, rec: FamilyMarketRecord): number {
@@ -320,7 +358,7 @@ export function formatOrderDetailLine(
   entities: CircleEntity[],
 ): string {
   updateOrderContractorTelemetry(order, entities)
-  const waitSec = Math.max(0, Math.floor(gameTimeSec - order.postedAt))
+  const waitSec = Math.max(0, gameTimeSec - order.postedAt)
   const kindLabel = ORDER_DEMAND_LABEL[order.kind]
 
   const orderAddr = `下单@(${Math.round(order.x)},${Math.round(order.y)})`
@@ -343,7 +381,7 @@ export function formatOrderDetailLine(
         ? Math.round(Math.hypot(order.x - order.contractorX, order.y - order.contractorY))
         : '?'
     const eta =
-      order.contractorEtaSec !== undefined ? `${Math.ceil(order.contractorEtaSec)}s` : '—'
+      order.contractorEtaSec !== undefined ? `${order.contractorEtaSec.toFixed(1)}s` : '—'
     return `#${order.id} ${kindLabel} · ${orderAddr} · 已接单 · 接单人@(${cx},${cy}) · 距目标${distToTarget} · 约${eta}到达 · 已等${waitSec}s`
   }
 
@@ -406,10 +444,17 @@ export function fulfillMarketOrder(orderId: number, contractorId: number, gameTi
     order.status = 'fulfilled'
     order.completedAt = gameTimeSec
     order.contractorEtaSec = 0
-    rec.funds += order.reward * FAMILY_SHARE_OF_REWARD
     rec.enrollmentBoostKind = 'none'
     rec.totalFulfilled++
   }
+}
+
+export function creditContractorHousehold(contractor: CircleEntity, reward: number): void {
+  if (!hasHousehold(contractor)) {
+    contractor.personalFunds += reward * FAMILY_SHARE_OF_REWARD
+    return
+  }
+  depositHousehold(contractor.householdId, reward * FAMILY_SHARE_OF_REWARD)
 }
 
 export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number, _dt: number): void {
@@ -435,7 +480,7 @@ export function tickFamilyMarkets(entities: CircleEntity[], gameTimeSec: number,
     electChief(fid, entities, gameTimeSec)
     const rec = familyMarkets.get(fid)!
     tickSelfPostedOrders(rec, entities, gameTimeSec)
-    tryAssignContractors(fid, entities, gameTimeSec)
+    tryAssignContractors(rec, entities, gameTimeSec)
     for (const order of rec.orders) {
       if (order.status === 'assigned') updateOrderContractorTelemetry(order, entities)
     }

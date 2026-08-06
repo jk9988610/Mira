@@ -11,6 +11,7 @@ import {
 import { avatarEntityRadius, clampAvatarEntityToWorld } from './avatar-radius'
 import { initAvatarVitality } from './avatar-vitality'
 import { applyFamilyPalette, getFamilyPalette, paletteFromFamilySeed } from './family-colors'
+import { addChildToHousehold, formHousehold } from './household'
 import { areKin } from './kinship'
 import { syncEntityGeo } from './geo'
 import { nameGiven, nameSurname, offspringName } from './naming'
@@ -92,10 +93,13 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
         female.aiMateTargetId = spouse.id
         continue
       }
+      female.aiMateTargetId = 0
+      continue
     }
 
     for (const male of entities) {
       if (!isActive(male) || male.gender !== 'male') continue
+      if (male.spouseId > 0) continue
       if (!isActivelySeekingMate(male, now)) continue
       if (areKin(male, female)) continue
       const strength = mateSignalStrength(male, female, now)
@@ -111,11 +115,22 @@ export function syncMateTargets(entities: CircleEntity[], now = 0): void {
     if (!isActive(male) || male.gender !== 'male') continue
     if (!isActivelySeekingMate(male, now)) continue
 
+    if (male.spouseId > 0) {
+      const spouse = entities.find((f) => f.id === male.spouseId && isActive(f))
+      if (spouse && spouse.gender === 'female' && isActivelySeekingMate(spouse, now) && canMatePair(male, spouse, now)) {
+        male.aiMateTargetId = spouse.id
+      } else {
+        male.aiMateTargetId = 0
+      }
+      continue
+    }
+
     let bestFemale: CircleEntity | null = null
     let bestDist = Infinity
     for (const female of entities) {
       if (!isActive(female) || female.gender !== 'female') continue
       if (!isActivelySeekingMate(female, now)) continue
+      if (female.spouseId > 0) continue
       if (female.aiMateTargetId !== male.id) continue
       if (areKin(male, female)) continue
       const d = distanceBetween(male, female)
@@ -165,6 +180,7 @@ function establishMarriage(male: CircleEntity, female: CircleEntity): void {
   male.spouseId = female.id
   female.spouseId = male.id
   transferWifeToHusbandFamily(female, male)
+  formHousehold(male, female)
 }
 
 /** 双向奔赴；moveSelf=false 时仅检测接触（用于玩家手动移动） */
@@ -218,15 +234,22 @@ export function isSeekingMate(entity: CircleEntity, gameTimeSec = 0): boolean {
   return true
 }
 
-/** 求偶意愿：已婚者极大降低；未婚者由个体意愿与随机波动决定 */
+/** 求偶意愿：无家庭者优先成家；已婚者仅与配偶繁殖 */
 export function isActivelySeekingMate(entity: CircleEntity, now = 0): boolean {
   if (!isSeekingMate(entity, now)) return false
   const elder = elderMateFactor(entity, now)
   if (elder < 0.08) return false
   const roll = hash01(entity.id * 1.73 + Math.floor(now * 0.17) + entity.mateSeekUrge * 9.1)
+
   if (entity.spouseId > 0) {
-    return roll < 0.035 * elder
+    if (entity.productionCooldown > 0) return false
+    return roll < (0.32 + entity.mateSeekUrge * 0.48) * elder
   }
+
+  if (entity.householdId <= 0) {
+    return roll < (0.62 + entity.mateSeekUrge * 0.35) * elder
+  }
+
   return roll < (0.28 + entity.mateSeekUrge * 0.62) * elder
 }
 
@@ -331,6 +354,7 @@ function spawnChild(
   )
   child.avatarRole = 'ally'
   initAvatarVitality(child, birthGameTimeSec)
+  addChildToHousehold(child, father, mother)
   clampAvatarEntityToWorld(child, WORLD_WIDTH, WORLD_HEIGHT)
   syncEntityGeo(child)
   mother.childrenCount++

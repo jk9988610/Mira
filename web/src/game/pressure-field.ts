@@ -64,7 +64,7 @@ export function pressureSignalStrength(emitter: CircleEntity, receiver: CircleEn
   if (dist > PRESSURE_RANGE) return 0
   const t = dist / PRESSURE_RANGE
   const decay = (1 - t) * (1 - t)
-  return decay * emit * 0.018
+  return decay * emit * 0.0055
 }
 
 export function getFamilyPressureTotal(familyId: number): number {

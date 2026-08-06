@@ -2,7 +2,9 @@ import {
   NPC_ARRIVE_DIST,
   NPC_JITTER_DIST,
   NPC_TARGET_CACHE_SEC,
+  ZONE_PREFER_MAX_DIST,
 } from './avatar-config'
+import { hasHousehold } from './household'
 import { pickWeightedNeed, type NeedKind } from './avatar-needs'
 import { currentSchedulePhase, schedulePhaseLabel } from './avatar-schedule'
 import {
@@ -15,6 +17,7 @@ import {
   pickBestEmitterTarget,
   type EmitterTarget,
 } from './resource-ray'
+import { findNearestActiveZone, estimateZoneTravelSec, type ZoneKind } from './resource-zones'
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
@@ -101,10 +104,49 @@ function moveToward(
   syncEntityGeo(entity)
 }
 
-function applyIntentTarget(entity: CircleEntity, target: EmitterTarget | null, need: NeedKind): void {
+function needToZoneKind(need: NeedKind): ZoneKind {
+  if (need === 'eat') return 'food'
+  if (need === 'learn') return 'knowledge'
+  return 'joy'
+}
+
+function pickZoneTarget(
+  entity: CircleEntity,
+  need: NeedKind,
+): { x: number; y: number; etaSec: number } | null {
+  const hit = findNearestActiveZone(needToZoneKind(need), entity.x, entity.y)
+  if (!hit || hit.dist > ZONE_PREFER_MAX_DIST) return null
+  return {
+    x: hit.cx,
+    y: hit.cy,
+    etaSec: estimateZoneTravelSec(entity.x, entity.y, hit.zone, entity.mass),
+  }
+}
+
+function pickNeedTarget(
+  entity: CircleEntity,
+  entities: CircleEntity[],
+  need: NeedKind,
+): { x: number; y: number; etaSec: number; emitterId: number } | null {
+  const zone = pickZoneTarget(entity, need)
+  const emitter = pickEmitterTarget(entity, entities, need)
+  if (zone && emitter) {
+    if (zone.etaSec <= emitter.etaSec) {
+      return { ...zone, emitterId: 0 }
+    }
+    return { x: emitter.x, y: emitter.y, etaSec: emitter.etaSec, emitterId: emitter.emitterId }
+  }
+  if (zone) return { ...zone, emitterId: 0 }
+  if (emitter) {
+    return { x: emitter.x, y: emitter.y, etaSec: emitter.etaSec, emitterId: emitter.emitterId }
+  }
+  return null
+}
+
+function applyIntentTarget(entity: CircleEntity, target: { x: number; y: number; etaSec: number; emitterId?: number } | null, need: NeedKind): void {
   if (!target) {
-    entity.intentTargetX = 0
-    entity.intentTargetY = 0
+    entity.intentTargetX = entity.x
+    entity.intentTargetY = entity.y
     entity.intentEtaSec = 0
     entity.aiEmitterTargetId = 0
     return
@@ -112,7 +154,7 @@ function applyIntentTarget(entity: CircleEntity, target: EmitterTarget | null, n
   entity.intentTargetX = target.x
   entity.intentTargetY = target.y
   entity.intentEtaSec = target.etaSec
-  entity.aiEmitterTargetId = target.emitterId
+  entity.aiEmitterTargetId = target.emitterId ?? 0
   entity.aiIntent = need
 }
 
@@ -142,16 +184,17 @@ function pursueScheduleNeed(
   need: NeedKind,
   dt: number,
 ): boolean {
-  const emitter = pickEmitterTarget(entity, entities, need)
-  if (!emitter) {
+  const target = pickNeedTarget(entity, entities, need)
+  if (!target) {
     applyIntentTarget(entity, null, need)
     return false
   }
-  applyIntentTarget(entity, emitter, need)
-  const arrive = emitterArriveRadius(
-    entities.find((e) => e.id === emitter.emitterId) ?? entity,
-  )
-  moveToward(entity, emitter.x, emitter.y, dt, 0.92, arrive)
+  applyIntentTarget(entity, target, need)
+  const arrive =
+    target.emitterId > 0
+      ? emitterArriveRadius(entities.find((e) => e.id === target.emitterId) ?? entity)
+      : NPC_ARRIVE_DIST
+  moveToward(entity, target.x, target.y, dt, 0.92, arrive)
   entity.intentEtaSec = Math.max(0, entity.intentEtaSec - dt)
   return true
 }
@@ -186,6 +229,14 @@ export function updateNpcIntent(
     entity.intentTargetX = entity.x
     entity.intentTargetY = entity.y
     return { moving: false, sleeping: true }
+  }
+
+  if (!hasHousehold(entity)) {
+    entity.aiIntent = 'wait'
+    entity.intentTargetX = entity.x
+    entity.intentTargetY = entity.y
+    entity.intentEtaSec = 0
+    return { moving: false, sleeping: false }
   }
 
   let activeNeed: NeedKind
