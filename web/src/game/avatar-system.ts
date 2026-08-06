@@ -569,7 +569,7 @@ function updateMarketContract(
   ally.intentEtaSec = Math.hypot(tx - ally.x, ty - ally.y) / Math.max(18, speedForMass(ally.mass))
 
   if (Math.hypot(tx - ally.x, ty - ally.y) > arriveDist) {
-    ally.aiIntent = 'wander'
+    ally.aiIntent = 'wait'
     moveEntityToward(ally, tx, ty, dt)
     clampAvatarEntityToWorld(ally, WORLD_WIDTH, WORLD_HEIGHT)
     syncEntityGeo(ally)

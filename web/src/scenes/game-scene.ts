@@ -205,6 +205,7 @@ export function createGameScene(
       familyMarkets,
       genealogies: buildFamilyGenealogies(entities, familyNames),
       orderStats: summarizeOrders(familyMarkets),
+      entities,
     }
   }
 
