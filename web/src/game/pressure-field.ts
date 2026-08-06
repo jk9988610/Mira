@@ -164,6 +164,27 @@ export function tickPressureField(entities: CircleEntity[], _dt: number): void {
   }
 }
 
+export function pressureAtPoint(
+  x: number,
+  y: number,
+  entities: CircleEntity[],
+  viewerFamilyId: number,
+): number {
+  let felt = 0
+  for (const other of entities) {
+    if (!isActive(other)) continue
+    const otherFamily = other.familyId || other.id
+    if (otherFamily === viewerFamilyId) continue
+    const dist = Math.hypot(other.x - x, other.y - y)
+    const range = WORLD_WIDTH * PRESSURE_EMIT_RANGE_RATIO
+    if (dist > range) continue
+    const t = dist / range
+    const decay = (1 - t) * (1 - t)
+    felt += circlePressureEmit(other) * decay * 0.018
+  }
+  return felt
+}
+
 export function findMostPressuredByHostiles(
   centerX: number,
   centerY: number,

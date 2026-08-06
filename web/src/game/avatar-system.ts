@@ -536,7 +536,8 @@ function beginOrderService(
 ): void {
   worker.orderServiceKind = order.kind
   worker.orderServiceTimer = ORDER_SERVICE_DURATION_SEC
-  startEmitterBurst(worker)
+  worker.emitBurstSec = ORDER_SERVICE_DURATION_SEC
+  worker.structureProduceCount++
 }
 
 function updateMarketContract(
@@ -601,7 +602,7 @@ export function tickOrderService(
     if (entity.orderServiceTimer <= 0) continue
 
     if (entity.emitBurstSec <= 0 && entity.orderServiceTimer > 0.5) {
-      startEmitterBurst(entity)
+      entity.emitBurstSec = ORDER_SERVICE_DURATION_SEC
     }
 
     entity.orderServiceTimer = Math.max(0, entity.orderServiceTimer - dt)

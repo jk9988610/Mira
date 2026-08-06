@@ -256,7 +256,7 @@ export function emitterArriveRadius(emitter: CircleEntity): number {
 export function drawResourceRays(
   ctx: CanvasRenderingContext2D,
   entities: CircleEntity[],
-  time: number,
+  _time: number,
 ): void {
   for (const emitter of entities) {
     if (!isEmitterBursting(emitter)) continue
@@ -269,24 +269,23 @@ export function drawResourceRays(
     if (!kind) continue
 
     const radius = emitterRadius(emitter)
-    const pulse = 0.82 + 0.18 * Math.sin(time * 4 + emitter.id)
     const color =
       kind === 'food'
-        ? `rgba(143, 211, 255, ${0.14 * pulse})`
+        ? 'rgba(143, 211, 255, 0.16)'
         : kind === 'knowledge'
-          ? `rgba(130, 170, 255, ${0.14 * pulse})`
-          : `rgba(255, 150, 210, ${0.14 * pulse})`
+          ? 'rgba(130, 170, 255, 0.16)'
+          : 'rgba(255, 150, 210, 0.16)'
 
     ctx.beginPath()
-    ctx.arc(emitter.x, emitter.y, radius * pulse, 0, Math.PI * 2)
+    ctx.arc(emitter.x, emitter.y, radius, 0, Math.PI * 2)
     ctx.fillStyle = color
     ctx.fill()
     ctx.strokeStyle =
       kind === 'food'
-        ? 'rgba(143, 211, 255, 0.35)'
+        ? 'rgba(143, 211, 255, 0.42)'
         : kind === 'knowledge'
-          ? 'rgba(130, 170, 255, 0.35)'
-          : 'rgba(255, 150, 210, 0.35)'
+          ? 'rgba(130, 170, 255, 0.42)'
+          : 'rgba(255, 150, 210, 0.42)'
     ctx.lineWidth = 2
     ctx.stroke()
   }

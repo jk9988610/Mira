@@ -83,22 +83,37 @@ type PauseBridge = { fn: (() => void) | null }
 const CAMERA_PAN_SPEED = 400
 const TOUCH_PAN_SCALE = 1.35
 
-const FAMILY_COUNT = 4
-const STARTER_COUNT = FAMILY_COUNT * 2
+const CLAN_COUNT = 2
+const MALES_PER_CLAN = 4
+const FEMALES_PER_CLAN = 4
 
-function buildStarterOffsets(count: number): Array<{ x: number; y: number }> {
-  const result: Array<{ x: number; y: number }> = []
+interface ClanSpawnOffset {
+  x: number
+  y: number
+}
+
+function buildClanStarterOffsets(): ClanSpawnOffset[] {
+  const result: ClanSpawnOffset[] = []
   const golden = Math.PI * (3 - Math.sqrt(5))
-  const radius = 520
-  for (let i = 0; i < count; i++) {
-    const r = radius * Math.sqrt((i + 0.5) / count)
-    const angle = i * golden
-    result.push({ x: Math.cos(angle) * r, y: Math.sin(angle) * r })
+  const clusterRadius = 200
+  for (let clan = 0; clan < CLAN_COUNT; clan++) {
+    const centerAngle = (clan / CLAN_COUNT) * Math.PI * 2
+    const clanCx = Math.cos(centerAngle) * 380
+    const clanCy = Math.sin(centerAngle) * 260
+    const perClan = MALES_PER_CLAN + FEMALES_PER_CLAN
+    for (let i = 0; i < perClan; i++) {
+      const r = clusterRadius * Math.sqrt((i + 0.5) / perClan)
+      const angle = i * golden
+      result.push({
+        x: clanCx + Math.cos(angle) * r,
+        y: clanCy + Math.sin(angle) * r,
+      })
+    }
   }
   return result
 }
 
-const STARTER_OFFSETS = buildStarterOffsets(STARTER_COUNT)
+const STARTER_OFFSETS = buildClanStarterOffsets()
 
 function isNpcMobile(entity: CircleEntity): boolean {
   return (
@@ -182,49 +197,44 @@ export function createGameScene(
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
     entities = []
-    for (let f = 0; f < FAMILY_COUNT; f++) {
-      const seed = f * 7919 + 1337
+    for (let clan = 0; clan < CLAN_COUNT; clan++) {
+      const seed = clan * 7919 + 1337
       const surname = randomSurname(seed)
-      const maleName = formatFullName(surname, randomGivenName(seed + 1))
-      const femaleName = formatFullName(surname, randomGivenName(seed + 5))
-      const parents = randomParentPair(seed + 99)
       const palette = paletteFromFamilySeed(seed)
-      const maleOffset = STARTER_OFFSETS[f * 2]
-      const femaleOffset = STARTER_OFFSETS[f * 2 + 1]
+      let familyId = 0
+      const perClan = MALES_PER_CLAN + FEMALES_PER_CLAN
 
-      const male = createCircle(
-        cx + maleOffset.x,
-        cy + maleOffset.y,
-        STARTER_OPTIMAL_MASS,
-        false,
-        { name: maleName, ...palette },
-        {
-          gender: 'male',
-          generation: 1,
-          birthGameTimeSec: -ADULT_AGE_SEC,
-          parentFatherName: parents.father,
-          parentMotherName: parents.mother,
-        },
-      )
-      const female = createCircle(
-        cx + femaleOffset.x,
-        cy + femaleOffset.y,
-        STARTER_OPTIMAL_MASS,
-        false,
-        { name: femaleName, ...palette },
-        {
-          gender: 'female',
-          generation: 1,
-          familyId: male.id,
-          birthGameTimeSec: -ADULT_AGE_SEC,
-          parentFatherName: parents.father,
-          parentMotherName: parents.mother,
-        },
-      )
-      registerFamily(male.id, `${surname}家族`, palette)
-      initOptimalAvatarState(male, -ADULT_AGE_SEC)
-      initOptimalAvatarState(female, -ADULT_AGE_SEC)
-      entities.push(male, female)
+      for (let i = 0; i < perClan; i++) {
+        const offset = STARTER_OFFSETS[clan * perClan + i]
+        const isMale = i < MALES_PER_CLAN
+        const name = formatFullName(surname, randomGivenName(seed + i * 3.7 + (isMale ? 1 : 5)))
+        const parents = randomParentPair(seed + i * 11.3)
+
+        const circle = createCircle(
+          cx + offset.x,
+          cy + offset.y,
+          STARTER_OPTIMAL_MASS,
+          false,
+          { name, ...palette },
+          {
+            gender: isMale ? 'male' : 'female',
+            generation: 1,
+            birthGameTimeSec: -ADULT_AGE_SEC,
+            parentFatherName: parents.father,
+            parentMotherName: parents.mother,
+            familyId: familyId > 0 ? familyId : undefined,
+          },
+        )
+
+        if (familyId === 0) {
+          familyId = circle.id
+          circle.familyId = familyId
+          registerFamily(familyId, `${surname}家族`, palette)
+        }
+
+        initOptimalAvatarState(circle, -ADULT_AGE_SEC)
+        entities.push(circle)
+      }
     }
     elapsed = 0
     initFamilyMarkets(entities)

@@ -1,3 +1,4 @@
+import { formatGameTime } from './game-clock'
 import type { CircleEntity, Gender } from './entity'
 import { isActive } from './entity'
 
@@ -25,8 +26,12 @@ export interface GenealogyMember {
   motherId: number
   fatherId: number
   generation: number
+  birthGameTimeSec: number
+  deathGameTimeSec?: number
   deceased: boolean
   spouseId: number
+  offspringMale: number
+  offspringFemale: number
   practitionerFarm: boolean
   practitionerSchool: boolean
   practitionerPark: boolean
@@ -81,8 +86,11 @@ function memberFromEntity(entity: CircleEntity): GenealogyMember {
     motherId: entity.motherId,
     fatherId: entity.fatherId,
     generation: entity.generation,
+    birthGameTimeSec: entity.birthGameTimeSec,
     deceased: false,
     spouseId: entity.spouseId,
+    offspringMale: 0,
+    offspringFemale: 0,
     practitionerFarm: entity.practitionerFarm,
     practitionerSchool: entity.practitionerSchool,
     practitionerPark: entity.practitionerPark,
@@ -98,12 +106,50 @@ function memberFromDeceased(record: DeceasedMemberRecord): GenealogyMember {
     motherId: record.motherId,
     fatherId: record.fatherId,
     generation: record.generation,
+    birthGameTimeSec: record.birthGameTimeSec,
+    deathGameTimeSec: record.deathGameTimeSec,
     deceased: true,
     spouseId: record.spouseId,
+    offspringMale: 0,
+    offspringFemale: 0,
     practitionerFarm: record.practitionerFarm,
     practitionerSchool: record.practitionerSchool,
     practitionerPark: record.practitionerPark,
     practitionerFortress: record.practitionerFortress,
+  }
+}
+
+function countCoupleOffspring(
+  member: GenealogyMember,
+  allMembers: GenealogyMember[],
+): { male: number; female: number } {
+  const parentIds = new Set<number>([member.id])
+  if (member.spouseId > 0) parentIds.add(member.spouseId)
+
+  let male = 0
+  let female = 0
+  for (const child of allMembers) {
+    if (child.id === member.id) continue
+    const fromMember = child.fatherId === member.id || child.motherId === member.id
+    const fromSpouse =
+      member.spouseId > 0 && (child.fatherId === member.spouseId || child.motherId === member.spouseId)
+    if (!fromMember && !fromSpouse) continue
+
+    if (member.spouseId > 0 && child.fatherId > 0 && child.motherId > 0) {
+      if (!parentIds.has(child.fatherId) || !parentIds.has(child.motherId)) continue
+    }
+
+    if (child.gender === 'male') male++
+    else female++
+  }
+  return { male, female }
+}
+
+function attachOffspringCounts(members: GenealogyMember[]): void {
+  for (const member of members) {
+    const counts = countCoupleOffspring(member, members)
+    member.offspringMale = counts.male
+    member.offspringFemale = counts.female
   }
 }
 
@@ -132,6 +178,7 @@ export function buildFamilyGenealogies(
 
   const genealogies: FamilyGenealogy[] = []
   for (const [familyId, members] of byFamily) {
+    attachOffspringCounts(members)
     members.sort((a, b) => a.generation - b.generation || a.id - b.id)
     let practitionerFarm = 0
     let practitionerSchool = 0
@@ -182,7 +229,13 @@ export function formatGenealogyLine(
   const spouseName =
     member.spouseId > 0 ? nameById.get(member.spouseId) ?? `#${member.spouseId}` : ''
   const spouse = member.spouseId > 0 ? ` · 配偶·${spouseName}` : ''
-  return `${member.name}（${gender}·${status}${roleText}${spouse}）${parent}`
+  const birth = `生·${formatGameTime(member.birthGameTimeSec)}`
+  const death =
+    member.deceased && member.deathGameTimeSec !== undefined
+      ? ` · 亡·${formatGameTime(member.deathGameTimeSec)}`
+      : ''
+  const offspring = ` · 子女 男${member.offspringMale} 女${member.offspringFemale}`
+  return `${member.name}（${gender}·${status}${roleText}${spouse}）${birth}${death}${offspring}${parent}`
 }
 
 export function buildGenealogyNameMap(genealogies: FamilyGenealogy[]): Map<number, string> {
