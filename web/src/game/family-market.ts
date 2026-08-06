@@ -25,7 +25,7 @@ import {
   depositHousehold,
 } from './household'
 import { speedForMass } from './movement'
-import { findNearestActiveZone, type ZoneKind } from './resource-zones'
+import { findBestZoneForNeed } from './resource-zones'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type OrderStatus = 'open' | 'assigned' | 'fulfilled' | 'cancelled'
@@ -162,17 +162,16 @@ function isIdlePractitioner(
   return true
 }
 
-function zoneKindForOrder(kind: TransformKind): ZoneKind {
-  if (kind === 'farm') return 'food'
-  if (kind === 'school') return 'knowledge'
-  return 'joy'
-}
-
-function shouldPreferZoneOverOrder(member: CircleEntity, kind: TransformKind): boolean {
+function shouldPreferZoneOverOrder(
+  member: CircleEntity,
+  kind: TransformKind,
+  entities: CircleEntity[],
+): boolean {
   if (kind === 'fortress') return false
-  const zoneHit = findNearestActiveZone(zoneKindForOrder(kind), member.x, member.y)
-  if (!zoneHit) return false
-  return zoneHit.dist <= ZONE_PREFER_MAX_DIST
+  const need = kind === 'farm' ? 'eat' : kind === 'school' ? 'learn' : 'play'
+  const hit = findBestZoneForNeed(need, member, entities)
+  if (!hit) return false
+  return hit.dist <= ZONE_PREFER_MAX_DIST
 }
 
 export function estimateContractTravelSec(
@@ -259,7 +258,7 @@ function trySelfPostOrder(
 
   const kind = detectSelfOrderKind(member)
   if (!kind) return
-  if (shouldPreferZoneOverOrder(member, kind)) return
+  if (shouldPreferZoneOverOrder(member, kind, entities)) return
 
   setEnrollmentBoost(rec, kind)
   if (countFamilyPractitioners(rec.familyId, kind, entities) === 0) {

@@ -90,9 +90,11 @@ export const INITIAL_FAMILY_FUNDS = 90
 export const INITIAL_HOUSEHOLD_FUNDS = 90
 /** 优先自行前往地块而非下单的最大距离 */
 export const ZONE_PREFER_MAX_DIST = 420
+/** 局部压力越高，越倾向前往远处资源地块 */
+export const LOCAL_PRESSURE_ZONE_BIAS = 0.85
 export const ORDER_POST_COST = 14
 export const ORDER_POST_COOLDOWN_SEC = 1
-export const ORDER_SERVICE_DURATION_SEC = 5
+export const ORDER_SERVICE_DURATION_SEC = 8
 export const ORDER_REWARD = 28
 export const ORDER_FULFILL_RADIUS = 48
 /** 履约完成后家族获得全额赏金（扣除发单成本后净收益为正） */

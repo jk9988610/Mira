@@ -1,6 +1,7 @@
 import {
   JOY_CAP,
   KNOWLEDGE_CAP,
+  LOCAL_PRESSURE_ZONE_BIAS,
   RESOURCE_GRID_COLS,
   RESOURCE_GRID_ROWS,
   RESOURCE_ZONE_COUNT_FOOD,
@@ -9,14 +10,30 @@ import {
   RESOURCE_ZONE_EFFECT_RATE,
   RESOURCE_ZONE_LIFETIME_SEC,
   SATIETY_CAP,
+  ZONE_PREFER_MAX_DIST,
 } from './avatar-config'
 import type { CircleEntity } from './entity'
 import { isActive } from './entity'
+import type { NeedKind } from './avatar-needs'
+import { pressureAtPoint } from './pressure-field'
 import type { ViewBounds } from './viewport'
 import { speedForMass } from './movement'
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world'
 
 export type ZoneKind = 'food' | 'knowledge' | 'joy'
+
+/** 各地块均提供三项资源，侧重点不同 */
+const ZONE_EMPHASIS: Record<ZoneKind, { food: number; knowledge: number; joy: number }> = {
+  food: { food: 1, knowledge: 0.28, joy: 0.28 },
+  knowledge: { food: 0.28, knowledge: 1, joy: 0.28 },
+  joy: { food: 0.28, knowledge: 0.28, joy: 1 },
+}
+
+const NEED_EMPHASIS_KEY: Record<NeedKind, keyof (typeof ZONE_EMPHASIS)['food']> = {
+  eat: 'food',
+  learn: 'knowledge',
+  play: 'joy',
+}
 
 export interface ResourceZone {
   id: number
@@ -151,6 +168,39 @@ export function findNearestActiveZone(
   return best
 }
 
+/** 按需求、距离与局部压力综合选择地块 */
+export function findBestZoneForNeed(
+  need: NeedKind,
+  entity: CircleEntity,
+  entities: CircleEntity[],
+): { zone: ResourceZone; dist: number; cx: number; cy: number } | null {
+  const emphasisKey = NEED_EMPHASIS_KEY[need]
+  const familyId = entity.familyId || entity.id
+  let best: { zone: ResourceZone; dist: number; cx: number; cy: number; score: number } | null = null
+
+  for (const zone of zones) {
+    const center = zoneCenter(zone)
+    const dist = Math.hypot(center.x - entity.x, center.y - entity.y)
+    if (dist > ZONE_PREFER_MAX_DIST) continue
+
+    const localPressure = pressureAtPoint(center.x, center.y, entities, familyId)
+    const currentPressure = entity.pressureFelt
+    const pressureRelief = Math.max(0, currentPressure - localPressure)
+    const emphasis = ZONE_EMPHASIS[zone.kind][emphasisKey]
+    const score =
+      emphasis * 120 +
+      pressureRelief * LOCAL_PRESSURE_ZONE_BIAS +
+      dist * -0.35 -
+      localPressure * LOCAL_PRESSURE_ZONE_BIAS * 0.6
+
+    if (!best || score > best.score) {
+      best = { zone, dist, cx: center.x, cy: center.y, score }
+    }
+  }
+
+  return best ? { zone: best.zone, dist: best.dist, cx: best.cx, cy: best.cy } : null
+}
+
 export function estimateZoneTravelSec(
   fromX: number,
   fromY: number,
@@ -204,12 +254,15 @@ export function tickResourceZones(entities: CircleEntity[], dt: number): void {
     for (const zone of zones) {
       if (!pointInZone(zone, entity.x, entity.y)) continue
       const gain = RESOURCE_ZONE_EFFECT_RATE * dt
-      if (zone.kind === 'food' && entity.satiety < SATIETY_CAP * 0.96) {
-        entity.satiety = Math.min(SATIETY_CAP, entity.satiety + gain)
-      } else if (zone.kind === 'knowledge' && entity.knowledge < KNOWLEDGE_CAP * 0.96) {
-        entity.knowledge = Math.min(KNOWLEDGE_CAP, entity.knowledge + gain)
-      } else if (zone.kind === 'joy' && entity.joy < JOY_CAP * 0.96) {
-        entity.joy = Math.min(JOY_CAP, entity.joy + gain)
+      const emphasis = ZONE_EMPHASIS[zone.kind]
+      if (entity.satiety < SATIETY_CAP * 0.96) {
+        entity.satiety = Math.min(SATIETY_CAP, entity.satiety + gain * emphasis.food)
+      }
+      if (entity.knowledge < KNOWLEDGE_CAP * 0.96) {
+        entity.knowledge = Math.min(KNOWLEDGE_CAP, entity.knowledge + gain * emphasis.knowledge)
+      }
+      if (entity.joy < JOY_CAP * 0.96) {
+        entity.joy = Math.min(JOY_CAP, entity.joy + gain * emphasis.joy)
       }
     }
   }

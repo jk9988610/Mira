@@ -2,7 +2,6 @@ import {
   NPC_ARRIVE_DIST,
   NPC_JITTER_DIST,
   NPC_TARGET_CACHE_SEC,
-  ZONE_PREFER_MAX_DIST,
 } from './avatar-config'
 import { hasHousehold } from './household'
 import { pickWeightedNeed, type NeedKind } from './avatar-needs'
@@ -17,7 +16,7 @@ import {
   pickBestEmitterTarget,
   type EmitterTarget,
 } from './resource-ray'
-import { findNearestActiveZone, estimateZoneTravelSec, type ZoneKind } from './resource-zones'
+import { findBestZoneForNeed, estimateZoneTravelSec } from './resource-zones'
 import { clampAvatarEntityToWorld } from './avatar-radius'
 import { syncEntityGeo } from './geo'
 import type { CircleEntity, TransformKind } from './entity'
@@ -104,18 +103,13 @@ function moveToward(
   syncEntityGeo(entity)
 }
 
-function needToZoneKind(need: NeedKind): ZoneKind {
-  if (need === 'eat') return 'food'
-  if (need === 'learn') return 'knowledge'
-  return 'joy'
-}
-
 function pickZoneTarget(
   entity: CircleEntity,
+  entities: CircleEntity[],
   need: NeedKind,
 ): { x: number; y: number; etaSec: number } | null {
-  const hit = findNearestActiveZone(needToZoneKind(need), entity.x, entity.y)
-  if (!hit || hit.dist > ZONE_PREFER_MAX_DIST) return null
+  const hit = findBestZoneForNeed(need, entity, entities)
+  if (!hit) return null
   return {
     x: hit.cx,
     y: hit.cy,
@@ -128,7 +122,7 @@ function pickNeedTarget(
   entities: CircleEntity[],
   need: NeedKind,
 ): { x: number; y: number; etaSec: number; emitterId: number } | null {
-  const zone = pickZoneTarget(entity, need)
+  const zone = pickZoneTarget(entity, entities, need)
   const emitter = pickEmitterTarget(entity, entities, need)
   if (zone && emitter) {
     if (zone.etaSec <= emitter.etaSec) {
