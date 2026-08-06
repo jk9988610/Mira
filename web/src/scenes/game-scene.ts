@@ -69,7 +69,12 @@ import {
 import { summarizeOrders } from '../game/production-stats'
 import { drawResourceRays, tickEmitterBursts, tickResourceRays } from '../game/resource-ray'
 import { initOptimalAvatarState } from '../game/avatar-vitality'
-import { nameSurname, randomFounderName, randomGender } from '../game/naming'
+import {
+  formatFullName,
+  randomGivenName,
+  randomParentPair,
+  randomSurname,
+} from '../game/naming'
 import { createPointerTapHandler, isTap, type PointerPoint } from '../input/touch-gestures'
 
 type PauseBridge = { fn: (() => void) | null }
@@ -77,7 +82,8 @@ type PauseBridge = { fn: (() => void) | null }
 const CAMERA_PAN_SPEED = 400
 const TOUCH_PAN_SCALE = 1.35
 
-const STARTER_COUNT = 20
+const FAMILY_COUNT = 4
+const STARTER_COUNT = FAMILY_COUNT * 2
 
 function buildStarterOffsets(count: number): Array<{ x: number; y: number }> {
   const result: Array<{ x: number; y: number }> = []
@@ -173,22 +179,51 @@ export function createGameScene(
     scrollPointerId = null
     const cx = WORLD_WIDTH / 2
     const cy = WORLD_HEIGHT / 2
-    entities = STARTER_OFFSETS.map((offset, i) => {
-      const seed = i * 7919 + 1337
-      const founderName = randomFounderName(seed)
+    entities = []
+    for (let f = 0; f < FAMILY_COUNT; f++) {
+      const seed = f * 7919 + 1337
+      const surname = randomSurname(seed)
+      const maleName = formatFullName(surname, randomGivenName(seed + 1))
+      const femaleName = formatFullName(surname, randomGivenName(seed + 5))
+      const parents = randomParentPair(seed + 99)
       const palette = paletteFromFamilySeed(seed)
-      const circle = createCircle(
-        cx + offset.x,
-        cy + offset.y,
+      const maleOffset = STARTER_OFFSETS[f * 2]
+      const femaleOffset = STARTER_OFFSETS[f * 2 + 1]
+
+      const male = createCircle(
+        cx + maleOffset.x,
+        cy + maleOffset.y,
         STARTER_OPTIMAL_MASS,
         false,
-        { name: founderName, ...palette },
-        { gender: randomGender(), generation: 1, birthGameTimeSec: -ADULT_AGE_SEC },
+        { name: maleName, ...palette },
+        {
+          gender: 'male',
+          generation: 1,
+          birthGameTimeSec: -ADULT_AGE_SEC,
+          parentFatherName: parents.father,
+          parentMotherName: parents.mother,
+        },
       )
-      registerFamily(circle.id, nameSurname(founderName), palette)
-      initOptimalAvatarState(circle, -ADULT_AGE_SEC)
-      return circle
-    })
+      const female = createCircle(
+        cx + femaleOffset.x,
+        cy + femaleOffset.y,
+        STARTER_OPTIMAL_MASS,
+        false,
+        { name: femaleName, ...palette },
+        {
+          gender: 'female',
+          generation: 1,
+          familyId: male.id,
+          birthGameTimeSec: -ADULT_AGE_SEC,
+          parentFatherName: parents.father,
+          parentMotherName: parents.mother,
+        },
+      )
+      registerFamily(male.id, `${surname}家族`, palette)
+      initOptimalAvatarState(male, -ADULT_AGE_SEC)
+      initOptimalAvatarState(female, -ADULT_AGE_SEC)
+      entities.push(male, female)
+    }
     elapsed = 0
     initFamilyMarkets(entities)
   }
